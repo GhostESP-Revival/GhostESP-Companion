@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.FileProvider
 import com.example.ghostespcompanion.R
+import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 import com.example.ghostespcompanion.data.serial.GhostSerialResponse
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
@@ -237,12 +238,26 @@ class GhostRepository @Inject constructor(
     
     fun logUsbDebug() = serialManager.logAllUsbDevices()
 
+    val availableBleDevices: StateFlow<List<BleBridgeDevice>> = serialManager.bleDevices
+
+    fun startBleBridgeScan() = serialManager.startBleScan()
+
+    fun stopBleBridgeScan() = serialManager.stopBleScan()
+
+    val isBleScanning: StateFlow<Boolean> = serialManager.isBleScanning
+
+    fun isBluetoothEnabled(): Boolean = serialManager.isBluetoothEnabled()
+
+    fun isBluetoothSupported(): Boolean = serialManager.isBluetoothSupported()
+
     /**
      * Connect to a specific device
      */
     suspend fun connect(device: UsbDevice): Boolean = serialManager.connect(device)
 
     suspend fun connect(device: UsbDevice, baudRate: Int): Boolean = serialManager.connect(device, baudRate)
+
+    suspend fun connectBle(device: BleBridgeDevice): Boolean = serialManager.connectBle(device)
 
     /**
      * Connect with automatic baud rate detection
@@ -286,7 +301,7 @@ class GhostRepository @Inject constructor(
     suspend fun sendCommand(command: GhostCommand): Boolean {
         if (command.requiresStopFirst) {
             serialManager.sendCommand(GhostCommand.Stop.commandString)
-            delay(200) // Allow firmware time to process the stop
+            delay(200)
         }
         currentCommand = command
         return serialManager.sendCommand(command.commandString)

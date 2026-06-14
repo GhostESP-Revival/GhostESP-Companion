@@ -312,9 +312,9 @@ sealed class GhostResponse {
                 
                 val index = ResponsePatterns.AP_INDEX.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
                 val ssid = ResponsePatterns.AP_SSID.find(text)?.groupValues?.get(1)?.trim() ?: return null
-                val bssid = ResponsePatterns.AP_BSSID.find(text)?.groupValues?.get(1) ?: return null
-                val rssi = ResponsePatterns.AP_RSSI.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
-                val channel = ResponsePatterns.AP_CHANNEL.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+                val bssid = ResponsePatterns.AP_BSSID.find(text)?.groupValues?.get(1) ?: "??:??:??:??:??:??"
+                val rssi = ResponsePatterns.AP_RSSI.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: -100
+                val channel = ResponsePatterns.AP_CHANNEL.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: -1
                 
                 // Optional fields
                 val security = ResponsePatterns.AP_SECURITY.find(text)?.groupValues?.get(1)?.trim() ?: "Unknown"

@@ -1,6 +1,12 @@
 package com.example.ghostespcompanion.ui.screens.ble
 
-import android.hardware.usb.UsbDevice
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -20,9 +26,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
 import com.example.ghostespcompanion.domain.model.GhostResponse
+import com.example.ghostespcompanion.ui.components.ConnectionSelectionDialog
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.theme.*
 import com.example.ghostespcompanion.ui.utils.censorDevice
@@ -54,7 +62,11 @@ fun BleScreen(
     var showScanModeMenu by remember { mutableStateOf(false) }
     var showSpamModeMenu by remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
-    val availableDevices by viewModel.availableUsbDevices.collectAsState()
+    val availableUsbDevices by viewModel.availableUsbDevices.collectAsState()
+    val allUsbDevices by viewModel.allUsbDevices.collectAsState()
+    val usbDebugLog by viewModel.usbDebugLog.collectAsState()
+    val availableBridgeDevices by viewModel.availableBleDevices.collectAsState()
+    val isBleScanning by viewModel.isBleScanning.collectAsState()
     var showGattDetailSheet by remember { mutableStateOf(false) }
     var selectedGattDevice by remember { mutableStateOf<GhostResponse.GattDevice?>(null) }
     var showFlipperDetailSheet by remember { mutableStateOf(false) }
@@ -69,6 +81,34 @@ fun BleScreen(
     val appSettings by viewModel.appSettings.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val privacyMode = appSettings.privacyMode
+    val context = LocalContext.current
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        if (granted.values.all { it }) {
+            viewModel.startBleBridgeScan()
+        }
+    }
+
+    val requestBleConnect: () -> Unit = {
+        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        val allGranted = permissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+        if (!viewModel.isBluetoothSupported() || !viewModel.isBluetoothEnabled()) {
+            showDeviceDialog = true
+        } else if (allGranted) {
+            viewModel.startBleBridgeScan()
+            showDeviceDialog = true
+        } else {
+            showDeviceDialog = true
+            blePermissionLauncher.launch(permissions)
+        }
+    }
 
     val displayDevices = remember(bleDevices, flipperDevices, airTagDevices, gattDevices) {
         buildList {
@@ -138,20 +178,39 @@ fun BleScreen(
                 isConnected = isConnected,
                 connectionState = connectionState,
                 onConnect = {
-                    viewModel.refreshAvailableDevices()
-                    showDeviceDialog = true
+                    requestBleConnect()
                 }
             )
             
             // Device Selection Dialog
             if (showDeviceDialog) {
-                DeviceSelectionDialog(
-                    devices = availableDevices,
-                    onDeviceSelected = { device ->
+                ConnectionSelectionDialog(
+                    usbDevices = availableUsbDevices,
+                    bleDevices = availableBridgeDevices,
+                    allUsbDevices = allUsbDevices,
+                    usbDebugLog = usbDebugLog,
+                    bluetoothEnabled = viewModel.isBluetoothEnabled(),
+                    bluetoothSupported = viewModel.isBluetoothSupported(),
+                    isBleScanning = isBleScanning,
+                    startOnWirelessTab = true,
+                    onUsbSelected = { device, baud ->
                         showDeviceDialog = false
-                        viewModel.connect(device)
+                        viewModel.connectWithBaud(device, baud)
                     },
-                    onDismiss = { showDeviceDialog = false }
+                    onBleSelected = { device ->
+                        showDeviceDialog = false
+                        viewModel.stopBleBridgeScan()
+                        viewModel.connectBle(device)
+                    },
+                    onRefreshUsb = {
+                        viewModel.refreshAvailableDevices()
+                        viewModel.refreshAllUsbDevices()
+                    },
+                    onRefreshBle = { requestBleConnect() },
+                    onDismiss = {
+                        viewModel.stopBleBridgeScan()
+                        showDeviceDialog = false
+                    }
                 )
             }
             
@@ -602,23 +661,25 @@ private fun BleConnectionBanner(
     }
 }
 
-/**
- * Device Selection Dialog
- */
 @Composable
-private fun DeviceSelectionDialog(
-    devices: List<UsbDevice>,
-    onDeviceSelected: (UsbDevice) -> Unit,
+private fun BleBridgeDialog(
+    devices: List<BleBridgeDevice>,
+    isScanning: Boolean,
+    onRefresh: () -> Unit,
+    onDeviceSelected: (BleBridgeDevice) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { 
-            Text("Select Device") 
-        },
+        title = { Text("Select BLE Bridge") },
         text = {
             if (devices.isEmpty()) {
-                Text("No USB devices found. Please connect a device and try again.")
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(if (isScanning) "Scanning for GhostESP BLE bridges..." else "No BLE bridges found yet.")
+                    OutlinedButton(onClick = onRefresh) {
+                        Text(if (isScanning) "Scanning..." else "Scan Again")
+                    }
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.heightIn(max = 300.dp),
@@ -626,8 +687,8 @@ private fun DeviceSelectionDialog(
                 ) {
                     items(
                         items = devices,
-                        key = { it.deviceName },
-                        contentType = { "usb_device" }
+                        key = { it.address },
+                        contentType = { "ble_bridge" }
                     ) { device ->
                         Card(
                             onClick = { onDeviceSelected(device) },
@@ -640,22 +701,15 @@ private fun DeviceSelectionDialog(
                                 modifier = Modifier.padding(16.dp)
                             ) {
                                 Text(
-                                    text = device.deviceName,
+                                    text = device.name,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    text = "Vendor: ${device.vendorId} • Product: ${device.productId}",
+                                    text = "${device.address} • RSSI ${device.rssi} dBm",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (device.manufacturerName != null) {
-                                    Text(
-                                        text = "Manufacturer: ${device.manufacturerName}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
                             }
                         }
                     }

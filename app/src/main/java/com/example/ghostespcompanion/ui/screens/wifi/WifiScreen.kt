@@ -1,6 +1,11 @@
 package com.example.ghostespcompanion.ui.screens.wifi
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -25,6 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
@@ -74,6 +81,8 @@ fun WifiScreen(
     
     // Collect state from ViewModel
     val connectionState by viewModel.connectionState.collectAsState()
+    val availableBleDevices by viewModel.availableBleDevices.collectAsState()
+    val isBleScanning by viewModel.isBleScanning.collectAsState()
     val accessPoints by viewModel.accessPoints.collectAsState()
     val stations by viewModel.stations.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
@@ -86,6 +95,32 @@ fun WifiScreen(
     val wifiConnection by viewModel.wifiConnection.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val privacyMode = appSettings.privacyMode
+    val context = LocalContext.current
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        if (granted.values.all { it }) {
+            viewModel.startBleBridgeScan()
+        }
+    }
+
+    val scanBleBridges: () -> Unit = {
+        if (viewModel.isBluetoothSupported() && viewModel.isBluetoothEnabled()) {
+            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+            } else {
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            val allGranted = permissions.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+            if (allGranted) {
+                viewModel.startBleBridgeScan()
+            } else {
+                blePermissionLauncher.launch(permissions)
+            }
+        }
+    }
     
     // Find the SSID of the connected AP (match by SSID since that's what firmware reports)
     val connectedSsid = wifiConnection?.takeIf { it.isConnected }?.ssid
@@ -168,18 +203,32 @@ fun WifiScreen(
             if (showDeviceDialog) {
                 val allUsbDevices by viewModel.allUsbDevices.collectAsState()
                 val usbDebugLog by viewModel.usbDebugLog.collectAsState()
-                DeviceSelectionDialog(
-                    devices = availableDevices,
+                ConnectionSelectionDialog(
+                    usbDevices = availableDevices,
+                    bleDevices = availableBleDevices,
                     allUsbDevices = allUsbDevices,
                     usbDebugLog = usbDebugLog,
-                    onDeviceSelected = { device, baud ->
+                    bluetoothEnabled = viewModel.isBluetoothEnabled(),
+                    bluetoothSupported = viewModel.isBluetoothSupported(),
+                    isBleScanning = isBleScanning,
+                    onUsbSelected = { device, baud ->
                         showDeviceDialog = false
                         viewModel.connectWithBaud(device, baud)
                     },
-                    onDebugClick = {
-                        viewModel.refreshAvailableDevices()
+                    onBleSelected = { device ->
+                        showDeviceDialog = false
+                        viewModel.stopBleBridgeScan()
+                        viewModel.connectBle(device)
                     },
-                    onDismiss = { showDeviceDialog = false }
+                    onRefreshUsb = {
+                        viewModel.refreshAvailableDevices()
+                        viewModel.refreshAllUsbDevices()
+                    },
+                    onRefreshBle = { scanBleBridges() },
+                    onDismiss = {
+                        viewModel.stopBleBridgeScan()
+                        showDeviceDialog = false
+                    }
                 )
             }
             

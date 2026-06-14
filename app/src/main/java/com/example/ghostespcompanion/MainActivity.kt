@@ -1,8 +1,13 @@
 package com.example.ghostespcompanion
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
@@ -23,6 +28,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -31,6 +37,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ghostespcompanion.data.repository.AppSettings
 import com.example.ghostespcompanion.data.repository.PreferencesRepository
 import com.example.ghostespcompanion.data.serial.SerialManager
+import com.example.ghostespcompanion.ui.components.ConnectionSelectionDialog
 import com.example.ghostespcompanion.ui.navigation.GhostESPNavGraph
 import com.example.ghostespcompanion.ui.navigation.Screen
 import com.example.ghostespcompanion.ui.navigation.bottomNavItems
@@ -83,6 +90,37 @@ fun GhostESPApp(
     val hasAutoConnected = remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
     val availableDevices by viewModel.availableUsbDevices.collectAsState()
+    val allUsbDevices by viewModel.allUsbDevices.collectAsState()
+    val usbDebugLog by viewModel.usbDebugLog.collectAsState()
+    val availableBleDevices by viewModel.availableBleDevices.collectAsState()
+    val isBleScanning by viewModel.isBleScanning.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        if (granted.values.all { it }) {
+            viewModel.startBleBridgeScan()
+        }
+    }
+
+    val scanBleBridges: () -> Unit = {
+        if (!viewModel.isBluetoothSupported() || !viewModel.isBluetoothEnabled()) {
+        } else {
+            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+            } else {
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            val allGranted = permissions.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+            if (allGranted) {
+                viewModel.startBleBridgeScan()
+            } else {
+                blePermissionLauncher.launch(permissions)
+            }
+        }
+    }
 
     LaunchedEffect(autoConnect, connectionState) {
         if (autoConnect && !hasAutoConnected.value && connectionState == SerialManager.ConnectionState.DISCONNECTED) {
@@ -172,17 +210,32 @@ fun GhostESPApp(
         }
         
         if (showDeviceDialog) {
-            DeviceSelectionDialog(
-                devices = availableDevices,
-                usbDebugLog = viewModel.usbDebugLog.collectAsState().value,
-                onDeviceSelected = { device, baud ->
+            ConnectionSelectionDialog(
+                usbDevices = availableDevices,
+                bleDevices = availableBleDevices,
+                allUsbDevices = allUsbDevices,
+                usbDebugLog = usbDebugLog,
+                bluetoothEnabled = viewModel.isBluetoothEnabled(),
+                bluetoothSupported = viewModel.isBluetoothSupported(),
+                isBleScanning = isBleScanning,
+                onUsbSelected = { device, baud ->
                     showDeviceDialog = false
                     viewModel.connectWithBaud(device, baud)
                 },
-                onRefresh = {
+                onBleSelected = { device ->
+                    showDeviceDialog = false
+                    viewModel.stopBleBridgeScan()
+                    viewModel.connectBle(device)
+                },
+                onRefreshUsb = {
                     viewModel.refreshAvailableDevices()
+                    viewModel.refreshAllUsbDevices()
+                },
+                onRefreshBle = {
+                    scanBleBridges()
                 },
                 onDismiss = {
+                    viewModel.stopBleBridgeScan()
                     showDeviceDialog = false
                 }
             )

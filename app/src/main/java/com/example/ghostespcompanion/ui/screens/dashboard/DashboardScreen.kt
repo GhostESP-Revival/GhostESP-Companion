@@ -1,6 +1,11 @@
 package com.example.ghostespcompanion.ui.screens.dashboard
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -27,12 +32,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.res.painterResource
 import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
@@ -81,8 +88,36 @@ val connectionState by viewModel.connectionState.collectAsState()
     
     var showDeviceDialog by remember { mutableStateOf(false) }
     val availableDevices by viewModel.availableUsbDevices.collectAsState()
+    val availableBleDevices by viewModel.availableBleDevices.collectAsState()
+    val isBleScanning by viewModel.isBleScanning.collectAsState()
     val allUsbDevices by viewModel.allUsbDevices.collectAsState()
     val usbDebugLog by viewModel.usbDebugLog.collectAsState()
+    val context = LocalContext.current
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        if (granted.values.all { it }) {
+            viewModel.startBleBridgeScan()
+        }
+    }
+
+    val scanBleBridges: () -> Unit = {
+        if (viewModel.isBluetoothSupported() && viewModel.isBluetoothEnabled()) {
+            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+            } else {
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            val allGranted = permissions.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+            if (allGranted) {
+                viewModel.startBleBridgeScan()
+            } else {
+                blePermissionLauncher.launch(permissions)
+            }
+        }
+    }
     
     MainScreen(title = "Dashboard") { paddingValues ->
         Box(modifier = Modifier.fillMaxSize()) {
@@ -225,18 +260,32 @@ val connectionState by viewModel.connectionState.collectAsState()
             
             // Device Selection Dialog
             if (showDeviceDialog) {
-                DashboardDeviceSelectionDialog(
-                    devices = availableDevices,
+                ConnectionSelectionDialog(
+                    usbDevices = availableDevices,
+                    bleDevices = availableBleDevices,
                     allUsbDevices = allUsbDevices,
                     usbDebugLog = usbDebugLog,
-                    onDeviceSelected = { device ->
+                    bluetoothEnabled = viewModel.isBluetoothEnabled(),
+                    bluetoothSupported = viewModel.isBluetoothSupported(),
+                    isBleScanning = isBleScanning,
+                    onUsbSelected = { device, baud ->
                         showDeviceDialog = false
-                        viewModel.connect(device)
+                        viewModel.connectWithBaud(device, baud)
                     },
-                    onDebugClick = {
+                    onBleSelected = { device ->
+                        showDeviceDialog = false
+                        viewModel.stopBleBridgeScan()
+                        viewModel.connectBle(device)
+                    },
+                    onRefreshUsb = {
                         viewModel.refreshAvailableDevices()
+                        viewModel.refreshAllUsbDevices()
                     },
-                    onDismiss = { showDeviceDialog = false }
+                    onRefreshBle = { scanBleBridges() },
+                    onDismiss = {
+                        viewModel.stopBleBridgeScan()
+                        showDeviceDialog = false
+                    }
                 )
             }
         }

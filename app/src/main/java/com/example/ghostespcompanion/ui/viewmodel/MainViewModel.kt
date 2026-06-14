@@ -5,6 +5,7 @@ import android.hardware.usb.UsbDevice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ghostespcompanion.data.LocationHelper
+import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 import com.example.ghostespcompanion.data.repository.AppSettings
 import com.example.ghostespcompanion.data.repository.FileTransferProgress
 import com.example.ghostespcompanion.data.repository.GhostRepository
@@ -216,6 +217,13 @@ class MainViewModel @Inject constructor(
     private val _allUsbDevices = MutableStateFlow<List<UsbDevice>>(emptyList())
     val allUsbDevices: StateFlow<List<UsbDevice>> = _allUsbDevices.asStateFlow()
 
+    val availableBleDevices: StateFlow<List<BleBridgeDevice>> = ghostRepository.availableBleDevices
+    val isBleScanning: StateFlow<Boolean> = ghostRepository.isBleScanning
+
+    fun isBluetoothEnabled(): Boolean = ghostRepository.isBluetoothEnabled()
+
+    fun isBluetoothSupported(): Boolean = ghostRepository.isBluetoothSupported()
+
     fun refreshAvailableDevices() {
         viewModelScope.launch(Dispatchers.IO) {
             _availableUsbDevices.value = ghostRepository.getAvailableDevices()
@@ -237,6 +245,10 @@ class MainViewModel @Inject constructor(
 
     fun logUsbDebug() = ghostRepository.logUsbDebug()
 
+    fun startBleBridgeScan() = ghostRepository.startBleBridgeScan()
+
+    fun stopBleBridgeScan() = ghostRepository.stopBleBridgeScan()
+
     fun connect(device: UsbDevice) {
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.connect(device)
@@ -252,6 +264,12 @@ class MainViewModel @Inject constructor(
     fun connectWithBaud(device: UsbDevice, baudRate: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.connect(device, baudRate)
+        }
+    }
+
+    fun connectBle(device: BleBridgeDevice) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.connectBle(device)
         }
     }
 
