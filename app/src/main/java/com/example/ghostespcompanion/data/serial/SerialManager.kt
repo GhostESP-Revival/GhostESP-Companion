@@ -20,6 +20,7 @@ import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
+import android.os.Build
 import androidx.core.content.ContextCompat
 import com.example.ghostespcompanion.data.ble.BleBridgeConstants
 import com.example.ghostespcompanion.data.ble.BleBridgeDevice
@@ -323,7 +324,7 @@ class SerialManager @Inject constructor(
             val device = result.device ?: return
             val record = result.scanRecord
             val hasBridgeService = record?.serviceUuids?.any { it.uuid == BleBridgeConstants.SERVICE_UUID } == true
-            val rawName = record?.deviceName ?: device.name
+            val rawName = record?.deviceName
             val name = rawName ?: if (hasBridgeService) "GhostESP Bridge" else return
             if (!hasBridgeService) {
                 return
@@ -341,6 +342,7 @@ class SerialManager @Inject constructor(
     }
 
     private val bleGattCallback = object : BluetoothGattCallback() {
+        @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             usbLog("BLE onConnectionStateChange status=$status (${bleGattStatusName(status)}) newState=$newState (${bleStateName(newState)})")
             if (newState == BluetoothGatt.STATE_CONNECTED) {
@@ -349,6 +351,11 @@ class SerialManager @Inject constructor(
                 bleServiceDiscoveryJob = scope.launch {
                     delay(BLE_DISCOVER_SERVICES_DELAY_MS)
                     if (bluetoothGatt !== gatt || !isConnecting.get()) {
+                        return@launch
+                    }
+
+                    if (!hasBluetoothConnectPermission()) {
+                        failBleConnection("BLE connect permission missing")
                         return@launch
                     }
 
@@ -572,13 +579,23 @@ class SerialManager @Inject constructor(
 
     fun isBluetoothSupported(): Boolean = bluetoothAdapter != null
 
+    private fun hasBluetoothConnectPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+
+    @SuppressLint("MissingPermission")
+    private fun closeBluetoothGatt(gatt: BluetoothGatt?) {
+        try { gatt?.disconnect() } catch (e: Exception) { /* ignore */ }
+        try { gatt?.close() } catch (e: Exception) { /* ignore */ }
+    }
+
     @SuppressLint("MissingPermission")
     suspend fun connectBle(device: BleBridgeDevice): Boolean = connectionMutex.withLock {
         if (isConnecting.get()) return@withLock false
         disconnectInternal()
         isConnecting.set(true)
         _connectionState.value = ConnectionState.CONNECTING
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+        if (!hasBluetoothConnectPermission()) {
             _connectionState.value = ConnectionState.ERROR
             _connectionTransport.value = ConnectionTransport.NONE
             isConnecting.set(false)
@@ -867,7 +884,13 @@ class SerialManager @Inject constructor(
         bleFallbackBuffer.reset()
     }
 
+    @SuppressLint("MissingPermission")
     private suspend fun completeBleHandshake(gatt: BluetoothGatt, tx: BluetoothGattCharacteristic) {
+        if (!hasBluetoothConnectPermission()) {
+            failBleConnection("BLE connect permission missing")
+            return
+        }
+
         val notificationsEnabled = try {
             gatt.setCharacteristicNotification(tx, true)
         } catch (e: Exception) {
@@ -906,12 +929,18 @@ class SerialManager @Inject constructor(
         finishBleConnect()
     }
 
+    @SuppressLint("MissingPermission")
     private suspend fun bleWriteDescriptorReliable(
         gatt: BluetoothGatt,
         descriptor: BluetoothGattDescriptor,
         value: ByteArray,
         label: String
     ): Int = bleWriteMutex.withLock {
+        if (!hasBluetoothConnectPermission()) {
+            usbLog("BLE descriptor write skipped; connect permission missing label=$label")
+            return@withLock -1
+        }
+
         val deferred = CompletableDeferred<Int>()
         blePendingDescriptorWrite = deferred
         descriptor.value = value
@@ -930,7 +959,13 @@ class SerialManager @Inject constructor(
         status
     }
 
+    @SuppressLint("MissingPermission")
     private suspend fun bleRequestMtuReliable(gatt: BluetoothGatt, mtu: Int): Int = bleWriteMutex.withLock {
+        if (!hasBluetoothConnectPermission()) {
+            usbLog("BLE requestMtu skipped; connect permission missing")
+            return@withLock -1
+        }
+
         val deferred = CompletableDeferred<Int>()
         blePendingMtuChange = deferred
 
@@ -956,6 +991,7 @@ class SerialManager @Inject constructor(
         status
     }
 
+    @SuppressLint("MissingPermission")
     private suspend fun bleWriteCharacteristicReliable(
         gatt: BluetoothGatt,
         characteristic: BluetoothGattCharacteristic,
@@ -963,6 +999,11 @@ class SerialManager @Inject constructor(
         writeType: Int,
         label: String
     ): Int = bleWriteMutex.withLock {
+        if (!hasBluetoothConnectPermission()) {
+            usbLog("BLE characteristic write skipped; connect permission missing label=$label")
+            return@withLock -1
+        }
+
         val deferred = CompletableDeferred<Int>()
         blePendingWrite = deferred
         characteristic.writeType = writeType
@@ -1129,8 +1170,9 @@ class SerialManager @Inject constructor(
 
         // Close USB connection
         try { usbConnection?.close() } catch (e: Exception) { /* ignore */ }
-        try { bluetoothGatt?.disconnect() } catch (e: Exception) { /* ignore */ }
-        try { bluetoothGatt?.close() } catch (e: Exception) { /* ignore */ }
+        if (hasBluetoothConnectPermission()) {
+            closeBluetoothGatt(bluetoothGatt)
+        }
 
         // Clear references
         serialPort = null
