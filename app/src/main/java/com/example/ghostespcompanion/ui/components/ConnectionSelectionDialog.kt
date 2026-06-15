@@ -262,7 +262,10 @@ fun ConnectionSelectionDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = if (selectedTab == 0) onRefreshUsb else onRefreshBle) {
+                    TextButton(
+                        onClick = if (selectedTab == 0) onRefreshUsb else onRefreshBle,
+                        enabled = selectedTab == 0 || !isBleScanning
+                    ) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(if (selectedTab == 0) "Refresh Wired" else if (isBleScanning) "Scanning..." else "Scan Wireless")

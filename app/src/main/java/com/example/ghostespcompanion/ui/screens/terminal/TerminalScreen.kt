@@ -44,6 +44,7 @@ fun TerminalScreen(
     
     // Collect state from ViewModel
     val connectionState by viewModel.connectionState.collectAsState()
+    val connectionTransport by viewModel.connectionTransport.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     
     // Collect terminal lines from ViewModel (persists across navigation)
@@ -65,8 +66,16 @@ fun TerminalScreen(
         actions = {
             // Connection status
             Icon(
-                imageVector = if (isConnected) Icons.Default.Usb else Icons.Default.UsbOff,
-                contentDescription = "Connection Status",
+                imageVector = when {
+                    !isConnected -> Icons.Default.UsbOff
+                    connectionTransport == SerialManager.ConnectionTransport.BLE -> Icons.Default.BluetoothConnected
+                    else -> Icons.Default.Usb
+                },
+                contentDescription = when {
+                    !isConnected -> "Disconnected"
+                    connectionTransport == SerialManager.ConnectionTransport.BLE -> "Connected wirelessly"
+                    else -> "Connected over USB"
+                },
                 tint = if (isConnected) successColor() else errorColor()
             )
             Spacer(modifier = Modifier.width(8.dp))

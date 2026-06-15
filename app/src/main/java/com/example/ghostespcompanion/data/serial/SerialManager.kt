@@ -98,6 +98,9 @@ class SerialManager @Inject constructor(
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
+    private val _connectionTransport = MutableStateFlow(ConnectionTransport.NONE)
+    val connectionTransport: StateFlow<ConnectionTransport> = _connectionTransport.asStateFlow()
+
     // Channel for parsed/grouped responses (multi-line accumulation applied here)
     // UNLIMITED capacity ensures we NEVER block the serial read loop and NEVER lose data
     private val responseChannel = Channel<String>(Channel.UNLIMITED)
@@ -120,6 +123,13 @@ class SerialManager @Inject constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val rawOutput: SharedFlow<String> = _rawOutput.asSharedFlow()
+
+    private val _bleBridgeDataPayloads = MutableSharedFlow<ByteArray>(
+        replay = 0,
+        extraBufferCapacity = 512,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val bleBridgeDataPayloads: SharedFlow<ByteArray> = _bleBridgeDataPayloads.asSharedFlow()
 
     // Debug log for chipinfo lifecycle — captures flush/skip/send events
     private val _chipInfoDebugLog = MutableStateFlow<List<String>>(emptyList())
@@ -235,6 +245,7 @@ class SerialManager @Inject constructor(
     private var isCollectingBinaryHeader = false
     private val bleFrameBuffer = ByteArrayOutputStream(2048)
     private val bleFallbackBuffer = ByteArrayOutputStream(256)
+    @Volatile private var currentSdReadIsBase64 = false
 
     private val bleCommandMutex = Mutex()
     private val bleBridgeStateLock = Any()
@@ -263,6 +274,12 @@ class SerialManager @Inject constructor(
         CONNECTING,
         CONNECTED,
         ERROR
+    }
+
+    enum class ConnectionTransport {
+        NONE,
+        USB,
+        BLE
     }
 
     private data class BleBridgeFrame(
@@ -563,6 +580,7 @@ class SerialManager @Inject constructor(
         _connectionState.value = ConnectionState.CONNECTING
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             _connectionState.value = ConnectionState.ERROR
+            _connectionTransport.value = ConnectionTransport.NONE
             isConnecting.set(false)
             return@withLock false
         }
@@ -571,6 +589,7 @@ class SerialManager @Inject constructor(
         val remoteDevice = bluetoothAdapter?.getRemoteDevice(device.address)
         if (remoteDevice == null) {
             _connectionState.value = ConnectionState.ERROR
+            _connectionTransport.value = ConnectionTransport.NONE
             isConnecting.set(false)
             return@withLock false
         }
@@ -667,6 +686,7 @@ class SerialManager @Inject constructor(
             if (serialDriver == null) {
                 android.util.Log.e("SerialManager", "Could not find serial driver for device")
                 _connectionState.value = ConnectionState.ERROR
+                _connectionTransport.value = ConnectionTransport.NONE
                 isConnecting.set(false)
                 return@withLock false
             }
@@ -675,12 +695,14 @@ class SerialManager @Inject constructor(
 
             serialPort = serialDriver!!.ports.firstOrNull() ?: run {
                 _connectionState.value = ConnectionState.ERROR
+                _connectionTransport.value = ConnectionTransport.NONE
                 isConnecting.set(false)
                 return@withLock false
             }
 
             usbConnection = usbManager.openDevice(device) ?: run {
                 _connectionState.value = ConnectionState.ERROR
+                _connectionTransport.value = ConnectionTransport.NONE
                 isConnecting.set(false)
                 return@withLock false
             }
@@ -694,6 +716,7 @@ class SerialManager @Inject constructor(
             resetParsingState()
 
             isBleTransport = false
+            _connectionTransport.value = ConnectionTransport.USB
             isConnectedFlag.set(true)
             isConnecting.set(false)
             startReading()
@@ -705,6 +728,7 @@ class SerialManager @Inject constructor(
         } catch (e: Exception) {
             e.printStackTrace()
             _connectionState.value = ConnectionState.ERROR
+            _connectionTransport.value = ConnectionTransport.NONE
             isConnecting.set(false)
             try {
                 withTimeout(1000) {
@@ -969,6 +993,7 @@ class SerialManager @Inject constructor(
     private fun finishBleConnect() {
         isConnectedFlag.set(true)
         isConnecting.set(false)
+        _connectionTransport.value = ConnectionTransport.BLE
         bleHeartbeatJob?.cancel()
         bleHeartbeatJob = null
         bleHeartbeatWatchdog?.cancel()
@@ -981,6 +1006,7 @@ class SerialManager @Inject constructor(
     private fun failBleConnection(reason: String) {
         usbLog(reason)
         isConnecting.set(false)
+        _connectionTransport.value = ConnectionTransport.NONE
         mainScope.launch {
             _connectionState.value = ConnectionState.ERROR
             disconnectInternal()
@@ -1035,6 +1061,12 @@ class SerialManager @Inject constructor(
         frame[11] = ((payload.size shr 8) and 0xFF).toByte()
         payload.copyInto(frame, BLE_BRIDGE_FRAME_HEADER_LEN)
         return frame
+    }
+
+    private fun isBase64SdReadCommand(command: String): Boolean {
+        val trimmed = command.trim()
+        return trimmed.startsWith("sd read ", ignoreCase = true) &&
+            trimmed.split(Regex("\\s+")).any { it.equals("--base64", ignoreCase = true) }
     }
 
     private fun handleBleBridgeAck(frame: BleBridgeFrame, ok: Boolean, pendingBytes: Int) {
@@ -1112,6 +1144,7 @@ class SerialManager @Inject constructor(
         cmdIdLastDataMs.clear()
         bleHeartbeatWatchdog?.cancel()
         bleHeartbeatWatchdog = null
+        currentSdReadIsBase64 = false
 
         // Clear buffers
         resetParsingState()
@@ -1122,6 +1155,7 @@ class SerialManager @Inject constructor(
         }
 
         _connectionState.value = ConnectionState.DISCONNECTED
+        _connectionTransport.value = ConnectionTransport.NONE
     }
 
     /**
@@ -1138,6 +1172,7 @@ class SerialManager @Inject constructor(
         usbConnection = null
         serialDriver = null
         _connectionState.value = ConnectionState.DISCONNECTED
+        _connectionTransport.value = ConnectionTransport.NONE
     }
 
     /**
@@ -1147,6 +1182,8 @@ class SerialManager @Inject constructor(
         if (!isConnectedFlag.get()) return@withContext false
 
         try {
+            currentSdReadIsBase64 = isBase64SdReadCommand(command)
+
             // Flush any pending multiline buffer before sending a new command
             // so previous response data isn't lost
             flushMultilineBuffer()
@@ -1358,9 +1395,22 @@ class SerialManager @Inject constructor(
                 processIncomingDataFast(fallback, fallback.size)
             }
 
-            val payloadLen =
+            val frameType = buffered[offset + 3].toInt() and 0xFF
+            var payloadLen =
                 (buffered[offset + 10].toInt() and 0xFF) or
                 ((buffered[offset + 11].toInt() and 0xFF) shl 8)
+
+            // Some bridge firmware builds emitted DATA frames with a zero payload
+            // length even though bytes followed the header. Infer that payload so
+            // file downloads do not depend on the raw-byte fallback path.
+            if (payloadLen == 0 &&
+                (frameType == BLE_BRIDGE_FRAME_TYPE_DATA || frameType == BLE_BRIDGE_FRAME_TYPE_ERR) &&
+                buffered.size - offset > BLE_BRIDGE_FRAME_HEADER_LEN) {
+                val nextFrameOffset = findNextBleFrameOffset(buffered, offset + BLE_BRIDGE_FRAME_HEADER_LEN)
+                val payloadEnd = if (nextFrameOffset >= 0) nextFrameOffset else buffered.size
+                payloadLen = (payloadEnd - offset - BLE_BRIDGE_FRAME_HEADER_LEN).coerceAtMost(0xFFFF)
+            }
+
             val frameLen = BLE_BRIDGE_FRAME_HEADER_LEN + payloadLen
             if (buffered.size - offset < frameLen) {
                 break
@@ -1372,14 +1422,14 @@ class SerialManager @Inject constructor(
                 ((buffered[offset + 8].toInt() and 0xFF) shl 16) or
                 ((buffered[offset + 9].toInt() and 0xFF) shl 24)
             val payload = buffered.copyOfRange(offset + BLE_BRIDGE_FRAME_HEADER_LEN, offset + frameLen)
-            val pendingBytes = if (buffered[offset + 3].toInt() and 0xFF == BLE_BRIDGE_FRAME_TYPE_ACK) {
+            val pendingBytes = if (frameType == BLE_BRIDGE_FRAME_TYPE_ACK) {
                 payloadLen
             } else {
                 0
             }
             processBleBridgeFrame(
                 BleBridgeFrame(
-                    type = buffered[offset + 3].toInt() and 0xFF,
+                    type = frameType,
                     status = buffered[offset + 4].toInt() and 0xFF,
                     commandId = commandId,
                     payload = payload,
@@ -1401,14 +1451,22 @@ class SerialManager @Inject constructor(
         }
     }
 
+    private fun findNextBleFrameOffset(buffer: ByteArray, start: Int): Int {
+        var i = start
+        while (i <= buffer.size - 3) {
+            if (buffer[i] == BLE_BRIDGE_FRAME_MAGIC0 &&
+                buffer[i + 1] == BLE_BRIDGE_FRAME_MAGIC1 &&
+                buffer[i + 2] == BLE_BRIDGE_FRAME_VERSION) {
+                return i
+            }
+            i++
+        }
+        return -1
+    }
+
     private fun emitBleBridgeText(payload: ByteArray) {
         if (payload.isEmpty()) return
-        val text = if (payload.last() == '\n'.code.toByte()) {
-            payload
-        } else {
-            payload + "\n".toByteArray(Charsets.US_ASCII)
-        }
-        processIncomingDataFast(text, text.size)
+        processIncomingDataFast(payload, payload.size)
     }
 
     private fun processBleBridgeFrame(frame: BleBridgeFrame) {
@@ -1420,12 +1478,16 @@ class SerialManager @Inject constructor(
             BLE_BRIDGE_FRAME_TYPE_DATA -> {
                 cmdIdLastDataMs[frame.commandId] = System.currentTimeMillis()
                 if (frame.payload.isNotEmpty()) {
+                    _bleBridgeDataPayloads.tryEmit(frame.payload.copyOf())
                     emitBleBridgeText(frame.payload)
                 }
             }
             BLE_BRIDGE_FRAME_TYPE_END -> {
-                android.util.Log.d("SerialManager", "BLE frame END id=${frame.commandId} (ignored under implicit-close protocol)")
+                android.util.Log.d("SerialManager", "BLE frame END id=${frame.commandId}")
                 cmdIdLastDataMs[frame.commandId] = System.currentTimeMillis()
+                synchronized(bleBridgeStateLock) {
+                    blePendingCommandEnds.remove(frame.commandId)?.complete(Unit)
+                }
             }
             BLE_BRIDGE_FRAME_TYPE_HAS_DATA -> {
                 android.util.Log.d("SerialManager", "BLE frame HAS_DATA id=${frame.commandId} (ignored)")
@@ -1567,8 +1629,8 @@ class SerialManager @Inject constructor(
                         val line = lineBuffer.toString()
                         lineBuffer.clear()
                         
-                        // Check if this line triggers binary mode
-                        if (line.startsWith("SD:READ:LENGTH:")) {
+                        // App downloads request --base64, so their SD data stays line-oriented.
+                        if (line.startsWith("SD:READ:LENGTH:") && !currentSdReadIsBase64) {
                             processLine(line)
                             // Switch to binary mode after the LENGTH line.
                             // Any bytes remaining in this buffer after the newline are
@@ -1683,6 +1745,9 @@ class SerialManager @Inject constructor(
         val trimmedLine = cleanLine.trim()
         if (isBridgeMetadataLine(trimmedLine)) {
             return
+        }
+        if (trimmedLine == "SD:OK" || trimmedLine.startsWith("SD:ERR:")) {
+            currentSdReadIsBase64 = false
         }
 
         // Keep a short history of recent lines in case chipinfo output

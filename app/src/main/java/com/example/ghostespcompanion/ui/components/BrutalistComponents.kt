@@ -1067,15 +1067,15 @@ fun ComingSoonOverlay(
                     
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    // Proceed Button
+                    // Dismiss Button
                     BrutalistButton(
-                        text = "Proceed Anyway",
+                        text = "Dismiss",
                         onClick = onProceed,
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = primary,
                         leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.ArrowForward,
+                                imageVector = Icons.Default.Close,
                                 contentDescription = null
                             )
                         }

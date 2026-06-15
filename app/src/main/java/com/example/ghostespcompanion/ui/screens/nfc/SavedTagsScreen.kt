@@ -39,15 +39,7 @@ fun SavedTagsScreen(
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val privacyMode = appSettings.privacyMode
     
-    // Mock saved tags data
-    val savedTags = remember {
-        mutableStateListOf(
-            SavedNfcTag("1", "Office Badge", "NTAG213", "04:1A:2B:3C:4D:5E", 144, true, System.currentTimeMillis() - 86400000),
-            SavedNfcTag("2", "Gym Card", "MIFARE Classic 1K", "04:5E:6F:7A:8B:9C", 1024, true, System.currentTimeMillis() - 172800000),
-            SavedNfcTag("3", "Transit Pass", "NTAG216", "04:9C:AD:BE:CF:D0", 888, true, System.currentTimeMillis() - 259200000),
-            SavedNfcTag("4", "Library Card", "MIFARE DESFire", "04:D0:E1:F2:A3:B4", 4096, false, System.currentTimeMillis() - 345600000)
-        )
-    }
+    val savedTags = remember { mutableStateListOf<SavedNfcTag>() }
     
     MainScreen(
         onBack = onBack,
@@ -234,8 +226,9 @@ fun SavedTagsScreen(
                             ) {
                                 BrutalistOutlinedButton(
                                     text = "Export",
-                                    onClick = { /* TODO: Export */ },
+                                    onClick = {},
                                     modifier = Modifier.weight(1f),
+                                    enabled = false,
                                     leadingIcon = { Icon(Icons.Default.Upload, contentDescription = null) }
                                 )
                                 

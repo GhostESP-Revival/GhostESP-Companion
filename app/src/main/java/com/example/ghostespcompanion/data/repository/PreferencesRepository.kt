@@ -7,12 +7,62 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
+private val Context.deviceStore: DataStore<Preferences> by preferencesDataStore(name = "saved_device")
+
+private suspend fun readSavedDevice(context: Context): SavedDevice? {
+    return try {
+        val prefs = context.deviceStore.data.first()
+        when (prefs[stringPreferencesKey("kind")]) {
+            "usb" -> {
+                val vid = prefs[intPreferencesKey("vid")] ?: return null
+                val pid = prefs[intPreferencesKey("pid")] ?: return null
+                val name = prefs[stringPreferencesKey("name")] ?: return null
+                val baud = prefs[intPreferencesKey("baud")] ?: 115200
+                SavedDevice.Usb(vid, pid, name, baud)
+            }
+            "ble" -> {
+                val addr = prefs[stringPreferencesKey("address")] ?: return null
+                val name = prefs[stringPreferencesKey("name")] ?: addr
+                SavedDevice.Ble(addr, name)
+            }
+            else -> null
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private suspend fun writeSavedDevice(context: Context, device: SavedDevice?) {
+    try {
+        context.deviceStore.edit { prefs ->
+            if (device == null) {
+                prefs.clear()
+            } else when (device) {
+                is SavedDevice.Usb -> {
+                    prefs[stringPreferencesKey("kind")] = "usb"
+                    prefs[intPreferencesKey("vid")] = device.vendorId
+                    prefs[intPreferencesKey("pid")] = device.productId
+                    prefs[stringPreferencesKey("name")] = device.deviceName
+                    prefs[intPreferencesKey("baud")] = device.baudRate
+                }
+                is SavedDevice.Ble -> {
+                    prefs[stringPreferencesKey("kind")] = "ble"
+                    prefs[stringPreferencesKey("address")] = device.address
+                    prefs[stringPreferencesKey("name")] = device.name
+                }
+            }
+        }
+    } catch (e: Exception) {
+        android.util.Log.w("SavedDevice", "Failed to write saved device: ${e.message}")
+    }
+}
 
 /**
  * Data class representing app settings
@@ -118,4 +168,23 @@ class PreferencesRepository @Inject constructor(
             preferences[PreferencesKeys.PRIVACY_MODE] = settings.privacyMode
         }
     }
+
+    suspend fun getSavedDevice(): SavedDevice? = readSavedDevice(context)
+    suspend fun setSavedDevice(device: SavedDevice?) = writeSavedDevice(context, device)
+    suspend fun clearSavedDevice() = writeSavedDevice(context, null)
+}
+
+/**
+ * Persisted description of the last device we successfully connected to.
+ * Used for auto-reconnect on startup.
+ */
+sealed class SavedDevice {
+    data class Usb(
+        val vendorId: Int,
+        val productId: Int,
+        val deviceName: String,
+        val baudRate: Int
+    ) : SavedDevice()
+
+    data class Ble(val address: String, val name: String) : SavedDevice()
 }

@@ -38,6 +38,7 @@ fun FlipperDetectScreen(
     var showFlipperDetailSheet by remember { mutableStateOf(false) }
     
     val connectionState by viewModel.connectionState.collectAsState()
+    val connectionTransport by viewModel.connectionTransport.collectAsState()
     val flipperDevices by viewModel.flipperDevices.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
@@ -80,6 +81,7 @@ fun FlipperDetectScreen(
             // Connection Status Banner
             BleConnectionBanner(
                 isConnected = isConnected,
+                connectionTransport = connectionTransport,
                 deviceName = "GhostESP",
                 onConnect = { viewModel.connectFirstAvailable() }
             )
@@ -451,6 +453,7 @@ private fun FlipperDeviceDetailSheet(
 @Composable
 private fun BleConnectionBanner(
     isConnected: Boolean,
+    connectionTransport: SerialManager.ConnectionTransport,
     deviceName: String,
     onConnect: () -> Unit
 ) {
@@ -473,7 +476,11 @@ private fun BleConnectionBanner(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    if (isConnected) Icons.Default.BluetoothConnected else Icons.Default.BluetoothDisabled,
+                    when {
+                        !isConnected -> Icons.Default.BluetoothDisabled
+                        connectionTransport == SerialManager.ConnectionTransport.BLE -> Icons.Default.BluetoothConnected
+                        else -> Icons.Default.Usb
+                    },
                     contentDescription = null,
                     tint = if (isConnected) successColor() else errorColor()
                 )

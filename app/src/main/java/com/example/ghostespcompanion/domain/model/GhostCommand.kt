@@ -589,7 +589,37 @@ sealed class GhostCommand {
         override val commandString: String = "badusb stop"
         override val timeoutMs: Long = 5000
     }
-    
+
+    /** Start USB keyboard mode */
+    data object BadUsbKeyboardStart : GhostCommand() {
+        override val commandString: String = "badusb keyboard_start"
+        override val timeoutMs: Long = 5000
+    }
+
+    /** Stop USB keyboard mode */
+    data object BadUsbKeyboardStop : GhostCommand() {
+        override val commandString: String = "badusb keyboard_stop"
+        override val timeoutMs: Long = 5000
+    }
+
+    /** Type text through BadUSB keyboard mode */
+    data class BadUsbType(val text: String) : GhostCommand() {
+        override val commandString: String = "badusb type $text"
+        override val timeoutMs: Long = 5000
+    }
+
+    /** Start mouse jiggler */
+    data object BadUsbJiggleStart : GhostCommand() {
+        override val commandString: String = "badusb jiggle_start"
+        override val timeoutMs: Long = 5000
+    }
+
+    /** Stop mouse jiggler */
+    data object BadUsbJiggleStop : GhostCommand() {
+        override val commandString: String = "badusb jiggle_stop"
+        override val timeoutMs: Long = 5000
+    }
+
     // ==================== GPS Commands ====================
     
     /** Get GPS info */
@@ -627,11 +657,17 @@ sealed class GhostCommand {
     }
     
     /** Read file from SD */
-    data class SdRead(val path: String, val offset: Int? = null, val length: Int? = null) : GhostCommand() {
+    data class SdRead(
+        val path: String,
+        val offset: Int? = null,
+        val length: Int? = null,
+        val base64: Boolean = false
+    ) : GhostCommand() {
         override val commandString: String = buildString {
             append("sd read $path")
             offset?.let { append(" $it") }
             length?.let { append(" $it") }
+            if (base64) append(" --base64")
         }
         override val timeoutMs: Long = 10000
     }
@@ -728,14 +764,19 @@ sealed class GhostCommand {
     
     // ==================== Capture Commands ====================
     
-    /** Capture packets - firmware: -probe, -deauth, -beacon, -raw, -802154 */
+    /** Capture packets using firmware-backed capture modes */
     data class Capture(val mode: CaptureMode, val channel: Int? = null) : GhostCommand() {
         override val requiresStopFirst: Boolean = true
         override val commandString: String = buildString {
             append("capture ${mode.value}")
-            channel?.let { append(" -c $it") }
+            channel?.let { append(" -channel $it") }
         }
         override val timeoutMs: Long = Long.MAX_VALUE
+    }
+
+    data object CaptureStop : GhostCommand() {
+        override val commandString: String = "capture -stop"
+        override val timeoutMs: Long = 5000
     }
     
     enum class CaptureMode(val value: String) {
@@ -744,7 +785,11 @@ sealed class GhostCommand {
         BEACON("-beacon"),
         RAW("-raw"),
         IEEE802154("-802154"),
-        EAPOL("-eapol")
+        EAPOL("-eapol"),
+        PWN("-pwn"),
+        WPS("-wps"),
+        BLE("-ble"),
+        SKIMMER("-skimmer")
     }
     
     // ==================== Aerial (Drone) Commands ====================

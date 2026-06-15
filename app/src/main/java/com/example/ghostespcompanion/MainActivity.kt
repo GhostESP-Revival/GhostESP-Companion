@@ -133,7 +133,13 @@ fun GhostESPApp(
             }
         }
     }
-    
+
+    // Reconnect to the last device once Bluetooth/USB is ready
+    LaunchedEffect(Unit) {
+        if (autoConnect) {
+            viewModel.connectSavedDevice()
+        }
+    }
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {

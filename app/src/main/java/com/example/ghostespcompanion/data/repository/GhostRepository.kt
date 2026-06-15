@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -42,12 +43,14 @@ import kotlin.coroutines.cancellation.CancellationException
  */
 @Singleton
 class GhostRepository @Inject constructor(
-    private val serialManager: SerialManager
+    private val serialManager: SerialManager,
+    private val preferencesRepository: PreferencesRepository
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Connection state
     val connectionState: StateFlow<SerialManager.ConnectionState> = serialManager.connectionState
+    val connectionTransport: StateFlow<SerialManager.ConnectionTransport> = serialManager.connectionTransport
 
     // Raw serial output for terminal
     val rawOutput: SharedFlow<String> = serialManager.rawOutput
@@ -165,6 +168,9 @@ class GhostRepository @Inject constructor(
     // PCAP file path
     private val _pcapFile = MutableStateFlow<String?>(null)
     val pcapFile: StateFlow<String?> = _pcapFile.asStateFlow()
+
+    private val _badUsbScripts = MutableStateFlow<List<String>>(emptyList())
+    val badUsbScripts: StateFlow<List<String>> = _badUsbScripts.asStateFlow()
     
     // WiFi connection state - tracks which network the device is connected to
     private val _wifiConnection = MutableStateFlow<GhostResponse.WifiConnection?>(null)
@@ -191,6 +197,8 @@ class GhostRepository @Inject constructor(
 
     private var scanJob: Job? = null
     private var currentCommand: GhostCommand? = null
+    private var badUsbListExpectedCount: Int? = null
+    private var badUsbListCollecting = false
 
     // Response collection job
     private var responseJob: Job? = null
@@ -254,10 +262,52 @@ class GhostRepository @Inject constructor(
      * Connect to a specific device
      */
     suspend fun connect(device: UsbDevice): Boolean = serialManager.connect(device)
+    suspend fun connect(device: UsbDevice, baudRate: Int): Boolean {
+        val ok = serialManager.connect(device, baudRate)
+        if (ok) {
+            preferencesRepository.setSavedDevice(
+                SavedDevice.Usb(
+                    vendorId = device.vendorId,
+                    productId = device.productId,
+                    deviceName = device.deviceName,
+                    baudRate = baudRate
+                )
+            )
+        }
+        return ok
+    }
 
-    suspend fun connect(device: UsbDevice, baudRate: Int): Boolean = serialManager.connect(device, baudRate)
+    suspend fun connectBle(device: BleBridgeDevice): Boolean {
+        val ok = serialManager.connectBle(device)
+        if (ok) {
+            preferencesRepository.setSavedDevice(
+                SavedDevice.Ble(device.address, device.name)
+            )
+        }
+        return ok
+    }
 
-    suspend fun connectBle(device: BleBridgeDevice): Boolean = serialManager.connectBle(device)
+    suspend fun connectSavedDevice(): Boolean {
+        val saved = preferencesRepository.getSavedDevice() ?: return false
+        return when (saved) {
+            is SavedDevice.Usb -> {
+                val device = serialManager.getAvailableDevices().firstOrNull { d ->
+                    d.vendorId == saved.vendorId && d.productId == saved.productId
+                } ?: return false
+                serialManager.connectWithAutoBaud(device)
+            }
+            is SavedDevice.Ble -> {
+                val device = BleBridgeDevice(
+                    address = saved.address,
+                    name = saved.name,
+                    rssi = 0
+                )
+                serialManager.connectBle(device)
+            }
+        }
+    }
+
+    suspend fun forgetSavedDevice() = preferencesRepository.clearSavedDevice()
 
     /**
      * Connect with automatic baud rate detection
@@ -440,6 +490,14 @@ class GhostRepository @Inject constructor(
      */
     suspend fun startEapolCapture(channel: Int? = null) {
         sendCommand(GhostCommand.Capture(GhostCommand.CaptureMode.EAPOL, channel))
+    }
+
+    suspend fun startPacketCapture(mode: GhostCommand.CaptureMode, channel: Int? = null) {
+        sendCommand(GhostCommand.Capture(mode, channel))
+    }
+
+    suspend fun stopPacketCapture() {
+        sendCommand(GhostCommand.CaptureStop)
     }
 
     // ==================== BLE Commands ====================
@@ -636,6 +694,9 @@ class GhostRepository @Inject constructor(
      * List BadUSB scripts
      */
     suspend fun listBadUsbScripts() {
+        _badUsbScripts.value = emptyList()
+        badUsbListExpectedCount = null
+        badUsbListCollecting = true
         sendCommand(GhostCommand.BadUsbList)
     }
 
@@ -651,6 +712,26 @@ class GhostRepository @Inject constructor(
      */
     suspend fun stopBadUsb() {
         sendCommand(GhostCommand.BadUsbStop)
+    }
+
+    suspend fun startBadUsbKeyboard() {
+        sendCommand(GhostCommand.BadUsbKeyboardStart)
+    }
+
+    suspend fun stopBadUsbKeyboard() {
+        sendCommand(GhostCommand.BadUsbKeyboardStop)
+    }
+
+    suspend fun typeBadUsbText(text: String) {
+        sendCommand(GhostCommand.BadUsbType(text))
+    }
+
+    suspend fun startBadUsbJiggler() {
+        sendCommand(GhostCommand.BadUsbJiggleStart)
+    }
+
+    suspend fun stopBadUsbJiggler() {
+        sendCommand(GhostCommand.BadUsbJiggleStop)
     }
 
     // ==================== GPS Commands ====================
@@ -767,43 +848,39 @@ class GhostRepository @Inject constructor(
 
     /**
      * Download a file from the SD card and save it to the device's Downloads folder.
-     * Uses SerialManager's binary mode for proper handling of binary files.
-     * Firmware sends RAW BINARY data (not base64) - see commandline.c:5031
+     * The app downloader uses sd read --base64 so BLE framing never carries raw file bytes.
      */
     suspend fun downloadSdFile(context: Context, filePath: String, fileName: String) {
         _transferProgress.value = FileTransferProgress.Downloading(fileName, 0, 0, 0)
         try {
-            // Step 1: get file size (text response)
-            val sizeResponse = awaitResponse(
-                command = GhostCommand.SdSize(filePath),
-                terminator = { it.contains("SD:SIZE:") || it.contains("SD:ERR") },
-                timeoutMs = 10_000
-            ) ?: throw Exception("Timeout waiting for file size")
-
-            val sizeMatch = Regex("SD:SIZE:(\\d+)").find(sizeResponse)
-                ?: throw Exception("Could not parse file size")
-            val fileSize = sizeMatch.groupValues[1].toLong()
-            if (fileSize == 0L) throw Exception("File is empty or size is 0")
-
-            // Step 2: read in chunks using binary mode
-            val chunkSize = 4096
+            val chunkSize = 768
+            val readPath = compactSdPathForCommand(filePath)
             var offset = 0L
-            val allBytes = ByteArrayOutputStream((fileSize * 1.1).toInt())
+            var fileSize: Long? = null
+            val allBytes = ByteArrayOutputStream()
 
-            while (offset < fileSize) {
-                val length = minOf(chunkSize.toLong(), fileSize - offset).toInt()
-                val chunk = awaitBinaryChunk(
-                    command = GhostCommand.SdRead(filePath, offset.toInt(), length),
+            while (offset < (fileSize ?: Long.MAX_VALUE)) {
+                val remaining = fileSize?.let { it - offset }
+                val length = if (remaining != null) minOf(chunkSize.toLong(), remaining).toInt() else chunkSize
+                val parser = awaitSdBase64Chunk(
+                    command = GhostCommand.SdRead(readPath, offset.toInt(), length, base64 = true),
                     timeoutMs = 30_000
                 ) ?: throw Exception("Timeout reading chunk at offset $offset")
 
+                fileSize = parser.fileSize ?: fileSize
+                val chunk = parser.decodedChunk()
+                if (chunk.isEmpty()) {
+                    if (fileSize == 0L) break
+                    throw Exception("No data decoded for chunk at offset $offset")
+                }
+
                 allBytes.write(chunk)
-                offset += chunk.size // Use actual chunk size, not requested length
-                val pct = if (fileSize > 0) ((offset * 100) / fileSize).toInt() else 0
-                _transferProgress.value = FileTransferProgress.Downloading(fileName, offset, fileSize, pct)
+                offset += chunk.size
+                val total = fileSize ?: 0L
+                val pct = if (total > 0) ((offset * 100) / total).coerceAtMost(100).toInt() else 0
+                _transferProgress.value = FileTransferProgress.Downloading(fileName, offset, total, pct)
             }
 
-            // Step 3: save to Downloads and show notification
             val bytes = allBytes.toByteArray()
             val uri = saveToDownloads(context, fileName, bytes)
             showDownloadNotification(context, fileName, uri, bytes.size)
@@ -824,6 +901,106 @@ class GhostRepository @Inject constructor(
         }
     }
 
+    private fun compactSdPathForCommand(path: String): String {
+        return path.removePrefix("/mnt/ghostesp/").ifEmpty { path }
+    }
+
+    private class SdReadParser {
+        private val lock = Any()
+        private val lineBuffer = StringBuilder()
+        private val chunkBytes = ByteArrayOutputStream()
+        private var sawBegin = false
+
+        @Volatile
+        var lastDataAtMs: Long = 0
+            private set
+
+        var fileSize: Long? = null
+            private set
+
+        var offset: Long? = null
+            private set
+
+        var expectedBytes: Int? = null
+            private set
+
+        var done = false
+            private set
+
+        fun onBytes(bytes: ByteArray) = synchronized(lock) {
+            lastDataAtMs = System.currentTimeMillis()
+            lineBuffer.append(bytes.toString(Charsets.UTF_8))
+
+            while (true) {
+                val newline = lineBuffer.indexOf("\n")
+                if (newline < 0) return@synchronized
+
+                val line = lineBuffer.substring(0, newline).trimEnd('\r')
+                lineBuffer.delete(0, newline + 1)
+                handleLine(line)
+            }
+        }
+
+        fun onLine(line: String) = synchronized(lock) {
+            handleLine(line)
+        }
+
+        fun flushPendingTerminalLine(): Boolean = synchronized(lock) {
+            val pending = lineBuffer.toString().trimEnd('\r')
+            if (pending != "SD:OK" && !pending.startsWith("SD:ERR:")) {
+                return@synchronized false
+            }
+            lineBuffer.clear()
+            handleLine(pending)
+            true
+        }
+
+        private fun handleLine(line: String) {
+            val trimmed = line.trimEnd('\r')
+            if (!sawBegin) {
+                if (trimmed.startsWith("SD:READ:BEGIN:")) {
+                    sawBegin = true
+                } else if (trimmed.startsWith("SD:ERR:")) {
+                    throw IllegalStateException(trimmed)
+                } else {
+                    return
+                }
+            }
+
+            when {
+                trimmed.startsWith("SD:READ:SIZE:") -> {
+                    fileSize = trimmed.removePrefix("SD:READ:SIZE:").toLongOrNull()
+                }
+                trimmed.startsWith("SD:READ:OFFSET:") -> {
+                    offset = trimmed.removePrefix("SD:READ:OFFSET:").toLongOrNull()
+                }
+                trimmed.startsWith("SD:READ:LENGTH:") -> {
+                    expectedBytes = trimmed.removePrefix("SD:READ:LENGTH:").toIntOrNull()
+                }
+                trimmed.startsWith("SD:READ:DATA:") -> {
+                    val encoded = trimmed.removePrefix("SD:READ:DATA:")
+                    val decoded = Base64.decode(encoded, Base64.DEFAULT)
+                    chunkBytes.write(decoded)
+                }
+                trimmed.startsWith("SD:READ:END:bytes=") -> {
+                    val reported = trimmed.removePrefix("SD:READ:END:bytes=").toIntOrNull()
+                    if (reported != null && reported != chunkBytes.size()) {
+                        throw IllegalStateException("SD read size mismatch: reported=$reported decoded=${chunkBytes.size()}")
+                    }
+                    done = true
+                }
+                trimmed == "SD:OK" -> {
+                    done = true
+                }
+                trimmed.startsWith("SD:ERR:") -> {
+                    throw IllegalStateException(trimmed)
+                }
+            }
+        }
+
+        fun decodedChunk(): ByteArray = synchronized(lock) { chunkBytes.toByteArray() }
+    }
+
     suspend fun checkSdCard() {
         clearSdEntries()
         sendCommand(GhostCommand.SdList("/mnt/ghostesp"))
@@ -842,6 +1019,67 @@ class GhostRepository @Inject constructor(
         sendCommand(command)
         // Channel.receiveCatching() will suspend until data arrives
         serialManager.binaryChunks.first()
+    }
+
+    private suspend fun awaitSdBase64Chunk(
+        command: GhostCommand.SdRead,
+        timeoutMs: Long
+    ): SdReadParser? = withTimeoutOrNull(timeoutMs) {
+        val parser = SdReadParser()
+        val completed = CompletableDeferred<SdReadParser>()
+        val useBlePayloads = serialManager.connectionTransport.value == SerialManager.ConnectionTransport.BLE
+        val job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            if (useBlePayloads) {
+                serialManager.bleBridgeDataPayloads.collect { bytes ->
+                    try {
+                        parser.onBytes(bytes)
+                        if (parser.done && !completed.isCompleted) {
+                            completed.complete(parser)
+                        }
+                    } catch (e: Exception) {
+                        if (!completed.isCompleted) completed.completeExceptionally(e)
+                    }
+                }
+            } else {
+                serialManager.rawOutput.collect { line ->
+                    try {
+                        parser.onLine(line)
+                        if (parser.done && !completed.isCompleted) {
+                            completed.complete(parser)
+                        }
+                    } catch (e: Exception) {
+                        if (!completed.isCompleted) completed.completeExceptionally(e)
+                    }
+                }
+            }
+        }
+        val idleFlushJob = if (useBlePayloads) {
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                while (!completed.isCompleted) {
+                    delay(25)
+                    if (parser.lastDataAtMs > 0 && System.currentTimeMillis() - parser.lastDataAtMs >= 250) {
+                        try {
+                            if (parser.flushPendingTerminalLine() && parser.done && !completed.isCompleted) {
+                                completed.complete(parser)
+                            }
+                        } catch (e: Exception) {
+                            if (!completed.isCompleted) completed.completeExceptionally(e)
+                        }
+                    }
+                }
+            }
+        } else {
+            null
+        }
+        try {
+            if (!sendCommand(command)) {
+                throw IllegalStateException("Failed to send ${command.commandString}")
+            }
+            completed.await()
+        } finally {
+            job.cancel()
+            idleFlushJob?.cancel()
+        }
     }
 
     /**
@@ -1002,6 +1240,71 @@ class GhostRepository @Inject constructor(
         }
     }
 
+    /**
+     * Build an Intent that opens the system Downloads folder in the user's
+     * preferred file explorer / file manager.
+     *
+     * Tries the modern MediaStore Downloads collection first, then falls
+     * back to the legacy DownloadManager view.
+     */
+    fun openDownloadsFolderIntent(context: Context): Intent {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(MediaStore.Downloads.EXTERNAL_CONTENT_URI, "vnd.android.cursor.dir/vnd.android.document.collection")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        } else {
+            Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+    }
+
+    /**
+     * Look up a previously saved file by name in the Downloads collection
+     * and return a content Uri the file manager can open.
+     */
+    fun openDownloadedFileIntent(context: Context, fileName: String): Intent? {
+        return try {
+            val resolver = context.contentResolver
+            val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            } else {
+                MediaStore.Files.getContentUri("external")
+            }
+            val projection = arrayOf(
+                MediaStore.Downloads._ID,
+                MediaStore.Downloads.DISPLAY_NAME,
+                MediaStore.Downloads.MIME_TYPE
+            )
+            val selection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                "${MediaStore.Downloads.DISPLAY_NAME} = ?"
+            } else {
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+            }
+            val args = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                arrayOf(fileName)
+            } else {
+                arrayOf(fileName, "Download/%")
+            }
+            resolver.query(collection, projection, selection, args, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getLong(0)
+                    val mime = cursor.getString(2) ?: getMimeType(fileName)
+                    val uri = Uri.withAppendedPath(collection, id.toString())
+                    Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, mime)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                } else {
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("GhostRepository", "Failed to resolve download uri for $fileName", e)
+            null
+        }
+    }
     /**
      * Format file size for display
      */
@@ -1180,8 +1483,75 @@ class GhostRepository @Inject constructor(
     private var parseResponseCount = 0
     private var parseResponseSlowCount = 0
 
+    private fun handleBadUsbListLine(raw: String): Boolean {
+        if (!badUsbListCollecting && !raw.startsWith("BadUSB scripts")) return false
+
+        when {
+            raw.startsWith("BadUSB scripts") -> {
+                badUsbListCollecting = true
+                badUsbListExpectedCount = Regex("BadUSB scripts \\((\\d+)\\)").find(raw)
+                    ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                _statusMessage.value = raw
+                return true
+            }
+            raw.startsWith("No scripts found") -> {
+                _badUsbScripts.value = emptyList()
+                badUsbListExpectedCount = 0
+                badUsbListCollecting = false
+                _statusMessage.value = raw
+                return true
+            }
+            badUsbListCollecting -> {
+                val match = Regex("^\\[(\\d+)\\]\\s+(.+)$").find(raw.trim())
+                if (match != null) {
+                    val filename = match.groupValues[2].trim()
+                    _badUsbScripts.update { current ->
+                        if (current.contains(filename)) current else current + filename
+                    }
+                    val expected = badUsbListExpectedCount
+                    if (expected != null && _badUsbScripts.value.size >= expected) {
+                        badUsbListCollecting = false
+                    }
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun parseAccessPointsFromRaw(raw: String): Boolean {
+        if (!raw.contains("SSID:")) return false
+
+        val starts = Regex("(?m)^\\s*\\[(\\d+)]\\s*SSID:").findAll(raw).toList()
+        if (starts.isEmpty()) return false
+
+        var parsedAny = false
+        starts.forEachIndexed { index, match ->
+            val start = match.range.first
+            val end = starts.getOrNull(index + 1)?.range?.first ?: raw.length
+            val record = raw.substring(start, end).trim()
+            GhostResponse.AccessPoint.parse(record)?.let { ap ->
+                apCache[ap.index] = ap
+                parsedAny = true
+            }
+        }
+
+        if (parsedAny) {
+            _accessPoints.value = apCache.values.sortedBy { it.index }
+        }
+        return parsedAny
+    }
+
     private fun parseResponse(response: GhostSerialResponse) {
         val startNanos = System.nanoTime()
+
+        if (handleBadUsbListLine(response.raw)) {
+            return
+        }
+
+        if (parseAccessPointsFromRaw(response.raw)) {
+            return
+        }
         
         when (response.type) {
             GhostSerialResponse.ResponseType.ACCESS_POINT -> {
@@ -1532,7 +1902,12 @@ class GhostRepository @Inject constructor(
         
         // Clear SD entries
         clearSdEntries()
-        
+
+        // Clear BadUSB scripts
+        _badUsbScripts.value = emptyList()
+        badUsbListCollecting = false
+        badUsbListExpectedCount = null
+
         // Clear IR data
         _irRemotes.value = emptyList()
         _irButtons.value = emptyList()

@@ -75,6 +75,7 @@ fun DashboardScreen(
     onScanNfcAndNavigate: () -> Unit
 ) {
 val connectionState by viewModel.connectionState.collectAsState()
+    val connectionTransport by viewModel.connectionTransport.collectAsState()
     val deviceInfo by viewModel.deviceInfo.collectAsState()
     val accessPoints by viewModel.accessPoints.collectAsState()
     val bleDevices by viewModel.bleDevices.collectAsState()
@@ -118,6 +119,15 @@ val connectionState by viewModel.connectionState.collectAsState()
             }
         }
     }
+
+    val openConnectionDialog = {
+        if (connectionState == SerialManager.ConnectionState.ERROR) {
+            viewModel.forceDisconnect()
+        }
+        viewModel.refreshAvailableDevices()
+        viewModel.refreshAllUsbDevices()
+        showDeviceDialog = true
+    }
     
     MainScreen(title = "Dashboard") { paddingValues ->
         Box(modifier = Modifier.fillMaxSize()) {
@@ -133,16 +143,10 @@ val connectionState by viewModel.connectionState.collectAsState()
                     ConnectionStatusCard(
                         isConnected = isConnected,
                         connectionState = connectionState,
+                        connectionTransport = connectionTransport,
                         isLoading = isLoading,
                         deviceInfo = deviceInfo,
-                        onConnectClick = {
-                            if (connectionState == SerialManager.ConnectionState.ERROR) {
-                                viewModel.forceDisconnect()
-                            }
-                            viewModel.refreshAvailableDevices()
-                            viewModel.refreshAllUsbDevices()
-                            showDeviceDialog = true
-                        },
+                        onConnectClick = openConnectionDialog,
                         onDisconnectClick = { viewModel.disconnect() },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
@@ -219,8 +223,8 @@ val connectionState by viewModel.connectionState.collectAsState()
                 item {
                     ScanPlaceholderCard(
                         message = "Connect to device and scan networks",
-                        actionText = "Connect & Scan",
-                        onClick = onScanWifiAndNavigate,
+                        actionText = "Connect",
+                        onClick = openConnectionDialog,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
@@ -296,6 +300,7 @@ val connectionState by viewModel.connectionState.collectAsState()
 private fun ConnectionStatusCard(
     isConnected: Boolean,
     connectionState: SerialManager.ConnectionState,
+    connectionTransport: SerialManager.ConnectionTransport,
     isLoading: Boolean,
     deviceInfo: GhostResponse.DeviceInfo?,
     onConnectClick: () -> Unit,
@@ -338,7 +343,11 @@ private fun ConnectionStatusCard(
                             )
                         } else {
                             Icon(
-                                imageVector = if (isConnected) Icons.Default.Usb else Icons.Default.UsbOff,
+                                imageVector = when {
+                                    !isConnected -> Icons.Default.UsbOff
+                                    connectionTransport == SerialManager.ConnectionTransport.BLE -> Icons.Default.BluetoothConnected
+                                    else -> Icons.Default.Usb
+                                },
                                 contentDescription = null,
                                 tint = if (isConnected) successColor() else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(24.dp)
@@ -359,7 +368,7 @@ private fun ConnectionStatusCard(
                     
                     if (isConnected && deviceInfo != null) {
                         Text(
-                            text = deviceInfo.model,
+                            text = "${deviceInfo.model} • ${connectionTransportLabel(connectionTransport)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -410,6 +419,12 @@ private fun ConnectionStatusCard(
             }
         }
     }
+}
+
+private fun connectionTransportLabel(transport: SerialManager.ConnectionTransport): String = when (transport) {
+    SerialManager.ConnectionTransport.USB -> "USB"
+    SerialManager.ConnectionTransport.BLE -> "Wireless"
+    SerialManager.ConnectionTransport.NONE -> "Unknown"
 }
 
 @Composable

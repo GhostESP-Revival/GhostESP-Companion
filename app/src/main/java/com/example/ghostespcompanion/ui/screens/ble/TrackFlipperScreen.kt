@@ -35,6 +35,7 @@ fun TrackFlipperScreen(
     onBack: () -> Unit
 ) {
     val connectionState by viewModel.connectionState.collectAsState()
+    val connectionTransport by viewModel.connectionTransport.collectAsState()
     val flipperDevices by viewModel.flipperDevices.collectAsState()
     val flipperTrackData by viewModel.flipperTrackData.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
@@ -105,6 +106,7 @@ fun TrackFlipperScreen(
         ) {
             TrackFlipperBanner(
                 isConnected = isConnected,
+                connectionTransport = connectionTransport,
                 isTracking = isTracking,
                 onConnect = { viewModel.connectFirstAvailable() }
             )
@@ -307,6 +309,7 @@ private fun FlipperSignalDisplay(
 @Composable
 private fun TrackFlipperBanner(
     isConnected: Boolean,
+    connectionTransport: SerialManager.ConnectionTransport,
     isTracking: Boolean,
     onConnect: () -> Unit
 ) {
@@ -336,6 +339,8 @@ private fun TrackFlipperBanner(
                     when {
                         !isConnected -> Icons.Default.BluetoothDisabled
                         isTracking -> Icons.Default.BluetoothSearching
+                        connectionTransport == SerialManager.ConnectionTransport.BLE -> Icons.Default.BluetoothConnected
+                        connectionTransport == SerialManager.ConnectionTransport.USB -> Icons.Default.Usb
                         else -> Icons.Default.Bluetooth
                     },
                     contentDescription = null,

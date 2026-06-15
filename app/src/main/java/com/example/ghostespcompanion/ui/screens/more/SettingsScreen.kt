@@ -83,7 +83,7 @@ fun SettingsScreen(
                         
                         SettingsToggle(
                             title = "Auto Connect",
-                            subtitle = "Connect to last device automatically",
+                            subtitle = "Reconnect to last device on startup",
                             icon = Icons.Default.BluetoothConnected,
                             checked = appSettings.autoConnect,
                             onCheckedChange = { enabled ->
@@ -181,7 +181,7 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "v0.2.0-PRE-BETA",
+                                    text = "v0.3.0",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )

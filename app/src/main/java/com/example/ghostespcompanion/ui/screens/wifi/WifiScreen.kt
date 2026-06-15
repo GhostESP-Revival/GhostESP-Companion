@@ -73,6 +73,8 @@ fun WifiScreen(
     var isBeaconSpamming by remember { mutableStateOf(false) }
     var isRickRolling by remember { mutableStateOf(false) }
     var isKarmaRunning by remember { mutableStateOf(false) }
+    var showPacketCaptureDialog by remember { mutableStateOf(false) }
+    var activePacketCaptureMode by remember { mutableStateOf<GhostCommand.CaptureMode?>(null) }
     var showNotConnectedSnackbar by remember { mutableStateOf(false) }
     
     // Station detail sheet states
@@ -81,6 +83,7 @@ fun WifiScreen(
     
     // Collect state from ViewModel
     val connectionState by viewModel.connectionState.collectAsState()
+    val connectionTransport by viewModel.connectionTransport.collectAsState()
     val availableBleDevices by viewModel.availableBleDevices.collectAsState()
     val isBleScanning by viewModel.isBleScanning.collectAsState()
     val accessPoints by viewModel.accessPoints.collectAsState()
@@ -147,8 +150,8 @@ fun WifiScreen(
     
     // Handle scan state
     // Pre-fetch chip info when connected so the info button has data immediately
-    LaunchedEffect(isConnected) {
-        if (isConnected) {
+    LaunchedEffect(isConnected, isScanning) {
+        if (isConnected && !isScanning) {
             viewModel.getChipInfo()
         }
     }
@@ -188,6 +191,7 @@ fun WifiScreen(
             WifiStatusBanner(
                 isConnected = isConnected,
                 connectionState = connectionState,
+                connectionTransport = connectionTransport,
                 deviceName = "GhostESP",
                 onConnect = {
                     if (connectionState == SerialManager.ConnectionState.ERROR) {
@@ -314,10 +318,28 @@ fun WifiScreen(
                             isBeaconSpamming = false
                             isRickRolling = false
                             isKarmaRunning = false
+                            activePacketCaptureMode = null
                         },
                         isSelected = false,
                         selectedColor = errorColor()
                     )
+                    QuickActionChip(
+                        text = "Packet Capture",
+                        onClick = { showPacketCaptureDialog = true },
+                        isSelected = activePacketCaptureMode != null,
+                        selectedColor = primaryColor()
+                    )
+                    if (activePacketCaptureMode != null) {
+                        QuickActionChip(
+                            text = "Stop Capture",
+                            onClick = {
+                                viewModel.stopPacketCapture()
+                                activePacketCaptureMode = null
+                            },
+                            isSelected = true,
+                            selectedColor = errorColor()
+                        )
+                    }
                 }
             }
             
@@ -335,6 +357,7 @@ fun WifiScreen(
                         isBeaconSpamming = false
                         isRickRolling = false
                         isKarmaRunning = false
+                        activePacketCaptureMode = null
                         isScanningStations = false
                     }
                 )
@@ -569,6 +592,23 @@ AttackOptionsSheet(
                 isBeaconSpamming = false
                 isRickRolling = false
                 isKarmaRunning = false
+                activePacketCaptureMode = null
+            }
+        )
+    }
+
+    if (showPacketCaptureDialog) {
+        PacketCaptureDialog(
+            onDismiss = { showPacketCaptureDialog = false },
+            onStart = { mode, channel ->
+                viewModel.startPacketCapture(mode, channel)
+                activePacketCaptureMode = mode
+                showPacketCaptureDialog = false
+            },
+            onStop = {
+                viewModel.stopPacketCapture()
+                activePacketCaptureMode = null
+                showPacketCaptureDialog = false
             }
         )
     }
@@ -680,6 +720,7 @@ private fun ActiveAttackBanner(
 private fun WifiStatusBanner(
     isConnected: Boolean,
     connectionState: SerialManager.ConnectionState,
+    connectionTransport: SerialManager.ConnectionTransport,
     deviceName: String?,
     onConnect: () -> Unit
 ) {
@@ -705,7 +746,11 @@ private fun WifiStatusBanner(
     }
     
     val subtitleText = when (connectionState) {
-        SerialManager.ConnectionState.CONNECTED -> "USB Serial @ 115200 baud"
+        SerialManager.ConnectionState.CONNECTED -> when (connectionTransport) {
+            SerialManager.ConnectionTransport.USB -> "Connected over USB serial"
+            SerialManager.ConnectionTransport.BLE -> "Connected over wireless bridge"
+            SerialManager.ConnectionTransport.NONE -> "Connected"
+        }
         SerialManager.ConnectionState.CONNECTING -> "Please wait..."
         SerialManager.ConnectionState.ERROR -> "Tap to retry connection"
         SerialManager.ConnectionState.DISCONNECTED -> "Tap to connect"
@@ -732,7 +777,11 @@ private fun WifiStatusBanner(
                 )
             } else {
                 Icon(
-                    imageVector = if (isConnected) Icons.Default.Usb else Icons.Default.UsbOff,
+                    imageVector = when {
+                        !isConnected -> Icons.Default.UsbOff
+                        connectionTransport == SerialManager.ConnectionTransport.BLE -> Icons.Default.BluetoothConnected
+                        else -> Icons.Default.Usb
+                    },
                     contentDescription = null,
                     tint = borderColor,
                     modifier = Modifier.size(22.dp)
@@ -894,6 +943,118 @@ private fun WifiScanButton(
             }
         )
     }
+}
+
+/**
+ * Packet capture mode picker backed by firmware capture commands.
+ */
+@Composable
+private fun PacketCaptureDialog(
+    onDismiss: () -> Unit,
+    onStart: (GhostCommand.CaptureMode, Int?) -> Unit,
+    onStop: () -> Unit
+) {
+    val modes = listOf(
+        GhostCommand.CaptureMode.EAPOL to "EAPOL / Handshakes",
+        GhostCommand.CaptureMode.PROBE to "Probe Requests",
+        GhostCommand.CaptureMode.DEAUTH to "Deauth Frames",
+        GhostCommand.CaptureMode.BEACON to "Beacon Frames",
+        GhostCommand.CaptureMode.RAW to "Raw WiFi",
+        GhostCommand.CaptureMode.WPS to "WPS",
+        GhostCommand.CaptureMode.PWN to "Pwnagotchi",
+        GhostCommand.CaptureMode.BLE to "BLE",
+        GhostCommand.CaptureMode.SKIMMER to "Skimmer BLE",
+        GhostCommand.CaptureMode.IEEE802154 to "802.15.4"
+    )
+    var selectedMode by remember { mutableStateOf(GhostCommand.CaptureMode.EAPOL) }
+    var modeExpanded by remember { mutableStateOf(false) }
+    var selectedQuickChannel by remember { mutableStateOf<Int?>(null) }
+    var customChannel by remember { mutableStateOf("") }
+    val selectedModeLabel = modes.first { it.first == selectedMode }.second
+    val customChannelValue = customChannel.trim().toIntOrNull()
+    val selectedChannel = customChannelValue ?: selectedQuickChannel
+    val channelValid = customChannel.isBlank() || (customChannelValue != null && customChannelValue > 0)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Packet Capture") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Auto keeps firmware hopping. A channel lock sends -channel <n> and firmware validates support.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Box {
+                    OutlinedButton(
+                        onClick = { modeExpanded = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(selectedModeLabel, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.ExpandMore, contentDescription = null)
+                    }
+                    DropdownMenu(
+                        expanded = modeExpanded,
+                        onDismissRequest = { modeExpanded = false }
+                    ) {
+                        modes.forEach { (mode, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    selectedMode = mode
+                                    modeExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf<Int?>(null, 1, 6, 11).forEach { channel ->
+                        FilterChip(
+                            selected = customChannel.isBlank() && selectedQuickChannel == channel,
+                            onClick = {
+                                selectedQuickChannel = channel
+                                customChannel = ""
+                            },
+                            label = { Text(channel?.let { "Ch $it" } ?: "Auto") }
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = customChannel,
+                    onValueChange = { value ->
+                        customChannel = value.filter { it.isDigit() }.take(3)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Custom channel") },
+                    placeholder = { Text("36, 149, 26...") },
+                    isError = !channelValid,
+                    supportingText = {
+                        Text(if (channelValid) "Optional. Leave blank for Auto or quick chip." else "Enter a positive channel number.")
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onStop) {
+                    Text("Stop")
+                }
+                Button(
+                    enabled = channelValid,
+                    onClick = { onStart(selectedMode, selectedChannel) }
+                ) {
+                    Text(if (selectedChannel == null) "Start" else "Start Ch $selectedChannel")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 /**

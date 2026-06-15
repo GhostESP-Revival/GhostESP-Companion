@@ -96,10 +96,10 @@ fun NfcScreen(
                 item {
                     QuickActionCard(
                         title = "Write Tag",
-                        subtitle = "Write to NFC",
+                        subtitle = "Coming soon",
                         icon = Icons.Default.Edit,
-                        onClick = { /* TODO: Implement write tag */ },
-                        enabled = isConnected
+                        onClick = {},
+                        enabled = false
                     )
                 }
                 item {

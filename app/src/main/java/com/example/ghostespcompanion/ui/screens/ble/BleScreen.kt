@@ -74,6 +74,7 @@ fun BleScreen(
 
     // Collect state from ViewModel
     val connectionState by viewModel.connectionState.collectAsState()
+    val connectionTransport by viewModel.connectionTransport.collectAsState()
     val bleDevices by viewModel.bleDevices.collectAsState()
     val flipperDevices by viewModel.flipperDevices.collectAsState()
     val airTagDevices by viewModel.airTagDevices.collectAsState()
@@ -177,6 +178,7 @@ fun BleScreen(
             BleConnectionBanner(
                 isConnected = isConnected,
                 connectionState = connectionState,
+                connectionTransport = connectionTransport,
                 onConnect = {
                     requestBleConnect()
                 }
@@ -574,6 +576,7 @@ enum class BleDeviceCategory {
 private fun BleConnectionBanner(
     isConnected: Boolean,
     connectionState: SerialManager.ConnectionState,
+    connectionTransport: SerialManager.ConnectionTransport,
     onConnect: () -> Unit
 ) {
     val borderColor = when {
@@ -598,7 +601,11 @@ private fun BleConnectionBanner(
     }
     
     val subtitleText = when (connectionState) {
-        SerialManager.ConnectionState.CONNECTED -> "Ready for BLE operations"
+        SerialManager.ConnectionState.CONNECTED -> when (connectionTransport) {
+            SerialManager.ConnectionTransport.USB -> "Ready via USB"
+            SerialManager.ConnectionTransport.BLE -> "Ready via wireless bridge"
+            SerialManager.ConnectionTransport.NONE -> "Ready for BLE operations"
+        }
         SerialManager.ConnectionState.CONNECTING -> "Please wait..."
         SerialManager.ConnectionState.ERROR -> "Tap to retry connection"
         SerialManager.ConnectionState.DISCONNECTED -> "Connect GhostESP to continue"
@@ -625,7 +632,11 @@ private fun BleConnectionBanner(
                 )
             } else {
                 Icon(
-                    imageVector = if (isConnected) Icons.Default.Usb else Icons.Default.UsbOff,
+                    imageVector = when {
+                        !isConnected -> Icons.Default.UsbOff
+                        connectionTransport == SerialManager.ConnectionTransport.BLE -> Icons.Default.BluetoothConnected
+                        else -> Icons.Default.Usb
+                    },
                     contentDescription = null,
                     tint = borderColor,
                     modifier = Modifier.size(22.dp)

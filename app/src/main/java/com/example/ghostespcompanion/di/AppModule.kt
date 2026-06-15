@@ -31,9 +31,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideGhostRepository(
-        serialManager: SerialManager
+        serialManager: SerialManager,
+        preferencesRepository: PreferencesRepository
     ): GhostRepository {
-        return GhostRepository(serialManager)
+        return GhostRepository(serialManager, preferencesRepository)
     }
     
     @Provides

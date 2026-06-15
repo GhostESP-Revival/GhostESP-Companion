@@ -1,75 +1,99 @@
 package com.example.ghostespcompanion.ui.screens.more
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Mouse
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.UsbOff
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
+import com.example.ghostespcompanion.ui.components.BrutalistButton
+import com.example.ghostespcompanion.ui.components.BrutalistCard
+import com.example.ghostespcompanion.ui.components.BrutalistOutlinedButton
+import com.example.ghostespcompanion.ui.components.FeatureNotSupportedOverlay
 import com.example.ghostespcompanion.ui.screens.MainScreen
-import com.example.ghostespcompanion.ui.components.*
-import com.example.ghostespcompanion.ui.theme.*
+import com.example.ghostespcompanion.ui.theme.errorColor
+import com.example.ghostespcompanion.ui.theme.onPrimaryColor
+import com.example.ghostespcompanion.ui.theme.primaryColor
+import com.example.ghostespcompanion.ui.theme.successColor
+import com.example.ghostespcompanion.ui.theme.warningColor
 import com.example.ghostespcompanion.ui.viewmodel.MainViewModel
 
-/**
- * BadUSB Screen - List and execute BadUSB scripts
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BadUsbScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
-    var isRunning by remember { mutableStateOf(false) }
-    var selectedScript by remember { mutableStateOf<BadUsbScript?>(null) }
-    var keyboardLayout by remember { mutableStateOf("US") }
-    var showOverlay by remember { mutableStateOf(true) }
-    
+    var runningScript by remember { mutableStateOf<String?>(null) }
+    var keyboardActive by remember { mutableStateOf(false) }
+    var jigglerActive by remember { mutableStateOf(false) }
+    var textToType by remember { mutableStateOf("") }
+    var showUnsupportedOverlay by remember { mutableStateOf(true) }
+
     val connectionState by viewModel.connectionState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val deviceInfo by viewModel.deviceInfo.collectAsState()
+    val scripts by viewModel.badUsbScripts.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
-    
     val isBadUsbSupported = deviceInfo?.hasFeature(GhostResponse.DeviceFeature.BADUSB) ?: true
     val hasDeviceInfo = deviceInfo != null
-    
-    // Mock scripts data
-    val scripts = remember {
-        listOf(
-            BadUsbScript("1", "Hello World", "Simple test script that types Hello World", 1024, false),
-            BadUsbScript("2", "Windows Reverse Shell", "Opens a reverse shell on Windows", 2048, true),
-            BadUsbScript("3", "MacOS Terminal", "Opens Terminal on MacOS", 1536, false),
-            BadUsbScript("4", "Linux Privilege Escalation", "Attempts to escalate privileges", 3072, true),
-            BadUsbScript("5", "WiFi Password Grabber", "Extracts saved WiFi passwords", 4096, true),
-            BadUsbScript("6", "Browser History Dumper", "Dumps browser history", 2560, true)
-        )
+
+    LaunchedEffect(isConnected) {
+        if (isConnected) {
+            viewModel.listBadUsbScripts()
+        }
     }
-    
-    val keyboardLayouts = listOf("US", "DE", "FR", "UK", "ES", "IT", "RU", "JP")
-    
+
     MainScreen(
         onBack = onBack,
         title = "BadUSB",
         actions = {
-            IconButton(onClick = {
-                if (isConnected) {
-                    viewModel.listBadUsbScripts()
-                }
-            }) {
-                Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = "Refresh",
-                    tint = primaryColor()
-                )
+            IconButton(
+                onClick = { viewModel.listBadUsbScripts() },
+                enabled = isConnected
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh scripts", tint = primaryColor())
             }
         }
     ) { paddingValues ->
@@ -78,360 +102,338 @@ fun BadUsbScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
-            // Connection Status Banner
-            UsbConnectionBanner(
-                isConnected = isConnected,
-                deviceName = "GhostESP",
-                onConnect = { viewModel.connectFirstAvailable() }
-            )
-            
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Keyboard Layout Selection
                 item {
-                    BrutalistCard(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Keyboard Layout",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = primaryColor()
-                            )
-                            
-                            Text(
-                                text = "Select the target system's keyboard layout",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceVariantDark
-                            )
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                keyboardLayouts.take(4).forEach { layout ->
-                                    FilterChip(
-                                        selected = keyboardLayout == layout,
-                                        onClick = { keyboardLayout = layout },
-                                        label = { Text(layout) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = Primary.copy(alpha = 0.2f),
-                                            selectedLabelColor = Primary
-                                        )
-                                    )
-                                }
-                            }
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                keyboardLayouts.drop(4).forEach { layout ->
-                                    FilterChip(
-                                        selected = keyboardLayout == layout,
-                                        onClick = { keyboardLayout = layout },
-                                        label = { Text(layout) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = Primary.copy(alpha = 0.2f),
-                                            selectedLabelColor = Primary
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    UsbConnectionBanner(
+                        isConnected = isConnected,
+                        deviceName = "GhostESP",
+                        onConnect = { viewModel.connectFirstAvailable() }
+                    )
                 }
-                
-                // Running Script Status
-                if (isRunning && selectedScript != null) {
+
+                if (runningScript != null) {
                     item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = Warning.copy(alpha = 0.1f)
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp),
-                                        color = Warning,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Column {
-                                        Text(
-                                            text = "Running: ${selectedScript?.name}",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Warning
-                                        )
-                                        Text(
-                                            text = "Do not disconnect the device",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = OnSurfaceVariantDark
-                                        )
-                                    }
-                                }
-                                
-                                BrutalistButton(
-                                    text = "Stop",
-                                    onClick = {
-                                        if (isConnected) {
-                                            viewModel.stopBadUsb()
-                                            isRunning = false
-                                        }
-                                    },
-                                    containerColor = errorColor(),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
+                        ActiveBadUsbCard(
+                            label = "Running: $runningScript",
+                            onStop = {
+                                viewModel.stopBadUsb()
+                                runningScript = null
+                            },
+                            enabled = isConnected
+                        )
                     }
                 }
-                
-                // Script List Header
+
                 item {
                     Text(
-                        text = "Available Scripts (${scripts.size})",
+                        text = "Scripts (${scripts.size})",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor()
                     )
                 }
-                
-                // Script List
-                items(scripts, key = { it.id }) { script ->
-                    BadUsbScriptCard(
-                        script = script,
-                        isSelected = selectedScript?.id == script.id,
-                        isRunning = isRunning && selectedScript?.id == script.id,
-                        onSelect = { 
-                            selectedScript = if (selectedScript?.id == script.id) null else script 
+
+                if (!isConnected) {
+                    item {
+                        EmptyBadUsbCard("Connect to a GhostESP device to list and run BadUSB scripts.")
+                    }
+                } else if (scripts.isEmpty()) {
+                    item {
+                        EmptyBadUsbCard("No scripts reported by firmware. Put DuckyScript files in /mnt/ghostesp/badusb/ and refresh.")
+                    }
+                } else {
+                    items(scripts, key = { it }) { script ->
+                        BadUsbScriptCard(
+                            script = script,
+                            isRunning = runningScript == script,
+                            enabled = isConnected && runningScript == null,
+                            onRun = {
+                                viewModel.runBadUsbScript(script.toFirmwareBadUsbRunArg())
+                                runningScript = script
+                            }
+                        )
+                    }
+                }
+
+                item {
+                    DirectKeyboardCard(
+                        isConnected = isConnected,
+                        keyboardActive = keyboardActive,
+                        textToType = textToType,
+                        onTextChange = { textToType = it },
+                        onKeyboardToggle = {
+                            if (keyboardActive) {
+                                viewModel.stopBadUsbKeyboard()
+                            } else {
+                                viewModel.startBadUsbKeyboard()
+                            }
+                            keyboardActive = !keyboardActive
                         },
-                        onRun = {
-                            if (isConnected) {
-                                selectedScript = script
-                                viewModel.runBadUsbScript(script.id)
-                                isRunning = true
+                        onType = {
+                            if (textToType.isNotBlank()) {
+                                viewModel.typeBadUsbText(textToType)
+                                textToType = ""
+                                keyboardActive = true
                             }
                         }
                     )
                 }
-                
-                // Status Message
-                if (statusMessage != null) {
+
+                item {
+                    MouseJigglerCard(
+                        isConnected = isConnected,
+                        jigglerActive = jigglerActive,
+                        onToggle = {
+                            if (jigglerActive) {
+                                viewModel.stopBadUsbJiggler()
+                            } else {
+                                viewModel.startBadUsbJiggler()
+                            }
+                            jigglerActive = !jigglerActive
+                        }
+                    )
+                }
+
+                statusMessage?.takeIf { it.contains("BadUSB", ignoreCase = true) || it.startsWith("BadUSB scripts") }?.let { message ->
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = SurfaceVariantDark
-                            ),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(
-                                text = statusMessage!!,
+                                text = message,
                                 modifier = Modifier.padding(16.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = OnSurfaceDark
+                                style = MaterialTheme.typography.bodyMedium
                             )
                         }
                     }
                 }
-                
-                // Warning Card
+
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Error.copy(alpha = 0.1f)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = Error,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = "BadUSB scripts can be dangerous. Only use on systems you own or have permission to test. Use responsibly.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Error
-                            )
-                        }
-                    }
+                    WarningCard()
                 }
             }
-        }
-        
-        // Feature Not Supported or Coming Soon Overlay
-        if (hasDeviceInfo && !isBadUsbSupported) {
-            FeatureNotSupportedOverlay(
-                show = showOverlay,
-                onProceed = { showOverlay = false },
-                featureName = "BadUSB",
-                message = "This device does not have BadUSB hardware support. USB HID attack capabilities require compatible hardware."
-            )
-        } else {
-            ComingSoonOverlay(
-                show = showOverlay,
-                onProceed = { showOverlay = false },
-                viewName = "BadUSB",
-                title = "Coming Soon",
-                message = "BadUSB features are currently under development. USB HID attack capabilities and script management coming soon."
-            )
-        }
+
+            if (hasDeviceInfo && !isBadUsbSupported) {
+                FeatureNotSupportedOverlay(
+                    show = showUnsupportedOverlay,
+                    onProceed = { showUnsupportedOverlay = false },
+                    featureName = "BadUSB",
+                    message = "This firmware/device does not report BadUSB support. USB HID commands may fail."
+                )
+            }
         }
     }
 }
 
-/**
- * BadUSB script data class
- */
-data class BadUsbScript(
-    val id: String,
-    val name: String,
-    val description: String,
-    val size: Int,
-    val isDangerous: Boolean
-)
+private fun String.toFirmwareBadUsbRunArg(): String {
+    return if (contains("builtin", ignoreCase = true)) "builtin" else this
+}
 
-/**
- * Card displaying a BadUSB script
- */
+@Composable
+private fun ActiveBadUsbCard(
+    label: String,
+    onStop: () -> Unit,
+    enabled: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = warningColor().copy(alpha = 0.1f)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, style = MaterialTheme.typography.titleSmall, color = warningColor())
+            BrutalistButton(
+                text = "Stop",
+                onClick = onStop,
+                enabled = enabled,
+                containerColor = errorColor(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyBadUsbCard(message: String) {
+    BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
 @Composable
 private fun BadUsbScriptCard(
-    script: BadUsbScript,
-    isSelected: Boolean,
+    script: String,
     isRunning: Boolean,
-    onSelect: () -> Unit,
+    enabled: Boolean,
     onRun: () -> Unit
 ) {
-    BrutalistCard(
-        modifier = Modifier.fillMaxWidth(),
-        borderColor = when {
-            isRunning -> warningColor()
-            script.isDangerous -> errorColor().copy(alpha = 0.5f)
-            isSelected -> primaryColor()
-            else -> OutlineDark
-        },
-        onClick = onSelect
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
+    BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        if (script.isDangerous) Icons.Default.Warning else Icons.Default.Description,
-                        contentDescription = null,
-                        tint = when {
-                            isRunning -> warningColor()
-                            script.isDangerous -> errorColor()
-                            isSelected -> primaryColor()
-                            else -> OnSurfaceDark
-                        },
-                        modifier = Modifier.size(32.dp)
+                Icon(
+                    Icons.Default.Description,
+                    contentDescription = null,
+                    tint = if (isRunning) warningColor() else primaryColor(),
+                    modifier = Modifier.size(28.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = script,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Column {
-                        Text(
-                            text = script.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = when {
-                                isRunning -> warningColor()
-                                script.isDangerous -> errorColor()
-                                else -> OnSurfaceDark
-                            }
-                        )
-                        Text(
-                            text = "${script.size} bytes",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark
-                        )
-                    }
-                }
-                
-                BrutalistButton(
-                    text = if (isRunning) "Running" else "Run",
-                    onClick = onRun,
-                    containerColor = when {
-                        isRunning -> warningColor()
-                        script.isDangerous -> errorColor()
-                        else -> primaryColor()
-                    },
-                    enabled = !isRunning,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                )
-            }
-            
-            if (isSelected) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = script.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark
-                )
-                
-                if (script.isDangerous) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = Error,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "This script may cause damage. Use with caution.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Error
-                        )
-                    }
+                    Text(
+                        text = if (isRunning) "Running" else "Firmware script",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
+            Spacer(modifier = Modifier.width(12.dp))
+            BrutalistButton(
+                text = if (isRunning) "Running" else "Run",
+                onClick = onRun,
+                enabled = enabled,
+                containerColor = if (isRunning) warningColor() else primaryColor(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null) }
+            )
         }
     }
 }
 
-/**
- * USB Connection Banner component
- */
+@Composable
+private fun DirectKeyboardCard(
+    isConnected: Boolean,
+    keyboardActive: Boolean,
+    textToType: String,
+    onTextChange: (String) -> Unit,
+    onKeyboardToggle: () -> Unit,
+    onType: () -> Unit
+) {
+    BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Keyboard, contentDescription = null, tint = primaryColor())
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Direct Keyboard", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                text = "Uses firmware commands: badusb keyboard_start, badusb type, badusb keyboard_stop.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BrutalistOutlinedButton(
+                    text = if (keyboardActive) "Stop Keyboard" else "Start Keyboard",
+                    onClick = onKeyboardToggle,
+                    enabled = isConnected,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            OutlinedTextField(
+                value = textToType,
+                onValueChange = onTextChange,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = isConnected,
+                label = { Text("Text to type") },
+                singleLine = true
+            )
+            BrutalistButton(
+                text = "Type Text",
+                onClick = onType,
+                enabled = isConnected && textToType.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Default.Keyboard, contentDescription = null) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MouseJigglerCard(
+    isConnected: Boolean,
+    jigglerActive: Boolean,
+    onToggle: () -> Unit
+) {
+    BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Mouse, contentDescription = null, tint = if (jigglerActive) warningColor() else primaryColor())
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text("Mouse Jiggler", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (jigglerActive) "Running" else "Uses badusb jiggle_start/stop",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            BrutalistButton(
+                text = if (jigglerActive) "Stop" else "Start",
+                onClick = onToggle,
+                enabled = isConnected,
+                containerColor = if (jigglerActive) errorColor() else primaryColor(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun WarningCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = errorColor().copy(alpha = 0.1f)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Warning, contentDescription = null, tint = errorColor(), modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "Only run BadUSB payloads on systems you own or have explicit permission to test.",
+                style = MaterialTheme.typography.bodySmall,
+                color = errorColor()
+            )
+        }
+    }
+}
+
 @Composable
 private fun UsbConnectionBanner(
     isConnected: Boolean,
@@ -470,14 +472,14 @@ private fun UsbConnectionBanner(
                     )
                     if (isConnected) {
                         Text(
-                            text = "Ready to run scripts",
+                            text = "Ready for BadUSB commands",
                             style = MaterialTheme.typography.labelSmall,
-                            color = OnSurfaceVariantDark
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
-            
+
             if (!isConnected) {
                 Button(
                     onClick = onConnect,

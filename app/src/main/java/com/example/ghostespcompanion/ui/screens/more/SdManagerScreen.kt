@@ -44,6 +44,7 @@ fun SdManagerScreen(
     
     val context = LocalContext.current
     val connectionState by viewModel.connectionState.collectAsState()
+    val connectionTransport by viewModel.connectionTransport.collectAsState()
     val sdEntries by viewModel.sdEntries.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -69,6 +70,13 @@ fun SdManagerScreen(
         onBack = onBack,
         title = "SD Manager",
         actions = {
+            IconButton(onClick = { viewModel.openDownloadsFolder(context) }) {
+                Icon(
+                    Icons.Default.FolderOpen,
+                    contentDescription = "Open Downloads Folder",
+                    tint = primaryColor()
+                )
+            }
             IconButton(onClick = {
                 if (isConnected && !isLoading) {
                     lastListedPath = currentPath
@@ -94,6 +102,7 @@ fun SdManagerScreen(
             // Connection Status Banner
             SdConnectionBanner(
                 isConnected = isConnected,
+                connectionTransport = connectionTransport,
                 deviceName = "GhostESP",
                 onConnect = { viewModel.connectFirstAvailable() }
             )
@@ -221,7 +230,40 @@ fun SdManagerScreen(
                     }
                 }
                 is FileTransferProgress.Complete -> {
-                    if (!progress.success) {
+                    if (progress.success) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = successColor().copy(alpha = 0.1f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = successColor())
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Downloaded ${progress.fileName}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = successColor(),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = {
+                                    viewModel.openDownloadedFile(context, progress.fileName)
+                                }) {
+                                    Text("Open")
+                                }
+                                TextButton(onClick = { viewModel.openDownloadsFolder(context) }) {
+                                    Text("Folder")
+                                }
+                            }
+                        }
+                    } else {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -575,6 +617,7 @@ private fun formatFileSize(bytes: Long): String {
 @Composable
 private fun SdConnectionBanner(
     isConnected: Boolean,
+    connectionTransport: SerialManager.ConnectionTransport,
     deviceName: String,
     onConnect: () -> Unit
 ) {
@@ -611,6 +654,15 @@ private fun SdConnectionBanner(
                     if (isConnected) {
                         Text(
                             text = "SD card ready",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = when (connectionTransport) {
+                                SerialManager.ConnectionTransport.USB -> "Connected over USB"
+                                SerialManager.ConnectionTransport.BLE -> "Connected over wireless bridge"
+                                SerialManager.ConnectionTransport.NONE -> "Connection active"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

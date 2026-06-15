@@ -45,6 +45,7 @@ class MainViewModel @Inject constructor(
 
     // Connection state
     val connectionState: StateFlow<SerialManager.ConnectionState> = ghostRepository.connectionState
+    val connectionTransport: StateFlow<SerialManager.ConnectionTransport> = ghostRepository.connectionTransport
 
     // Raw serial output for terminal
     val rawOutput: SharedFlow<String> = ghostRepository.rawOutput
@@ -164,6 +165,9 @@ class MainViewModel @Inject constructor(
     // Current IR Remote
     val currentIrRemote: StateFlow<GhostResponse.IrRemote?> = ghostRepository.currentIrRemote
 
+    // BadUSB
+    val badUsbScripts: StateFlow<List<String>> = ghostRepository.badUsbScripts
+
     // IR Learn state
     val irLearnedSignal: StateFlow<GhostResponse.IrLearned?> = ghostRepository.irLearnedSignal
     val irLearnSavedPath: StateFlow<String?> = ghostRepository.irLearnSavedPath
@@ -282,7 +286,35 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun disconnect() {
+    fun connectSavedDevice() {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.connectSavedDevice()
+        }
+    }
+
+    fun forgetSavedDevice() {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.forgetSavedDevice()
+        }
+    }
+
+    fun openDownloadsFolder(context: Context) {
+        val intent = ghostRepository.openDownloadsFolderIntent(context)
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("MainViewModel", "No activity to open Downloads folder: ${e.message}")
+        }
+    }
+
+    fun openDownloadedFile(context: Context, fileName: String) {
+        val intent = ghostRepository.openDownloadedFileIntent(context, fileName) ?: return
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("MainViewModel", "No activity to open file: ${e.message}")
+        }
+    }    fun disconnect() {
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.disconnect()
         }
@@ -386,6 +418,14 @@ class MainViewModel @Inject constructor(
     
     fun startEapolCapture(channel: Int? = null) {
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.startEapolCapture(channel) }
+    }
+
+    fun startPacketCapture(mode: GhostCommand.CaptureMode, channel: Int? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startPacketCapture(mode, channel) }
+    }
+
+    fun stopPacketCapture() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopPacketCapture() }
     }
 
     // ==================== BLE ====================
@@ -522,6 +562,26 @@ class MainViewModel @Inject constructor(
 
     fun stopBadUsb() {
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBadUsb() }
+    }
+
+    fun startBadUsbKeyboard() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startBadUsbKeyboard() }
+    }
+
+    fun stopBadUsbKeyboard() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBadUsbKeyboard() }
+    }
+
+    fun typeBadUsbText(text: String) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.typeBadUsbText(text) }
+    }
+
+    fun startBadUsbJiggler() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startBadUsbJiggler() }
+    }
+
+    fun stopBadUsbJiggler() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBadUsbJiggler() }
     }
 
     // ==================== GPS ====================
