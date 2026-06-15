@@ -80,14 +80,41 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
+      - name: Decode Release Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release-keystore.jks"
+            echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/release-keystore.jks" >> "$GITHUB_ENV"
+            echo "HAS_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
+          else
+            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
+            echo "Release signing secrets are incomplete; only the debug APK will be published."
+          fi
+
       - name: Build Release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Prepare Artifacts
         run: |
           mkdir -p release_assets
           cp app/build/outputs/apk/debug/*.apk release_assets/ghostesp-companion-debug.apk
-          cp app/build/outputs/apk/release/*.apk release_assets/ghostesp-companion-release.apk
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk release_assets/ghostesp-companion-release.apk
+          elif [ "$HAS_RELEASE_SIGNING" = "true" ]; then
+            echo "Release signing was configured, but no signed APK was produced."
+            exit 1
+          else
+            echo "No signed release APK found; skipping release APK artifact. Configure signing secrets to publish release builds."
+          fi
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -97,6 +124,7 @@ jobs:
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
+        if: env.HAS_RELEASE_SIGNING == 'true'
         with:
           name: ghostesp-companion-release
           path: release_assets/ghostesp-companion-release.apk
