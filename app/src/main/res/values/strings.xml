@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">GhostESP Companion</string>
+<string name="app_name_short">GhostESP</string>
 </resources>

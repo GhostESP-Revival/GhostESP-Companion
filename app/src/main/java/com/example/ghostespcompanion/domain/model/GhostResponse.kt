@@ -395,6 +395,61 @@ sealed class GhostResponse {
         }
     }
 
+    /** Structured wardrive stream BLE observation from wdstream. */
+    data class WdStreamBle(
+        val timestampMs: Long,
+        val mac: String,
+        val name: String,
+        val rssi: Int,
+        val eventType: String,
+        val manufacturerId: String
+    ) : GhostResponse() {
+        companion object {
+            fun parse(line: String): WdStreamBle? {
+                if (!line.startsWith("WD:BLE ")) return null
+
+                val fields = parseWdFields(line.removePrefix("WD:BLE "))
+                val mac = fields["mac"]?.uppercase() ?: return null
+                return WdStreamBle(
+                    timestampMs = fields["ts"]?.toLongOrNull() ?: 0L,
+                    mac = mac,
+                    name = decodeHex(fields["name_hex"].orEmpty()),
+                    rssi = fields["rssi"]?.toIntOrNull() ?: -100,
+                    eventType = fields["type"] ?: "adv",
+                    manufacturerId = fields["mfg"].orEmpty()
+                )
+            }
+
+            private fun parseWdFields(text: String): Map<String, String> {
+                val fields = HashMap<String, String>()
+                text.split(' ').forEach { token ->
+                    val separator = token.indexOf('=')
+                    if (separator > 0 && separator < token.lastIndex) {
+                        fields[token.substring(0, separator)] = token.substring(separator + 1)
+                    } else if (separator > 0) {
+                        fields[token.substring(0, separator)] = ""
+                    }
+                }
+                return fields
+            }
+
+            private fun decodeHex(hex: String): String {
+                if (hex.isEmpty() || hex.length % 2 != 0) return ""
+                return try {
+                    val bytes = ByteArray(hex.length / 2)
+                    var i = 0
+                    while (i < hex.length) {
+                        bytes[i / 2] = hex.substring(i, i + 2).toInt(16).toByte()
+                        i += 2
+                    }
+                    bytes.toString(Charsets.UTF_8)
+                } catch (_: Exception) {
+                    ""
+                }
+            }
+        }
+    }
+
     /** Status line from wdstream. */
     data class WdStreamStatus(
         val running: Boolean,

@@ -61,6 +61,8 @@ fun GpsScreen(
     var showOverlay by remember { mutableStateOf(true) }
     var showCsvExplorer by remember { mutableStateOf(false) }
     var showSdCardWarning by remember { mutableStateOf(false) }
+    var usePhoneGps by remember { mutableStateOf(false) }
+    var phoneWardriveIsBle by remember { mutableStateOf(false) }
     var sdCardCheckDone by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
@@ -325,65 +327,13 @@ fun GpsScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            BrutalistButton(
-                                text = if (isWardriving) "Stop Wardrive" else "Start Wardrive",
-                                onClick = {
-                                    if (isConnected) {
-                                        if (isWardriving) {
-                                            viewModel.stopWardrive()
-                                        } else {
-                                            viewModel.startWardrive()
-                                        }
-                                    }
-                                },
-                                containerColor = if (isWardriving) errorColor() else successColor(),
-                                enabled = isConnected && !isBleWardriving && !isPhoneWardriving,
-                                modifier = Modifier.weight(1f),
-                                leadingIcon = {
-                                    Icon(
-                                        if (isWardriving) Icons.Default.Stop else Icons.Default.TravelExplore,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            )
-                            BrutalistButton(
-                                text = if (isBleWardriving) "Stop BLE WD" else "BLE Wardrive",
-                                onClick = {
-                                    if (isConnected) {
-                                        if (isBleWardriving) {
-                                            viewModel.stopBleWardrive()
-                                        } else {
-                                            viewModel.startBleWardrive()
-                                        }
-                                    }
-                                },
-                                containerColor = if (isBleWardriving) errorColor() else primaryColor(),
-                                enabled = isConnected && !isWardriving && !isPhoneWardriving,
-                                modifier = Modifier.weight(1f),
-                                leadingIcon = {
-                                    Icon(
-                                        if (isBleWardriving) Icons.Default.Stop else Icons.Default.Bluetooth,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Phone GPS Wardrive toggle
+                        // Phone GPS mode toggle
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(
-                                    if (isPhoneWardriving) primaryColor().copy(alpha = 0.12f)
+                                    if (usePhoneGps) primaryColor().copy(alpha = 0.12f)
                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                 )
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -392,37 +342,97 @@ fun GpsScreen(
                             Icon(
                                 Icons.Default.MyLocation,
                                 contentDescription = null,
-                                tint = if (isPhoneWardriving) primaryColor() else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (usePhoneGps) primaryColor() else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Phone GPS Wardrive",
+                                    text = "Phone GPS Mode",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isPhoneWardriving) primaryColor() else MaterialTheme.colorScheme.onSurface
+                                    color = if (usePhoneGps) primaryColor() else MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = if (isPhoneWardriving) "Capturing APs with phone GPS" else "Use phone GPS for wardriving",
+                                    text = if (usePhoneGps) "Wardrive buttons use phone GPS" else "Wardrive buttons use device GPS",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
-                                checked = isPhoneWardriving,
-                                onCheckedChange = { enabled ->
-                                    if (enabled) {
-                                        viewModel.startPhoneWardrive()
-                                    } else {
-                                        viewModel.stopPhoneWardrive(context)
-                                    }
-                                },
-                                enabled = isConnected && hasLocationPermission && !isWardriving && !isBleWardriving,
+                                checked = usePhoneGps,
+                                onCheckedChange = { usePhoneGps = it },
+                                enabled = !isWardriving && !isBleWardriving && !isPhoneWardriving,
                                 colors = SwitchDefaults.colors(
                                     checkedTrackColor = primaryColor(),
                                     checkedThumbColor = MaterialTheme.colorScheme.onPrimary
                                 )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            BrutalistButton(
+                                text = if (isWardriving || (isPhoneWardriving && !phoneWardriveIsBle)) "Stop Wardrive" else "Start Wardrive",
+                                onClick = {
+                                    if (isConnected) {
+                                        if (isWardriving) {
+                                            viewModel.stopWardrive()
+                                        } else if (isPhoneWardriving && !phoneWardriveIsBle) {
+                                            viewModel.stopPhoneWardrive(context)
+                                        } else {
+                                            if (usePhoneGps) {
+                                                phoneWardriveIsBle = false
+                                                viewModel.startPhoneWardrive(includeBle = false)
+                                            } else {
+                                                viewModel.startWardrive()
+                                            }
+                                        }
+                                    }
+                                },
+                                containerColor = if (isWardriving || (isPhoneWardriving && !phoneWardriveIsBle)) errorColor() else successColor(),
+                                enabled = isConnected && !isBleWardriving && (!isPhoneWardriving || phoneWardriveIsBle) && (!usePhoneGps || hasLocationPermission),
+                                modifier = Modifier.weight(1f),
+                                leadingIcon = {
+                                    Icon(
+                                        if (isWardriving || (isPhoneWardriving && !phoneWardriveIsBle)) Icons.Default.Stop else Icons.Default.TravelExplore,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            )
+                            BrutalistButton(
+                                text = if (isBleWardriving || (isPhoneWardriving && phoneWardriveIsBle)) "Stop BLE WD" else "BLE Wardrive",
+                                onClick = {
+                                    if (isConnected) {
+                                        if (isBleWardriving) {
+                                            viewModel.stopBleWardrive()
+                                        } else if (isPhoneWardriving && phoneWardriveIsBle) {
+                                            viewModel.stopPhoneWardrive(context)
+                                        } else {
+                                            if (usePhoneGps) {
+                                                phoneWardriveIsBle = true
+                                                viewModel.startPhoneWardrive(includeBle = true)
+                                            } else {
+                                                viewModel.startBleWardrive()
+                                            }
+                                        }
+                                    }
+                                },
+                                containerColor = if (isBleWardriving || (isPhoneWardriving && phoneWardriveIsBle)) errorColor() else primaryColor(),
+                                enabled = isConnected && !isWardriving && (!isPhoneWardriving || !phoneWardriveIsBle) && (!usePhoneGps || hasLocationPermission),
+                                modifier = Modifier.weight(1f),
+                                leadingIcon = {
+                                    Icon(
+                                        if (isBleWardriving || (isPhoneWardriving && phoneWardriveIsBle)) Icons.Default.Stop else Icons.Default.Bluetooth,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             )
                         }
 
@@ -843,7 +853,14 @@ private class PhoneWardriveApOverlay : Overlay() {
         aps = newAps
     }
 
-    private fun rssiColor(rssi: Int): Int {
+    private fun rssiColor(rssi: Int, isBle: Boolean): Int {
+        if (isBle) {
+            val t = ((rssi + 100).coerceIn(0, 60)).toFloat() / 60f
+            val r = (76f + (0f - 76f) * t).toInt()
+            val g = (175f + (200f - 175f) * t).toInt()
+            val b = (80f + (80f - 80f) * t).toInt()
+            return android.graphics.Color.rgb(r, g, b)
+        }
         val t = ((rssi + 100).coerceIn(0, 60)).toFloat() / 60f
         val r = (244f + (33f - 244f) * t).toInt()
         val g = (67f + (150f - 67f) * t).toInt()
@@ -874,7 +891,7 @@ private class PhoneWardriveApOverlay : Overlay() {
                 continue
             }
 
-            val baseColor = rssiColor(ap.rssi)
+            val baseColor = rssiColor(ap.rssi, ap.isBle)
             fillPaint.color = android.graphics.Color.argb(180, android.graphics.Color.red(baseColor), android.graphics.Color.green(baseColor), android.graphics.Color.blue(baseColor))
             canvas.drawCircle(px, py, radius, fillPaint)
 

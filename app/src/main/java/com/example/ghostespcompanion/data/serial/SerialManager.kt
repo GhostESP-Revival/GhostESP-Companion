@@ -2262,6 +2262,7 @@ data class GhostSerialResponse(
         WIFI_STATUS,
         WARDDRIVE_STATS,
         WDSTREAM_AP,
+        WDSTREAM_BLE,
         WDSTREAM_STATUS
     }
 
@@ -2275,6 +2276,8 @@ data class GhostSerialResponse(
             raw.startsWith("[") && raw.contains("SSID:") -> ResponseType.ACCESS_POINT
 
             raw.startsWith("WD:AP ") -> ResponseType.WDSTREAM_AP
+
+            raw.startsWith("WD:BLE ") -> ResponseType.WDSTREAM_BLE
 
             raw.startsWith("WD:BEGIN") || raw.startsWith("WD:STATUS ") || raw.startsWith("WD:END") -> ResponseType.WDSTREAM_STATUS
 

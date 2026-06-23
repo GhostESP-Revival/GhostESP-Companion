@@ -625,8 +625,8 @@ class MainViewModel @Inject constructor(
         ghostRepository.updatePhoneLocation(location)
     }
 
-    fun startPhoneWardrive() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startPhoneWardrive() }
+    fun startPhoneWardrive(includeBle: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startPhoneWardrive(includeBle) }
     }
 
     fun stopPhoneWardrive(context: Context) {

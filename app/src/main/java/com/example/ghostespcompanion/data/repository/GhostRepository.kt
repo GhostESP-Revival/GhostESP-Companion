@@ -814,7 +814,7 @@ class GhostRepository @Inject constructor(
         }
     }
 
-    suspend fun startPhoneWardrive() {
+    suspend fun startPhoneWardrive(includeBle: Boolean = false) {
         phoneWardriveRows.clear()
         synchronized(phoneWardriveApsLock) {
             _phoneWardriveAps.value = emptyList()
@@ -824,7 +824,7 @@ class GhostRepository @Inject constructor(
         phoneWardriveStartedAt = System.currentTimeMillis()
         _phoneWardriveStats.value = PhoneWardriveStats(gpsFix = latestPhoneLocation != null)
         _isPhoneWardriving.value = true
-        sendCommand(GhostCommand.WdStream())
+        sendCommand(GhostCommand.WdStream(includeBle = includeBle))
     }
 
     suspend fun stopPhoneWardrive(context: Context) {
@@ -1683,13 +1683,40 @@ class GhostRepository @Inject constructor(
                 accuracy = location.accuracy ?: 0f,
                 firstSeen = firstSeen
             )
-            addPhoneWardriveAp(ap.bssid, if (ap.hidden) "" else ap.ssid, ap.rssi, location)
+            addPhoneWardriveAp(ap.bssid, if (ap.hidden) "" else ap.ssid, ap.rssi, location, isBle = false)
         }
 
         publishPhoneWardriveStats()
     }
 
-    private fun addPhoneWardriveAp(bssid: String, ssid: String, rssi: Int, location: PhoneLocation) {
+    private fun handleWdStreamBle(ble: GhostResponse.WdStreamBle) {
+        phoneWardriveObservations += 1
+
+        val location = latestPhoneLocation
+        if (location != null) {
+            phoneWardriveLocatedObservations += 1
+            val firstSeen = phoneWardriveRows[ble.mac]?.firstSeen ?: formatWigleTimestamp(location.timestamp)
+            phoneWardriveRows[ble.mac] = PhoneWardriveRow(
+                bssid = ble.mac,
+                ssid = ble.name,
+                auth = "Misc [LE]",
+                channel = 0,
+                rssi = ble.rssi,
+                latitude = location.latitude,
+                longitude = location.longitude,
+                altitude = location.altitude ?: 0.0,
+                accuracy = location.accuracy ?: 0f,
+                firstSeen = firstSeen,
+                type = "BLE",
+                manufacturerId = ble.manufacturerId
+            )
+            addPhoneWardriveAp(ble.mac, ble.name, ble.rssi, location, isBle = true)
+        }
+
+        publishPhoneWardriveStats()
+    }
+
+    private fun addPhoneWardriveAp(bssid: String, ssid: String, rssi: Int, location: PhoneLocation, isBle: Boolean = false) {
         synchronized(phoneWardriveApsLock) {
             val current = _phoneWardriveAps.value
             val existing = current.find { it.bssid == bssid }
@@ -1698,7 +1725,8 @@ class GhostRepository @Inject constructor(
                 ssid = ssid,
                 rssi = rssi,
                 latitude = location.latitude,
-                longitude = location.longitude
+                longitude = location.longitude,
+                isBle = isBle
             )
             if (existing != null) {
                 _phoneWardriveAps.value = current.map { if (it.bssid == bssid) ap else it }
@@ -1746,17 +1774,26 @@ class GhostRepository @Inject constructor(
             phoneWardriveRows.values.sortedBy { it.bssid }.forEach { row ->
                 append(csvEscape(row.bssid)).append(',')
                 append(csvEscape(row.ssid)).append(',')
-                append(csvEscape(wigleWifiCapabilities(row.auth))).append(',')
+                if (row.type == "BLE") {
+                    append(csvEscape(row.auth)).append(',')
+                } else {
+                    append(csvEscape(wigleWifiCapabilities(row.auth))).append(',')
+                }
                 append(csvEscape(row.firstSeen)).append(',')
                 append(row.channel).append(',')
-                append(channelToFrequency(row.channel)).append(',')
+                if (row.type == "BLE") {
+                    append("0,")  // Frequency: 0 for BLE
+                } else {
+                    append(channelToFrequency(row.channel)).append(',')
+                }
                 append(row.rssi).append(',')
                 append(String.format(Locale.US, "%.6f", row.latitude)).append(',')
                 append(String.format(Locale.US, "%.6f", row.longitude)).append(',')
                 append(Math.round(row.altitude)).append(',')
                 append(String.format(Locale.US, "%.1f", row.accuracy)).append(',')
-                append(',').append(',')  // RCOIs, MfgrId (empty)
-                append("WIFI\n")
+                append(',')  // RCOIs (empty)
+                append(csvEscape(row.manufacturerId)).append(',')
+                append(row.type).append('\n')
             }
         }
     }
@@ -1824,6 +1861,14 @@ class GhostRepository @Inject constructor(
                     handleWdStreamAp(ap)
                     if (_isPhoneWardriving.value) {
                         _statusMessage.value = "Phone WD: ${phoneWardriveRows.size} APs, ${phoneWardriveLocatedObservations}/${phoneWardriveObservations} GPS-tagged"
+                    }
+                }
+            }
+            GhostSerialResponse.ResponseType.WDSTREAM_BLE -> {
+                GhostResponse.WdStreamBle.parse(response.raw)?.let { ble ->
+                    handleWdStreamBle(ble)
+                    if (_isPhoneWardriving.value) {
+                        _statusMessage.value = "Phone WD: ${phoneWardriveRows.size} devices, ${phoneWardriveLocatedObservations}/${phoneWardriveObservations} GPS-tagged"
                     }
                 }
             }
@@ -2273,7 +2318,8 @@ data class PhoneWardriveAp(
     val ssid: String,
     val rssi: Int,
     val latitude: Double,
-    val longitude: Double
+    val longitude: Double,
+    val isBle: Boolean = false
 )
 
 private data class PhoneWardriveRow(
@@ -2286,7 +2332,9 @@ private data class PhoneWardriveRow(
     val longitude: Double,
     val altitude: Double,
     val accuracy: Float,
-    val firstSeen: String
+    val firstSeen: String,
+    val type: String = "WIFI",
+    val manufacturerId: String = ""
 )
 
 data class SavedWardriveCsv(

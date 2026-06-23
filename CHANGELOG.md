@@ -2,11 +2,11 @@
 
 ## v0.4.0
 
-- Refined GPS wardriving screen: removed redundant map/list toggle, map is now always displayed
-- Renamed "Phone GPS WD" to "Phone GPS Wardrive" and converted it to a toggle switch
-- Added built-in CSV explorer bottom sheet to browse, share, and delete saved Phone GPS Wardrive CSVs from Downloads
-- Updated Phone GPS Wardrive CSV format to WiGLE v1.6 to match firmware output (added Frequency, RCOIs, MfgrId columns; auth mode now uses WiGLE capabilities format; lat/lon precision set to 6 decimals; altitude rounded to integer)
+- Changed the app icon to use the new evil mascot image
+- Removed redundant map/list toggle from GPS/Wardriving screen
+- Added built-in CSV explorer bottom sheet to browse, share, and delete saved Phone GPS Wardrive CSVs
 - Replaced grid-based map cell rendering with individual circular AP markers colored by RSSI strength
+- Added support for using a GhostESP device to wardrive using the Phone's GPS saved to the Phone's storage
 
 ## v0.3.0
 
