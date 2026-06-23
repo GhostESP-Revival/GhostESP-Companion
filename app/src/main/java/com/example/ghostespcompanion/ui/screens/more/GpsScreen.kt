@@ -395,7 +395,7 @@ fun GpsScreen(
                                     }
                                 },
                                 containerColor = if (isWardriving || (isPhoneWardriving && !phoneWardriveIsBle)) errorColor() else successColor(),
-                                enabled = isConnected && !isBleWardriving && (!isPhoneWardriving || phoneWardriveIsBle) && (!usePhoneGps || hasLocationPermission),
+                                enabled = isConnected && !isBleWardriving && (!isPhoneWardriving || !phoneWardriveIsBle) && (!usePhoneGps || hasLocationPermission),
                                 modifier = Modifier.weight(1f),
                                 leadingIcon = {
                                     Icon(
@@ -424,7 +424,7 @@ fun GpsScreen(
                                     }
                                 },
                                 containerColor = if (isBleWardriving || (isPhoneWardriving && phoneWardriveIsBle)) errorColor() else primaryColor(),
-                                enabled = isConnected && !isWardriving && (!isPhoneWardriving || !phoneWardriveIsBle) && (!usePhoneGps || hasLocationPermission),
+                                enabled = isConnected && !isWardriving && (!isPhoneWardriving || phoneWardriveIsBle) && (!usePhoneGps || hasLocationPermission),
                                 modifier = Modifier.weight(1f),
                                 leadingIcon = {
                                     Icon(

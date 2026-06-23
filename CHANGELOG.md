@@ -7,6 +7,7 @@
 - Added built-in CSV explorer bottom sheet to browse, share, and delete saved Phone GPS Wardrive CSVs
 - Replaced grid-based map cell rendering with individual circular AP markers colored by RSSI strength
 - Added support for using a GhostESP device to wardrive using the Phone's GPS saved to the Phone's storage
+- Added foreground background support for wardriving and other explicit run-until-stopped actions
 
 ## v0.3.0
 

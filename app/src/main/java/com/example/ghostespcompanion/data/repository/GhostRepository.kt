@@ -1874,9 +1874,6 @@ class GhostRepository @Inject constructor(
             }
             GhostSerialResponse.ResponseType.WDSTREAM_STATUS -> {
                 GhostResponse.WdStreamStatus.parse(response.raw)?.let { status ->
-                    if (response.raw.startsWith("WD:END")) {
-                        _isPhoneWardriving.value = false
-                    }
                     publishPhoneWardriveStats()
                     _statusMessage.value = status.message
                 }

@@ -19,7 +19,9 @@ import com.example.ghostespcompanion.data.repository.SettingsManager
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
 import com.example.ghostespcompanion.domain.model.GhostResponse
+import com.example.ghostespcompanion.service.BackgroundOperationService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -38,6 +40,7 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class MainViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val ghostRepository: GhostRepository,
     private val settingsManager: SettingsManager,
     private val preferencesRepository: PreferencesRepository,
@@ -325,8 +328,11 @@ class MainViewModel @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.w("MainViewModel", "No activity to open file: ${e.message}")
         }
-    }    fun disconnect() {
+    }
+
+    fun disconnect() {
         viewModelScope.launch(Dispatchers.IO) {
+            stopAllBackgroundOperations()
             ghostRepository.disconnect()
         }
     }
@@ -335,10 +341,24 @@ class MainViewModel @Inject constructor(
      * Force disconnect - use when normal disconnect hangs or connection is stuck
      */
     fun forceDisconnect() {
+        stopAllBackgroundOperations()
         ghostRepository.forceDisconnect()
     }
 
     fun isConnected(): Boolean = ghostRepository.isConnected()
+
+    private fun runInBackground(operation: String, title: String) {
+        if (!ghostRepository.isConnected()) return
+        BackgroundOperationService.replaceOperation(appContext, operation, title)
+    }
+
+    private fun stopBackgroundOperation(operation: String) {
+        BackgroundOperationService.stopOperation(appContext, operation)
+    }
+
+    private fun stopAllBackgroundOperations() {
+        BackgroundOperationService.stopAll(appContext)
+    }
 
     // ==================== WiFi ====================
 
@@ -394,49 +414,80 @@ class MainViewModel @Inject constructor(
     }
 
     fun startDeauth() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startDeauth() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_DEAUTH, "Deauth")
+            ghostRepository.startDeauth()
+        }
     }
 
     fun stopDeauth() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopDeauth() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopDeauth()
+            stopBackgroundOperation(BackgroundOperationService.OP_DEAUTH)
+        }
     }
 
     fun startBeaconSpam(mode: GhostCommand.BeaconSpamMode = GhostCommand.BeaconSpamMode.RANDOM) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startBeaconSpam(mode) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_BEACON_SPAM, "Beacon spam")
+            ghostRepository.startBeaconSpam(mode)
+        }
     }
 
     fun stopBeaconSpam() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBeaconSpam() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopBeaconSpam()
+            stopBackgroundOperation(BackgroundOperationService.OP_BEACON_SPAM)
+        }
     }
 
     fun startKarma(ssids: List<String>? = null) {
         viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_KARMA, "Karma")
             ghostRepository.startKarma(ssids)
         }
     }
 
     fun stopKarma() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopKarma() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopKarma()
+            stopBackgroundOperation(BackgroundOperationService.OP_KARMA)
+        }
     }
 
     fun trackAp() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.trackAp() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_TRACK_AP, "AP tracking")
+            ghostRepository.trackAp()
+        }
     }
 
     fun trackSta() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.trackSta() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_TRACK_STA, "Station tracking")
+            ghostRepository.trackSta()
+        }
     }
     
     fun startEapolCapture(channel: Int? = null) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startEapolCapture(channel) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_PACKET_CAPTURE, "Packet capture")
+            ghostRepository.startEapolCapture(channel)
+        }
     }
 
     fun startPacketCapture(mode: GhostCommand.CaptureMode, channel: Int? = null) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startPacketCapture(mode, channel) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_PACKET_CAPTURE, "Packet capture")
+            ghostRepository.startPacketCapture(mode, channel)
+        }
     }
 
     fun stopPacketCapture() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopPacketCapture() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopPacketCapture()
+            stopBackgroundOperation(BackgroundOperationService.OP_PACKET_CAPTURE)
+        }
     }
 
     // ==================== BLE ====================
@@ -453,12 +504,16 @@ class MainViewModel @Inject constructor(
 
     fun startBleSpam(mode: GhostCommand.BleSpamMode? = null) {
         viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_BLE_SPAM, "BLE spam")
             ghostRepository.startBleSpam(mode)
         }
     }
 
     fun stopBleSpam() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBleSpam() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopBleSpam()
+            stopBackgroundOperation(BackgroundOperationService.OP_BLE_SPAM)
+        }
     }
 
     fun listFlippers() {
@@ -471,6 +526,11 @@ class MainViewModel @Inject constructor(
 
     fun spoofAirTag(start: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
+            if (start) {
+                runInBackground(BackgroundOperationService.OP_AIRTAG_SPOOF, "AirTag spoofing")
+            } else {
+                stopBackgroundOperation(BackgroundOperationService.OP_AIRTAG_SPOOF)
+            }
             ghostRepository.spoofAirTag(start)
         }
     }
@@ -496,17 +556,24 @@ class MainViewModel @Inject constructor(
 
     fun selectAndTrackGatt(indices: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_TRACK_GATT, "GATT tracking")
             ghostRepository.selectGatt(indices)
             ghostRepository.trackGatt()
         }
     }
 
     fun trackGatt() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.trackGatt() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_TRACK_GATT, "GATT tracking")
+            ghostRepository.trackGatt()
+        }
     }
 
     fun trackFlipper(index: Int) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.trackFlipper(index) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_TRACK_FLIPPER, "Flipper tracking")
+            ghostRepository.trackFlipper(index)
+        }
     }
     
     fun clearGattDevices() {
@@ -540,11 +607,17 @@ class MainViewModel @Inject constructor(
     }
 
     fun startIrDazzler() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startIrDazzler() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_IR_DAZZLER, "IR dazzler")
+            ghostRepository.startIrDazzler()
+        }
     }
 
     fun stopIrDazzler() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopIrDazzler() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopIrDazzler()
+            stopBackgroundOperation(BackgroundOperationService.OP_IR_DAZZLER)
+        }
     }
 
     fun showIrRemote(remoteIndex: Int) {
@@ -568,19 +641,31 @@ class MainViewModel @Inject constructor(
     }
 
     fun runBadUsbScript(filename: String) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.runBadUsbScript(filename) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_BADUSB, "BadUSB script")
+            ghostRepository.runBadUsbScript(filename)
+        }
     }
 
     fun stopBadUsb() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBadUsb() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopBadUsb()
+            stopBackgroundOperation(BackgroundOperationService.OP_BADUSB)
+        }
     }
 
     fun startBadUsbKeyboard() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startBadUsbKeyboard() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_BADUSB_KEYBOARD, "BadUSB keyboard")
+            ghostRepository.startBadUsbKeyboard()
+        }
     }
 
     fun stopBadUsbKeyboard() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBadUsbKeyboard() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopBadUsbKeyboard()
+            stopBackgroundOperation(BackgroundOperationService.OP_BADUSB_KEYBOARD)
+        }
     }
 
     fun typeBadUsbText(text: String) {
@@ -588,37 +673,61 @@ class MainViewModel @Inject constructor(
     }
 
     fun startBadUsbJiggler() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startBadUsbJiggler() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_BADUSB_JIGGLER, "BadUSB jiggler")
+            ghostRepository.startBadUsbJiggler()
+        }
     }
 
     fun stopBadUsbJiggler() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBadUsbJiggler() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopBadUsbJiggler()
+            stopBackgroundOperation(BackgroundOperationService.OP_BADUSB_JIGGLER)
+        }
     }
 
     // ==================== GPS ====================
 
     fun getGpsInfo() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.getGpsInfo() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_GPS_INFO, "GPS info")
+            ghostRepository.getGpsInfo()
+        }
     }
 
     fun stopGpsInfo() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopGpsInfo() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopGpsInfo()
+            stopBackgroundOperation(BackgroundOperationService.OP_GPS_INFO)
+        }
     }
 
     fun startWardrive() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startWardrive() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_WARDRIVE, "Wardriving")
+            ghostRepository.startWardrive()
+        }
     }
 
     fun stopWardrive() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopWardrive() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopWardrive()
+            stopBackgroundOperation(BackgroundOperationService.OP_WARDRIVE)
+        }
     }
 
     fun startBleWardrive() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startBleWardrive() }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_BLE_WARDRIVE, "BLE wardriving")
+            ghostRepository.startBleWardrive()
+        }
     }
 
     fun stopBleWardrive() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBleWardrive() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopBleWardrive()
+            stopBackgroundOperation(BackgroundOperationService.OP_BLE_WARDRIVE)
+        }
     }
 
     fun updatePhoneLocation(location: PhoneLocation) {
@@ -626,12 +735,17 @@ class MainViewModel @Inject constructor(
     }
 
     fun startPhoneWardrive(includeBle: Boolean = false) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startPhoneWardrive(includeBle) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val title = if (includeBle) "Phone GPS wardriving + BLE" else "Phone GPS wardriving"
+            runInBackground(BackgroundOperationService.OP_PHONE_WARDRIVE, title)
+            ghostRepository.startPhoneWardrive(includeBle)
+        }
     }
 
     fun stopPhoneWardrive(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.stopPhoneWardrive(context)
+            stopBackgroundOperation(BackgroundOperationService.OP_PHONE_WARDRIVE)
             refreshSavedWardriveCsvs(context)
         }
     }
@@ -724,7 +838,10 @@ class MainViewModel @Inject constructor(
     }
 
     fun trackAerialDevice(indexOrMac: String) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.trackAerialDevice(indexOrMac) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_AERIAL_TRACK, "Aerial tracking")
+            ghostRepository.trackAerialDevice(indexOrMac)
+        }
     }
 
     fun spoofAerialDevice(
@@ -733,23 +850,33 @@ class MainViewModel @Inject constructor(
         lon: Double = -122.4194,
         alt: Float = 100.0f
     ) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.spoofAerialDevice(deviceId, lat, lon, alt) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_AERIAL_SPOOF, "Aerial spoofing")
+            ghostRepository.spoofAerialDevice(deviceId, lat, lon, alt)
+        }
     }
 
     fun stopAerialSpoof() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopAerialSpoof() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopAerialSpoof()
+            stopBackgroundOperation(BackgroundOperationService.OP_AERIAL_SPOOF)
+        }
     }
 
     // ==================== Portal ====================
 
     fun startPortal(path: String, ssid: String, password: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_PORTAL, "Evil portal")
             ghostRepository.startPortal(path, ssid, password)
         }
     }
 
     fun stopPortal() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopPortal() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopPortal()
+            stopBackgroundOperation(BackgroundOperationService.OP_PORTAL)
+        }
     }
 
     fun listPortals() {
@@ -789,7 +916,10 @@ class MainViewModel @Inject constructor(
     }
 
     fun stopAll() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopAll() }
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopAll()
+            stopAllBackgroundOperations()
+        }
     }
 
     fun reboot() {
