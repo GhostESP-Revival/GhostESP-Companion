@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.FileProvider
 import com.example.ghostespcompanion.R
+import com.example.ghostespcompanion.data.PhoneLocation
 import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 import com.example.ghostespcompanion.data.serial.GhostSerialResponse
 import com.example.ghostespcompanion.data.serial.SerialManager
@@ -27,6 +28,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -160,6 +165,22 @@ class GhostRepository @Inject constructor(
     
     private val _isGpsTracking = MutableStateFlow(false)
     val isGpsTracking: StateFlow<Boolean> = _isGpsTracking.asStateFlow()
+
+    private val _isPhoneWardriving = MutableStateFlow(false)
+    val isPhoneWardriving: StateFlow<Boolean> = _isPhoneWardriving.asStateFlow()
+
+    private val _phoneWardriveStats = MutableStateFlow(PhoneWardriveStats())
+    val phoneWardriveStats: StateFlow<PhoneWardriveStats> = _phoneWardriveStats.asStateFlow()
+
+    private val _phoneWardriveAps = MutableStateFlow<List<PhoneWardriveAp>>(emptyList())
+    val phoneWardriveAps: StateFlow<List<PhoneWardriveAp>> = _phoneWardriveAps.asStateFlow()
+
+    @Volatile private var latestPhoneLocation: PhoneLocation? = null
+    private val phoneWardriveRows = ConcurrentHashMap<String, PhoneWardriveRow>()
+    private val phoneWardriveApsLock = Any()
+    private var phoneWardriveObservations = 0
+    private var phoneWardriveLocatedObservations = 0
+    private var phoneWardriveStartedAt = 0L
     
     // Handshake capture state - using SharedFlow to emit each handshake event
     private val _handshakeEvents = MutableSharedFlow<GhostResponse.Handshake>(replay = 0, extraBufferCapacity = 16)
@@ -784,6 +805,107 @@ class GhostRepository @Inject constructor(
     suspend fun stopBleWardrive() {
         _isBleWardriving.value = false
         sendCommand(GhostCommand.BleWardrive(true))
+    }
+
+    fun updatePhoneLocation(location: PhoneLocation) {
+        latestPhoneLocation = location
+        if (_isPhoneWardriving.value) {
+            publishPhoneWardriveStats()
+        }
+    }
+
+    suspend fun startPhoneWardrive() {
+        phoneWardriveRows.clear()
+        synchronized(phoneWardriveApsLock) {
+            _phoneWardriveAps.value = emptyList()
+        }
+        phoneWardriveObservations = 0
+        phoneWardriveLocatedObservations = 0
+        phoneWardriveStartedAt = System.currentTimeMillis()
+        _phoneWardriveStats.value = PhoneWardriveStats(gpsFix = latestPhoneLocation != null)
+        _isPhoneWardriving.value = true
+        sendCommand(GhostCommand.WdStream())
+    }
+
+    suspend fun stopPhoneWardrive(context: Context) {
+        _isPhoneWardriving.value = false
+        sendCommand(GhostCommand.WdStream(stop = true))
+        savePhoneWardriveCsv(context)
+    }
+
+    fun listSavedWardriveCsvs(context: Context): List<SavedWardriveCsv> {
+        val results = mutableListOf<SavedWardriveCsv>()
+        try {
+            val resolver = context.contentResolver
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                val projection = arrayOf(
+                    MediaStore.Downloads._ID,
+                    MediaStore.Downloads.DISPLAY_NAME,
+                    MediaStore.Downloads.SIZE,
+                    MediaStore.Downloads.DATE_ADDED
+                )
+                val selection = "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?"
+                val args = arrayOf("ghostesp_phone_wardrive_%.csv")
+                val sortOrder = "${MediaStore.Downloads.DATE_ADDED} DESC"
+                resolver.query(collection, projection, selection, args, sortOrder)?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
+                    val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
+                    val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE)
+                    val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_ADDED)
+                    while (cursor.moveToNext()) {
+                        val uri = Uri.withAppendedPath(collection, cursor.getLong(idCol).toString())
+                        results.add(SavedWardriveCsv(
+                            uri = uri.toString(),
+                            fileName = cursor.getString(nameCol),
+                            size = cursor.getLong(sizeCol),
+                            dateAdded = cursor.getLong(dateCol) * 1000L
+                        ))
+                    }
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                downloadsDir.listFiles()?.filter {
+                    it.name.startsWith("ghostesp_phone_wardrive_") && it.name.endsWith(".csv")
+                }?.sortedByDescending { it.lastModified() }?.forEach { file ->
+                    results.add(SavedWardriveCsv(
+                        uri = Uri.fromFile(file).toString(),
+                        fileName = file.name,
+                        size = file.length(),
+                        dateAdded = file.lastModified()
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("GhostRepository", "Failed to list saved wardrive CSVs", e)
+        }
+        return results
+    }
+
+    fun deleteSavedWardriveCsv(context: Context, uriString: String): Boolean {
+        return try {
+            val uri = Uri.parse(uriString)
+            val rows = context.contentResolver.delete(uri, null, null)
+            rows > 0
+        } catch (e: Exception) {
+            Log.e("GhostRepository", "Failed to delete wardrive CSV", e)
+            false
+        }
+    }
+
+    fun getSavedWardriveCsvShareIntent(context: Context, uriString: String): Intent? {
+        return try {
+            val uri = Uri.parse(uriString)
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        } catch (e: Exception) {
+            Log.e("GhostRepository", "Failed to create share intent", e)
+            null
+        }
     }
 
     // ==================== SD Card Commands ====================
@@ -1542,6 +1664,142 @@ class GhostRepository @Inject constructor(
         return parsedAny
     }
 
+    private fun handleWdStreamAp(ap: GhostResponse.WdStreamAp) {
+        phoneWardriveObservations += 1
+
+        val location = latestPhoneLocation
+        if (location != null) {
+            phoneWardriveLocatedObservations += 1
+            val firstSeen = phoneWardriveRows[ap.bssid]?.firstSeen ?: formatWigleTimestamp(location.timestamp)
+            phoneWardriveRows[ap.bssid] = PhoneWardriveRow(
+                bssid = ap.bssid,
+                ssid = if (ap.hidden) "" else ap.ssid,
+                auth = ap.auth,
+                channel = ap.channel,
+                rssi = ap.rssi,
+                latitude = location.latitude,
+                longitude = location.longitude,
+                altitude = location.altitude ?: 0.0,
+                accuracy = location.accuracy ?: 0f,
+                firstSeen = firstSeen
+            )
+            addPhoneWardriveAp(ap.bssid, if (ap.hidden) "" else ap.ssid, ap.rssi, location)
+        }
+
+        publishPhoneWardriveStats()
+    }
+
+    private fun addPhoneWardriveAp(bssid: String, ssid: String, rssi: Int, location: PhoneLocation) {
+        synchronized(phoneWardriveApsLock) {
+            val current = _phoneWardriveAps.value
+            val existing = current.find { it.bssid == bssid }
+            val ap = PhoneWardriveAp(
+                bssid = bssid,
+                ssid = ssid,
+                rssi = rssi,
+                latitude = location.latitude,
+                longitude = location.longitude
+            )
+            if (existing != null) {
+                _phoneWardriveAps.value = current.map { if (it.bssid == bssid) ap else it }
+            } else {
+                _phoneWardriveAps.value = (current + ap).take(10_000)
+            }
+        }
+    }
+
+    private fun publishPhoneWardriveStats(savedFileName: String? = _phoneWardriveStats.value.savedFileName) {
+        _phoneWardriveStats.value = PhoneWardriveStats(
+            accessPoints = phoneWardriveRows.size,
+            observations = phoneWardriveObservations,
+            locatedObservations = phoneWardriveLocatedObservations,
+            gpsFix = latestPhoneLocation != null,
+            savedFileName = savedFileName
+        )
+    }
+
+    private fun savePhoneWardriveCsv(context: Context) {
+        if (phoneWardriveRows.isEmpty()) {
+            publishPhoneWardriveStats()
+            _statusMessage.value = "Phone wardrive stopped: no GPS-tagged APs captured"
+            return
+        }
+
+        val fileName = "ghostesp_phone_wardrive_${formatFileTimestamp(phoneWardriveStartedAt)}.csv"
+        val csv = buildPhoneWardriveCsv()
+        try {
+            val uri = saveToDownloads(context, fileName, csv.toByteArray(Charsets.UTF_8))
+            showDownloadNotification(context, fileName, uri, csv.length)
+            publishPhoneWardriveStats(fileName)
+            _statusMessage.value = "Phone wardrive saved: $fileName"
+        } catch (e: Exception) {
+            Log.e("GhostRepository", "Failed to save phone wardrive CSV", e)
+            _statusMessage.value = "Phone wardrive save failed: ${e.message ?: "unknown error"}"
+        }
+    }
+
+    private fun buildPhoneWardriveCsv(): String {
+        val header = "WigleWifi-1.6,appRelease=GhostESP Companion,model=Android,release=,device=phone,display=NONE,board=Android,brand=GhostESP,star=Sol,body=3,subBody=0\n" +
+            "MAC,SSID,AuthMode,FirstSeen,Channel,Frequency,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,RCOIs,MfgrId,Type\n"
+        return buildString {
+            append(header)
+            phoneWardriveRows.values.sortedBy { it.bssid }.forEach { row ->
+                append(csvEscape(row.bssid)).append(',')
+                append(csvEscape(row.ssid)).append(',')
+                append(csvEscape(wigleWifiCapabilities(row.auth))).append(',')
+                append(csvEscape(row.firstSeen)).append(',')
+                append(row.channel).append(',')
+                append(channelToFrequency(row.channel)).append(',')
+                append(row.rssi).append(',')
+                append(String.format(Locale.US, "%.6f", row.latitude)).append(',')
+                append(String.format(Locale.US, "%.6f", row.longitude)).append(',')
+                append(Math.round(row.altitude)).append(',')
+                append(String.format(Locale.US, "%.1f", row.accuracy)).append(',')
+                append(',').append(',')  // RCOIs, MfgrId (empty)
+                append("WIFI\n")
+            }
+        }
+    }
+
+    private fun wigleWifiCapabilities(auth: String): String {
+        return when (auth.uppercase()) {
+            "OPEN", "" -> "[ESS]"
+            "WEP" -> "[WEP][ESS]"
+            "WPA" -> "[WPA-PSK][ESS]"
+            "WPA2" -> "[WPA2-PSK][ESS]"
+            "WPA3" -> "[WPA3-SAE][ESS]"
+            "OWE" -> "[OWE][ESS]"
+            else -> "[ESS]"
+        }
+    }
+
+    private fun channelToFrequency(channel: Int): Int {
+        return if (channel == 14) {
+            2484
+        } else if (channel > 14) {
+            5000 + (channel * 5)
+        } else {
+            2407 + (channel * 5)
+        }
+    }
+
+    private fun csvEscape(value: String): String {
+        if (!value.contains(',') && !value.contains('"') && !value.contains('\n')) return value
+        return "\"${value.replace("\"", "\"\"")}\""
+    }
+
+    private fun formatWigleTimestamp(timestamp: Long): String {
+        return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date(timestamp))
+    }
+
+    private fun formatFileTimestamp(timestamp: Long): String {
+        return SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date(timestamp.takeIf { it > 0 } ?: System.currentTimeMillis()))
+    }
+
     private fun parseResponse(response: GhostSerialResponse) {
         val startNanos = System.nanoTime()
 
@@ -1559,6 +1817,23 @@ class GhostRepository @Inject constructor(
                     // Use cache for deduplication
                     apCache[ap.index] = ap
                     _accessPoints.value = apCache.values.sortedBy { it.index }
+                }
+            }
+            GhostSerialResponse.ResponseType.WDSTREAM_AP -> {
+                GhostResponse.WdStreamAp.parse(response.raw)?.let { ap ->
+                    handleWdStreamAp(ap)
+                    if (_isPhoneWardriving.value) {
+                        _statusMessage.value = "Phone WD: ${phoneWardriveRows.size} APs, ${phoneWardriveLocatedObservations}/${phoneWardriveObservations} GPS-tagged"
+                    }
+                }
+            }
+            GhostSerialResponse.ResponseType.WDSTREAM_STATUS -> {
+                GhostResponse.WdStreamStatus.parse(response.raw)?.let { status ->
+                    if (response.raw.startsWith("WD:END")) {
+                        _isPhoneWardriving.value = false
+                    }
+                    publishPhoneWardriveStats()
+                    _statusMessage.value = status.message
                 }
             }
             GhostSerialResponse.ResponseType.BLE_DEVICE -> {
@@ -1884,6 +2159,15 @@ class GhostRepository @Inject constructor(
         _wardriveStats.value = null
         _isWardriving.value = false
         _isBleWardriving.value = false
+        _isPhoneWardriving.value = false
+        phoneWardriveRows.clear()
+        synchronized(phoneWardriveApsLock) {
+            _phoneWardriveAps.value = emptyList()
+        }
+        phoneWardriveObservations = 0
+        phoneWardriveLocatedObservations = 0
+        phoneWardriveStartedAt = 0L
+        _phoneWardriveStats.value = PhoneWardriveStats(gpsFix = latestPhoneLocation != null)
     }
     
     /**
@@ -1975,3 +2259,39 @@ sealed class FileTransferProgress {
     data class Complete(val fileName: String, val success: Boolean, val error: String? = null) : FileTransferProgress()
     data object Cancelled : FileTransferProgress()
 }
+
+data class PhoneWardriveStats(
+    val accessPoints: Int = 0,
+    val observations: Int = 0,
+    val locatedObservations: Int = 0,
+    val gpsFix: Boolean = false,
+    val savedFileName: String? = null
+)
+
+data class PhoneWardriveAp(
+    val bssid: String,
+    val ssid: String,
+    val rssi: Int,
+    val latitude: Double,
+    val longitude: Double
+)
+
+private data class PhoneWardriveRow(
+    val bssid: String,
+    val ssid: String,
+    val auth: String,
+    val channel: Int,
+    val rssi: Int,
+    val latitude: Double,
+    val longitude: Double,
+    val altitude: Double,
+    val accuracy: Float,
+    val firstSeen: String
+)
+
+data class SavedWardriveCsv(
+    val uri: String,
+    val fileName: String,
+    val size: Long,
+    val dateAdded: Long
+)

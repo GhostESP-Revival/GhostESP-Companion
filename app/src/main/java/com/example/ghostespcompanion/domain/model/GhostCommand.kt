@@ -635,6 +635,21 @@ sealed class GhostCommand {
         override val commandString: String = if (stop) "startwd -s" else "startwd"
         override val timeoutMs: Long = if (stop) 5000 else Long.MAX_VALUE
     }
+
+    /** Stream structured observations for phone-GPS wardriving */
+    data class WdStream(
+        val stop: Boolean = false,
+        val status: Boolean = false,
+        val intervalMs: Int = 2000
+    ) : GhostCommand() {
+        override val requiresStopFirst: Boolean get() = !stop && !status
+        override val commandString: String = when {
+            stop -> "wdstream stop"
+            status -> "wdstream status"
+            else -> "wdstream start -wifi -i $intervalMs -ch auto"
+        }
+        override val timeoutMs: Long = if (stop || status) 5000 else Long.MAX_VALUE
+    }
     
     /** Set GPS pin */
     data class GpsPin(val pin: Int) : GhostCommand() {

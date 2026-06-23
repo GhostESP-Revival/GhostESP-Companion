@@ -1,12 +1,18 @@
 package com.example.ghostespcompanion.ui.screens.more
 
 import android.Manifest
+import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Point
 import android.graphics.drawable.Drawable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -15,15 +21,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
 import com.example.ghostespcompanion.data.PhoneLocation
+import com.example.ghostespcompanion.data.repository.PhoneWardriveAp
+import com.example.ghostespcompanion.data.repository.SavedWardriveCsv
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -37,6 +47,10 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Overlay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,8 +58,8 @@ fun GpsScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
-    var showMap by remember { mutableStateOf(true) }
     var showOverlay by remember { mutableStateOf(true) }
+    var showCsvExplorer by remember { mutableStateOf(false) }
     var showSdCardWarning by remember { mutableStateOf(false) }
     var sdCardCheckDone by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -74,6 +88,7 @@ fun GpsScreen(
             try {
                 viewModel.locationHelper.getLocationUpdates().collect { location ->
                     phoneLocation = location
+                    viewModel.updatePhoneLocation(location)
                 }
             } catch (_: SecurityException) {
                 // Permission revoked at runtime — silently ignore
@@ -100,12 +115,20 @@ fun GpsScreen(
             showSdCardWarning = true
         }
     }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshSavedWardriveCsvs(context)
+    }
     
     val gpsPosition by viewModel.gpsPosition.collectAsState()
     val wardriveStats by viewModel.wardriveStats.collectAsState()
     val isWardriving by viewModel.isWardriving.collectAsState()
     val isBleWardriving by viewModel.isBleWardriving.collectAsState()
     val isGpsTracking by viewModel.isGpsTracking.collectAsState()
+    val isPhoneWardriving by viewModel.isPhoneWardriving.collectAsState()
+    val phoneWardriveStats by viewModel.phoneWardriveStats.collectAsState()
+    val phoneWardriveAps by viewModel.phoneWardriveAps.collectAsState()
+    val savedWardriveCsvs by viewModel.savedWardriveCsvs.collectAsState()
     
     val appSettings by viewModel.appSettings.collectAsState()
     val privacyMode = appSettings.privacyMode
@@ -114,6 +137,7 @@ fun GpsScreen(
     val hasDeviceInfo = deviceInfo != null
     
     val mapView = remember { MapView(context) }
+    val phoneWardriveApOverlay = remember { PhoneWardriveApOverlay() }
     
     DisposableEffect(Unit) {
         mapView.setTileSource(TileSourceFactory.MAPNIK)
@@ -127,12 +151,15 @@ fun GpsScreen(
         }
     }
     
-    LaunchedEffect(phoneLocation, gpsPosition, showMap) {
-        if (!showMap) return@LaunchedEffect
-
+    LaunchedEffect(phoneLocation, gpsPosition, phoneWardriveAps) {
         withContext(Dispatchers.Main) {
             try {
                 mapView.overlays.clear()
+
+                phoneWardriveApOverlay.setAps(phoneWardriveAps)
+                if (phoneWardriveAps.isNotEmpty()) {
+                    mapView.overlays.add(phoneWardriveApOverlay)
+                }
 
                 // Create tinted marker icons
                 val defaultIcon = ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.marker_default)
@@ -182,16 +209,7 @@ fun GpsScreen(
 
     MainScreen(
         onBack = onBack,
-        title = "GPS / Wardrive",
-        actions = {
-            IconButton(onClick = { showMap = !showMap }) {
-                Icon(
-                    if (showMap) Icons.Default.List else Icons.Default.Map,
-                    contentDescription = if (showMap) "Show List" else "Show Map",
-                    tint = primaryColor()
-                )
-            }
-        }
+        title = "GPS / Wardrive"
     ) { paddingValues ->
         // Single Box with the map view always in the composition tree.
         // Removing AndroidView from composition triggers MapView.onDetachedFromWindow()
@@ -211,11 +229,11 @@ fun GpsScreen(
                 },
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (showMap && privacyMode) Modifier.blur(25.dp) else Modifier)
+                    .then(if (privacyMode) Modifier.blur(25.dp) else Modifier)
             )
 
-            // Privacy overlay (map mode only)
-            if (showMap && privacyMode) {
+            // Privacy overlay
+            if (privacyMode) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -253,7 +271,7 @@ fun GpsScreen(
                     show = showOverlay,
                     onProceed = { showOverlay = false },
                     featureName = "GPS",
-                    message = "This device does not have GPS hardware support. Wardriving requires a GPS module."
+                    message = "This device does not report GPS hardware support. Device GPS wardriving needs a GPS module, but Phone GPS Wardrive can use this phone's location."
                 )
             }
 
@@ -267,9 +285,8 @@ fun GpsScreen(
                 )
             }
 
-            if (showMap) {
-                // Bottom stats/controls card (map mode)
-                Card(
+            // Bottom stats/controls card
+            Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
@@ -324,7 +341,7 @@ fun GpsScreen(
                                     }
                                 },
                                 containerColor = if (isWardriving) errorColor() else successColor(),
-                                enabled = isConnected && !isBleWardriving,
+                                enabled = isConnected && !isBleWardriving && !isPhoneWardriving,
                                 modifier = Modifier.weight(1f),
                                 leadingIcon = {
                                     Icon(
@@ -346,7 +363,7 @@ fun GpsScreen(
                                     }
                                 },
                                 containerColor = if (isBleWardriving) errorColor() else primaryColor(),
-                                enabled = isConnected && !isWardriving,
+                                enabled = isConnected && !isWardriving && !isPhoneWardriving,
                                 modifier = Modifier.weight(1f),
                                 leadingIcon = {
                                     Icon(
@@ -355,6 +372,57 @@ fun GpsScreen(
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Phone GPS Wardrive toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isPhoneWardriving) primaryColor().copy(alpha = 0.12f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.MyLocation,
+                                contentDescription = null,
+                                tint = if (isPhoneWardriving) primaryColor() else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Phone GPS Wardrive",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isPhoneWardriving) primaryColor() else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (isPhoneWardriving) "Capturing APs with phone GPS" else "Use phone GPS for wardriving",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = isPhoneWardriving,
+                                onCheckedChange = { enabled ->
+                                    if (enabled) {
+                                        viewModel.startPhoneWardrive()
+                                    } else {
+                                        viewModel.stopPhoneWardrive(context)
+                                    }
+                                },
+                                enabled = isConnected && hasLocationPermission && !isWardriving && !isBleWardriving,
+                                colors = SwitchDefaults.colors(
+                                    checkedTrackColor = primaryColor(),
+                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary
+                                )
                             )
                         }
 
@@ -418,10 +486,10 @@ fun GpsScreen(
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = if (isBleWardriving) "${wardriveStats?.bleDevices ?: 0}" else "${wardriveStats?.accessPoints ?: 0}",
+                                    text = if (isPhoneWardriving) "${phoneWardriveStats.accessPoints}" else if (isBleWardriving) "${wardriveStats?.bleDevices ?: 0}" else "${wardriveStats?.accessPoints ?: 0}",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isWardriving || isBleWardriving) successColor() else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (isWardriving || isBleWardriving || isPhoneWardriving) successColor() else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
                                     text = if (isBleWardriving) "BLE" else "APs",
@@ -439,171 +507,107 @@ fun GpsScreen(
                                 color = Warning
                             )
                         }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        BrutalistButton(
+                            text = "Saved CSVs (${savedWardriveCsvs.size})",
+                            onClick = {
+                                viewModel.refreshSavedWardriveCsvs(context)
+                                showCsvExplorer = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            borderColor = MaterialTheme.colorScheme.outline,
+                            textColor = MaterialTheme.colorScheme.onSurface,
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Folder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
                     }
                 }
-            } else {
-                // List view — opaque overlay on top of the (always-present) map view.
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
+
+            // CSV Explorer bottom sheet
+            if (showCsvExplorer) {
+                ModalBottomSheet(
+                    onDismissRequest = { showCsvExplorer = false },
+                    containerColor = MaterialTheme.colorScheme.surface
                 ) {
-                    GpsConnectionBanner(
-                        isConnected = isConnected,
-                        deviceName = "GhostESP",
-                        onConnect = { viewModel.connectFirstAvailable() }
-                    )
-
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-
-                        item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Saved Wardrive CSVs",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            IconButton(onClick = {
+                                viewModel.refreshSavedWardriveCsvs(context)
+                            }) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh",
+                                    tint = primaryColor()
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (savedWardriveCsvs.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                BrutalistButton(
-                                    text = if (isWardriving) "Stop Wardrive" else "Start Wardrive",
-                                    onClick = {
-                                        if (isConnected) {
-                                            if (isWardriving) {
-                                                viewModel.stopWardrive()
-                                            } else {
-                                                viewModel.startWardrive()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    containerColor = if (isWardriving) errorColor() else successColor(),
-                                    enabled = isConnected && !isBleWardriving,
-                                    leadingIcon = {
-                                        Icon(
-                                            if (isWardriving) Icons.Default.Stop else Icons.Default.TravelExplore,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-
-                                BrutalistButton(
-                                    text = if (isBleWardriving) "Stop BLE WD" else "BLE WD",
-                                    onClick = {
-                                        if (isConnected) {
-                                            if (isBleWardriving) {
-                                                viewModel.stopBleWardrive()
-                                            } else {
-                                                viewModel.startBleWardrive()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    containerColor = if (isBleWardriving) errorColor() else primaryColor(),
-                                    enabled = isConnected && !isWardriving,
-                                    leadingIcon = {
-                                        Icon(
-                                            if (isBleWardriving) Icons.Default.Stop else Icons.Default.Bluetooth,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                            }
-                        }
-
-                        if (isWardriving || isBleWardriving || wardriveStats != null) {
-                            item {
-                                Text(
-                                    text = "Wardrive Statistics",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = primaryColor()
-                                )
-                            }
-
-                            item {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                    ),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(16.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceEvenly
-                                        ) {
-                                            StatColumn(if (isBleWardriving) "BLE Devices" else "APs Seen", if (isBleWardriving) (wardriveStats?.bleDevices?.toString() ?: "0") else (wardriveStats?.accessPoints?.toString() ?: "0"))
-                                        }
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceEvenly
-                                        ) {
-                                            StatColumn("GPS Status", wardriveStats?.gpsFixStatus ?: "-")
-                                            StatColumn("Sats", wardriveStats?.gpsSatellites?.toString() ?: "0")
-                                        }
-                                        if ((wardriveStats?.gpsRejected ?: 0) > 0) {
-                                            Text(
-                                                text = "GPS Rejected: ${wardriveStats?.gpsRejected ?: 0} entries",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Warning
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (statusMessage != null) {
-                            item {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                    ),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = statusMessage!!,
-                                        modifier = Modifier.padding(16.dp),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                        }
-
-                        item {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                ),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Icon(
-                                        Icons.Default.Info,
+                                        Icons.Default.FolderOff,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(48.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     Text(
-                                        text = "CSVs are saved to the device SD card under ghostesp/gps.",
-                                        style = MaterialTheme.typography.bodySmall,
+                                        text = "No saved CSVs yet",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "Phone GPS Wardrive CSVs will appear here",
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                items(savedWardriveCsvs, key = { it.uri }) { csv ->
+                                    CsvItem(
+                                        csv = csv,
+                                        onShare = { viewModel.shareSavedWardriveCsv(context, csv.uri) },
+                                        onDelete = { viewModel.deleteSavedWardriveCsv(context, csv.uri) }
+                                    )
+                                }
+                            }
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }
@@ -723,6 +727,160 @@ private fun GpsConnectionBanner(
                 ) {
                     Text("Connect", style = MaterialTheme.typography.labelMedium)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CsvItem(
+    csv: SavedWardriveCsv,
+    onShare: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Description,
+                contentDescription = null,
+                tint = primaryColor(),
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = csv.fileName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${formatFileSize(csv.size)}  \u2022  ${SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(Date(csv.dateAdded))}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onShare) {
+                Icon(
+                    Icons.Default.Share,
+                    contentDescription = "Share",
+                    tint = primaryColor().copy(alpha = 0.7f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            IconButton(onClick = { showDeleteConfirm = true }) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = errorColor().copy(alpha = 0.7f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete CSV?") },
+            text = { Text("Are you sure you want to delete \"${csv.fileName}\"?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDelete()
+                        showDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = errorColor())
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024.0)
+        else -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+    }
+}
+
+private class PhoneWardriveApOverlay : Overlay() {
+    @Volatile private var aps: List<PhoneWardriveAp> = emptyList()
+
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f
+    }
+    private val point = Point()
+
+    fun setAps(newAps: List<PhoneWardriveAp>) {
+        aps = newAps
+    }
+
+    private fun rssiColor(rssi: Int): Int {
+        val t = ((rssi + 100).coerceIn(0, 60)).toFloat() / 60f
+        val r = (244f + (33f - 244f) * t).toInt()
+        val g = (67f + (150f - 67f) * t).toInt()
+        val b = (54f + (243f - 54f) * t).toInt()
+        return android.graphics.Color.rgb(r, g, b)
+    }
+
+    override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+        if (shadow) return
+
+        val snapshot = aps
+        if (snapshot.isEmpty()) return
+
+        val projection = mapView.projection
+        val canvasWidth = canvas.width.toFloat()
+        val canvasHeight = canvas.height.toFloat()
+        val zoom = mapView.zoomLevelDouble
+        val radius = (4f + (zoom.toFloat() - 10f).coerceAtLeast(0f) * 1.5f).coerceIn(3f, 14f)
+        val drawStroke = zoom >= 15.0
+
+        for (ap in snapshot) {
+            projection.toPixels(GeoPoint(ap.latitude, ap.longitude), point)
+
+            val px = point.x.toFloat()
+            val py = point.y.toFloat()
+
+            if (px < -radius || px > canvasWidth + radius || py < -radius || py > canvasHeight + radius) {
+                continue
+            }
+
+            val baseColor = rssiColor(ap.rssi)
+            fillPaint.color = android.graphics.Color.argb(180, android.graphics.Color.red(baseColor), android.graphics.Color.green(baseColor), android.graphics.Color.blue(baseColor))
+            canvas.drawCircle(px, py, radius, fillPaint)
+
+            if (drawStroke) {
+                strokePaint.color = android.graphics.Color.argb(220, android.graphics.Color.red(baseColor), android.graphics.Color.green(baseColor), android.graphics.Color.blue(baseColor))
+                canvas.drawCircle(px, py, radius, strokePaint)
             }
         }
     }

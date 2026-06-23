@@ -254,6 +254,8 @@ class SerialManager @Inject constructor(
     private val blePendingBridgeAcks = mutableMapOf<Int, CompletableDeferred<Pair<Boolean, Int>>>()
     private val cmdIdLastDataMs = java.util.concurrent.ConcurrentHashMap<Int, Long>()
     private var bleActiveCmdId: Int = 0
+    @Volatile private var bleWdStreamCmdId: Int = 0
+    private val bleWdStreamLineBuffer = StringBuilder(512)
     private val cmdIdIdleCloseMs = 200L
 
     // Atomic flag for connection status
@@ -1085,6 +1087,16 @@ class SerialManager @Inject constructor(
         }
     }
 
+    private fun isWdStreamStartCommand(command: String): Boolean {
+        return command.trim().startsWith("wdstream start", ignoreCase = true)
+    }
+
+    private fun isBleInterruptCommand(command: String): Boolean {
+        val trimmed = command.trim()
+        return trimmed.equals("stop", ignoreCase = true) ||
+            trimmed.equals("wdstream stop", ignoreCase = true)
+    }
+
     private fun buildBleBridgeCommandFrame(commandId: Int, command: String): ByteArray {
         val payload = command.toByteArray(Charsets.US_ASCII)
         val frame = ByteArray(BLE_BRIDGE_FRAME_HEADER_LEN + payload.size)
@@ -1253,11 +1265,28 @@ class SerialManager @Inject constructor(
                 val gatt = bluetoothGatt ?: return@withContext false
                 val characteristic = bleRxCharacteristic ?: return@withContext false
                 val commandId = bridgeCommandId
+                val isInterruptCommand = isBleInterruptCommand(command)
+                val isWdStreamStart = isWdStreamStartCommand(command)
 
                 val ok = bleCommandMutex.withLock {
-                    awaitBleActiveCommandClear()
+                    if (isInterruptCommand) {
+                        val previousCmdId = bleActiveCmdId
+                        bleActiveCmdId = 0
+                        bleWdStreamLineBuffer.clear()
+                        cmdIdLastDataMs.remove(previousCmdId)
+                        synchronized(bleBridgeStateLock) {
+                            blePendingBridgeAcks.remove(previousCmdId)
+                            blePendingCommandEnds.remove(previousCmdId)
+                        }
+                    } else {
+                        awaitBleActiveCommandClear()
+                    }
                     bleActiveCmdId = commandId
                     cmdIdLastDataMs[commandId] = System.currentTimeMillis()
+                    if (isWdStreamStart) {
+                        bleWdStreamCmdId = commandId
+                        bleWdStreamLineBuffer.clear()
+                    }
 
                     val ackDeferred = CompletableDeferred<Pair<Boolean, Int>>()
                     val endDeferred = CompletableDeferred<Unit>()
@@ -1511,6 +1540,41 @@ class SerialManager @Inject constructor(
         processIncomingDataFast(payload, payload.size)
     }
 
+    private fun emitBleWdStreamPayload(payload: ByteArray) {
+        if (payload.isEmpty()) return
+
+        for (byte in payload) {
+            val value = byte.toInt() and 0xFF
+            when {
+                value == '\r'.code -> Unit
+                value == '\n'.code -> flushBleWdStreamLine()
+                value in 0x20..0x7E || value == '\t'.code -> {
+                    if (bleWdStreamLineBuffer.length < 2048) {
+                        bleWdStreamLineBuffer.append(value.toChar())
+                    } else {
+                        bleWdStreamLineBuffer.clear()
+                    }
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    private fun flushBleWdStreamLine() {
+        if (bleWdStreamLineBuffer.isEmpty()) return
+        val rawLine = bleWdStreamLineBuffer.toString()
+        bleWdStreamLineBuffer.clear()
+        val wdIndex = rawLine.indexOf("WD:")
+        if (wdIndex < 0) return
+
+        val line = rawLine.substring(wdIndex).trim()
+        if (!line.startsWith("WD:")) return
+        processLine(line)
+        if (line.startsWith("WD:END")) {
+            bleWdStreamCmdId = 0
+        }
+    }
+
     private fun processBleBridgeFrame(frame: BleBridgeFrame) {
         when (frame.type) {
             BLE_BRIDGE_FRAME_TYPE_ACK -> {
@@ -1521,7 +1585,11 @@ class SerialManager @Inject constructor(
                 cmdIdLastDataMs[frame.commandId] = System.currentTimeMillis()
                 if (frame.payload.isNotEmpty()) {
                     _bleBridgeDataPayloads.tryEmit(frame.payload.copyOf())
-                    emitBleBridgeText(frame.payload)
+                    if (frame.commandId == bleWdStreamCmdId) {
+                        emitBleWdStreamPayload(frame.payload)
+                    } else {
+                        emitBleBridgeText(frame.payload)
+                    }
                 }
             }
             BLE_BRIDGE_FRAME_TYPE_END -> {
@@ -2192,7 +2260,9 @@ data class GhostSerialResponse(
         PCAP_FILE,
         WIFI_CONNECTION,
         WIFI_STATUS,
-        WARDDRIVE_STATS
+        WARDDRIVE_STATS,
+        WDSTREAM_AP,
+        WDSTREAM_STATUS
     }
 
     // Lazy evaluation of type for performance
@@ -2203,6 +2273,10 @@ data class GhostSerialResponse(
     private fun detectTypeFast(): ResponseType {
         return when {
             raw.startsWith("[") && raw.contains("SSID:") -> ResponseType.ACCESS_POINT
+
+            raw.startsWith("WD:AP ") -> ResponseType.WDSTREAM_AP
+
+            raw.startsWith("WD:BEGIN") || raw.startsWith("WD:STATUS ") || raw.startsWith("WD:END") -> ResponseType.WDSTREAM_STATUS
 
             raw.contains("Flipper") && raw.contains("Found") -> ResponseType.FLIPPER_DEVICE
 

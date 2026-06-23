@@ -337,6 +337,95 @@ sealed class GhostResponse {
             }
         }
     }
+
+    /** Structured wardrive stream AP observation from wdstream. */
+    data class WdStreamAp(
+        val timestampMs: Long,
+        val bssid: String,
+        val ssid: String,
+        val rssi: Int,
+        val channel: Int,
+        val auth: String,
+        val hidden: Boolean
+    ) : GhostResponse() {
+        companion object {
+            fun parse(line: String): WdStreamAp? {
+                if (!line.startsWith("WD:AP ")) return null
+
+                val fields = parseWdFields(line.removePrefix("WD:AP "))
+                val bssid = fields["bssid"]?.uppercase() ?: return null
+                return WdStreamAp(
+                    timestampMs = fields["ts"]?.toLongOrNull() ?: 0L,
+                    bssid = bssid,
+                    ssid = decodeHex(fields["ssid_hex"].orEmpty()),
+                    rssi = fields["rssi"]?.toIntOrNull() ?: -100,
+                    channel = fields["ch"]?.toIntOrNull() ?: 0,
+                    auth = fields["auth"] ?: "UNKNOWN",
+                    hidden = fields["hidden"] == "1"
+                )
+            }
+
+            private fun parseWdFields(text: String): Map<String, String> {
+                val fields = HashMap<String, String>()
+                text.split(' ').forEach { token ->
+                    val separator = token.indexOf('=')
+                    if (separator > 0 && separator < token.lastIndex) {
+                        fields[token.substring(0, separator)] = token.substring(separator + 1)
+                    } else if (separator > 0) {
+                        fields[token.substring(0, separator)] = ""
+                    }
+                }
+                return fields
+            }
+
+            private fun decodeHex(hex: String): String {
+                if (hex.isEmpty() || hex.length % 2 != 0) return ""
+                return try {
+                    val bytes = ByteArray(hex.length / 2)
+                    var i = 0
+                    while (i < hex.length) {
+                        bytes[i / 2] = hex.substring(i, i + 2).toInt(16).toByte()
+                        i += 2
+                    }
+                    bytes.toString(Charsets.UTF_8)
+                } catch (_: Exception) {
+                    ""
+                }
+            }
+        }
+    }
+
+    /** Status line from wdstream. */
+    data class WdStreamStatus(
+        val running: Boolean,
+        val accessPoints: Int,
+        val channel: Int?,
+        val message: String
+    ) : GhostResponse() {
+        companion object {
+            fun parse(line: String): WdStreamStatus? {
+                if (!line.startsWith("WD:")) return null
+                if (line.startsWith("WD:BEGIN")) {
+                    return WdStreamStatus(running = true, accessPoints = 0, channel = null, message = line)
+                }
+                if (line.startsWith("WD:END")) {
+                    return WdStreamStatus(running = false, accessPoints = 0, channel = null, message = line)
+                }
+                if (!line.startsWith("WD:STATUS ")) return null
+
+                val fields = line.removePrefix("WD:STATUS ").split(' ').mapNotNull { token ->
+                    val separator = token.indexOf('=')
+                    if (separator > 0) token.substring(0, separator) to token.substring(separator + 1) else null
+                }.toMap()
+                return WdStreamStatus(
+                    running = true,
+                    accessPoints = fields["aps"]?.toIntOrNull() ?: 0,
+                    channel = fields["ch"]?.toIntOrNull(),
+                    message = line
+                )
+            }
+        }
+    }
     
     /** WiFi Station - multiline format */
     data class Station(

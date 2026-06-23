@@ -1,14 +1,19 @@
 package com.example.ghostespcompanion.ui.viewmodel
 
 import android.content.Context
+import android.content.Intent
 import android.hardware.usb.UsbDevice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ghostespcompanion.data.LocationHelper
+import com.example.ghostespcompanion.data.PhoneLocation
 import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 import com.example.ghostespcompanion.data.repository.AppSettings
 import com.example.ghostespcompanion.data.repository.FileTransferProgress
 import com.example.ghostespcompanion.data.repository.GhostRepository
+import com.example.ghostespcompanion.data.repository.PhoneWardriveAp
+import com.example.ghostespcompanion.data.repository.PhoneWardriveStats
+import com.example.ghostespcompanion.data.repository.SavedWardriveCsv
 import com.example.ghostespcompanion.data.repository.PreferencesRepository
 import com.example.ghostespcompanion.data.repository.SettingsManager
 import com.example.ghostespcompanion.data.serial.SerialManager
@@ -194,6 +199,12 @@ class MainViewModel @Inject constructor(
     val isWardriving: StateFlow<Boolean> = ghostRepository.isWardriving
     val isBleWardriving: StateFlow<Boolean> = ghostRepository.isBleWardriving
     val isGpsTracking: StateFlow<Boolean> = ghostRepository.isGpsTracking
+    val isPhoneWardriving: StateFlow<Boolean> = ghostRepository.isPhoneWardriving
+    val phoneWardriveStats: StateFlow<PhoneWardriveStats> = ghostRepository.phoneWardriveStats
+    val phoneWardriveAps: StateFlow<List<PhoneWardriveAp>> = ghostRepository.phoneWardriveAps
+
+    private val _savedWardriveCsvs = MutableStateFlow<List<SavedWardriveCsv>>(emptyList())
+    val savedWardriveCsvs: StateFlow<List<SavedWardriveCsv>> = _savedWardriveCsvs.asStateFlow()
     
     // Loading state
     val isLoading: StateFlow<Boolean> = ghostRepository.isLoading
@@ -608,6 +619,44 @@ class MainViewModel @Inject constructor(
 
     fun stopBleWardrive() {
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopBleWardrive() }
+    }
+
+    fun updatePhoneLocation(location: PhoneLocation) {
+        ghostRepository.updatePhoneLocation(location)
+    }
+
+    fun startPhoneWardrive() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startPhoneWardrive() }
+    }
+
+    fun stopPhoneWardrive(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.stopPhoneWardrive(context)
+            refreshSavedWardriveCsvs(context)
+        }
+    }
+
+    fun refreshSavedWardriveCsvs(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _savedWardriveCsvs.value = ghostRepository.listSavedWardriveCsvs(context)
+        }
+    }
+
+    fun deleteSavedWardriveCsv(context: Context, uriString: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.deleteSavedWardriveCsv(context, uriString)
+            refreshSavedWardriveCsvs(context)
+        }
+    }
+
+    fun shareSavedWardriveCsv(context: Context, uriString: String) {
+        ghostRepository.getSavedWardriveCsvShareIntent(context, uriString)?.let { intent ->
+            try {
+                context.startActivity(Intent.createChooser(intent, "Share CSV"))
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "No activity to share CSV: ${e.message}")
+            }
+        }
     }
 
     // ==================== SD Card ====================
