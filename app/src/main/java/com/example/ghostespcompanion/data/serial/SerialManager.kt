@@ -315,6 +315,7 @@ class SerialManager @Inject constructor(
         private const val BLE_GATT_OP_GAP_MS = 75L
         private const val BLE_DISCOVER_SERVICES_DELAY_MS = 300L
         private const val BLE_DISCOVERY_TIMEOUT_MS = 6000L
+        private const val BLE_GATT_CONNECT_TIMEOUT_MS = 15000L
         private const val BLE_FALLBACK_FLUSH_BYTES = 64
         private const val RX_IDLE_POLL_MS = 50L
         /** Ordered list of baud rates to probe. 115200 first — covers stock GhostESP firmware. */
@@ -348,6 +349,12 @@ class SerialManager @Inject constructor(
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             usbLog("BLE onConnectionStateChange status=$status (${bleGattStatusName(status)}) newState=$newState (${bleStateName(newState)})")
             if (newState == BluetoothGatt.STATE_CONNECTED) {
+                // If we're no longer connecting (timed out or failed), close this stale GATT
+                if (!isConnecting.get()) {
+                    usbLog("BLE ignoring late STATE_CONNECTED; isConnecting=false")
+                    closeBluetoothGatt(gatt)
+                    return
+                }
                 bluetoothGatt = gatt
                 bleServiceDiscoveryJob?.cancel()
                 bleServiceDiscoveryJob = scope.launch {
@@ -380,8 +387,10 @@ class SerialManager @Inject constructor(
                     }
                 }
             } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
-                mainScope.launch {
-                    disconnectInternal()
+                scope.launch {
+                    connectionMutex.withLock {
+                        disconnectInternal()
+                    }
                 }
             }
         }
@@ -616,6 +625,16 @@ class SerialManager @Inject constructor(
         startBleNotificationProcessor()
         startConsumer()
         startFlushTimer()
+
+        // GATT connect timeout — if onConnectionStateChange never fires, fail the connection
+        scope.launch {
+            delay(BLE_GATT_CONNECT_TIMEOUT_MS)
+            if (isConnecting.get() && _connectionState.value == ConnectionState.CONNECTING) {
+                usbLog("BLE GATT connect timed out after ${BLE_GATT_CONNECT_TIMEOUT_MS}ms")
+                failBleConnection("BLE GATT connect timed out")
+            }
+        }
+
         true
     }
     
@@ -685,9 +704,7 @@ class SerialManager @Inject constructor(
         }
 
         try {
-            withTimeout(2000) { disconnectInternal() }
-        } catch (e: TimeoutCancellationException) {
-            forceReset()
+            disconnectInternal()
         } catch (e: Exception) {
             e.printStackTrace()
             forceReset()
@@ -750,9 +767,7 @@ class SerialManager @Inject constructor(
             _connectionTransport.value = ConnectionTransport.NONE
             isConnecting.set(false)
             try {
-                withTimeout(1000) {
-                    disconnectInternal()
-                }
+                disconnectInternal()
             } catch (ex: Exception) {
                 ex.printStackTrace()
                 forceReset()
@@ -853,10 +868,8 @@ class SerialManager @Inject constructor(
      */
     suspend fun disconnect() = connectionMutex.withLock {
         try {
-            withTimeout(2000) {
-                disconnectInternal()
-            }
-        } catch (e: TimeoutCancellationException) {
+            disconnectInternal()
+        } catch (e: Exception) {
             forceReset()
         }
     }
@@ -1050,10 +1063,14 @@ class SerialManager @Inject constructor(
         usbLog(reason)
         isConnecting.set(false)
         _connectionTransport.value = ConnectionTransport.NONE
-        mainScope.launch {
-            _connectionState.value = ConnectionState.ERROR
-            disconnectInternal()
-        }
+        // Close GATT synchronously to prevent stale callbacks
+        closeBluetoothGatt(bluetoothGatt)
+        bluetoothGatt = null
+        bleRxCharacteristic = null
+        bleTxCharacteristic = null
+        isBleTransport = false
+        failPendingBleOperations()
+        _connectionState.value = ConnectionState.ERROR
     }
 
     private fun nextBleCommandId(): Int {
@@ -1171,6 +1188,10 @@ class SerialManager @Inject constructor(
         failPendingBleOperations()
         while (!bleNotificationChannel.isEmpty) {
             bleNotificationChannel.tryReceive()
+        }
+        // Drain binary channel to prevent memory leaks
+        while (!binaryChannel.isEmpty) {
+            binaryChannel.tryReceive()
         }
 
         // Close serial port first - with individual try-catch for each operation
@@ -1401,6 +1422,12 @@ class SerialManager @Inject constructor(
                                 _connectionState.value = ConnectionState.ERROR
                             }
                             isConnectedFlag.set(false)
+                            // Clean up the broken connection
+                            scope.launch {
+                                connectionMutex.withLock {
+                                    disconnectInternal()
+                                }
+                            }
                             break
                         }
                         delay(100)

@@ -1,5 +1,7 @@
 package com.example.ghostespcompanion.domain.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * GhostESP response models for parsing serial output
  * 
@@ -277,11 +279,13 @@ private object ResponsePatterns {
 
 sealed class GhostResponse {
     /** Raw unparsed response */
+    @Immutable
     data class Raw(val text: String) : GhostResponse()
     
     // ==================== WiFi Models ====================
     
     /** WiFi Access Point - optimized parsing for multiline firmware output */
+    @Immutable
     data class AccessPoint(
         val index: Int,
         val ssid: String,
@@ -339,6 +343,7 @@ sealed class GhostResponse {
     }
 
     /** Structured wardrive stream AP observation from wdstream. */
+    @Immutable
     data class WdStreamAp(
         val timestampMs: Long,
         val bssid: String,
@@ -396,6 +401,7 @@ sealed class GhostResponse {
     }
 
     /** Structured wardrive stream BLE observation from wdstream. */
+    @Immutable
     data class WdStreamBle(
         val timestampMs: Long,
         val mac: String,
@@ -451,6 +457,7 @@ sealed class GhostResponse {
     }
 
     /** Status line from wdstream. */
+    @Immutable
     data class WdStreamStatus(
         val running: Boolean,
         val accessPoints: Int,
@@ -483,6 +490,7 @@ sealed class GhostResponse {
     }
     
     /** WiFi Station - multiline format */
+    @Immutable
     data class Station(
         val index: Int,
         val mac: String,
@@ -554,6 +562,7 @@ sealed class GhostResponse {
      * AP/Station tracking data
      * Format: ##### -XX dBm (min:-XX max:-XX) [↑ CLOSER|↓ FARTHER]
      */
+    @Immutable
     data class TrackData(
         val rssi: Int,
         val minRssi: Int,
@@ -650,6 +659,7 @@ sealed class GhostResponse {
     }
     
     /** Tracking header info */
+    @Immutable
     data class TrackHeader(
         val isAp: Boolean,
         val targetName: String?,
@@ -671,6 +681,7 @@ sealed class GhostResponse {
      * AP=24:2f:d0:90:dd:70
      * Pair=M1/M2
      */
+@Immutable
 data class Handshake(
         val apBssid: String,
         val pairType: String,
@@ -700,6 +711,7 @@ data class Handshake(
      * - WiFi disconnected manually
      * - Attempting boot-time connection to saved network: SSID
      */
+    @Immutable
     data class WifiConnection(
         val isConnected: Boolean,
         val ssid: String? = null,
@@ -750,6 +762,7 @@ data class Handshake(
      * saved_ssid=MyNetwork
      * === END STATUS ===
      */
+    @Immutable
     data class WifiStatus(
         val connected: Boolean,
         val hasSavedNetwork: Boolean,
@@ -796,6 +809,7 @@ data class Handshake(
     // ==================== BLE Models ====================
     
     /** BLE Device */
+    @Immutable
     data class BleDevice(
         val name: String?,
         val mac: String?,  // MAC is optional - generic BLE scan doesn't include it
@@ -832,6 +846,7 @@ data class Handshake(
     }
     
     /** Flipper Zero device - multiline format */
+    @Immutable
     data class FlipperDevice(
         val index: Int,
         val name: String?,
@@ -868,6 +883,7 @@ data class Handshake(
     }
     
     /** Flipper tracking data - emitted while a Flipper is selected for tracking */
+    @Immutable
     data class FlipperTrackData(
         val index: Int,
         val rssi: Int,
@@ -889,6 +905,7 @@ data class Handshake(
     }
 
     /** AirTag device - multiline format */
+    @Immutable
     data class AirTagDevice(
         val index: Int,
         val mac: String,
@@ -925,6 +942,7 @@ data class Handshake(
     }
     
     /** GATT Device - multiline format from blescan -g */
+    @Immutable
     data class GattDevice(
         val index: Int,
         val name: String?,
@@ -974,6 +992,7 @@ data class Handshake(
     // ==================== GATT Service Models ====================
     
     /** GATT Service from enumgatt command */
+    @Immutable
     data class GattService(
         val uuid: String,
         val name: String? = null,
@@ -1002,6 +1021,7 @@ data class Handshake(
     }
     
     /** GATT Characteristic */
+    @Immutable
     data class GattCharacteristic(
         val uuid: String,
         val name: String? = null,
@@ -1036,6 +1056,7 @@ data class Handshake(
     // ==================== Aerial (Drone) Models ====================
     
     /** Aerial device detection */
+    @Immutable
     data class AerialDevice(
         val index: Int,
         val deviceId: String,
@@ -1125,6 +1146,7 @@ data class Handshake(
     // ==================== NFC Models ====================
     
     /** NFC Tag */
+    @Immutable
     data class NfcTag(
         val uid: String,
         val type: NfcTagType,
@@ -1208,6 +1230,7 @@ data class Handshake(
      *     BadUSB
      *     ...
      */
+    @Immutable
     data class DeviceInfo(
         val model: String,
         val revision: String,
@@ -1341,6 +1364,7 @@ data class Handshake(
     }
     
     /** Scan status update */
+    @Immutable
     data class ScanStatus(
         val message: String,
         val progress: Float? = null,
@@ -1351,6 +1375,7 @@ data class Handshake(
     }
     
     /** Error response */
+    @Immutable
     data class Error(
         val message: String,
         val code: Int? = null
@@ -1365,6 +1390,7 @@ data class Handshake(
     }
     
     /** Success response */
+    @Immutable
     data class Success(
         val message: String
     ) : GhostResponse() {
@@ -1385,6 +1411,7 @@ data class Handshake(
     // ==================== GPS Models ====================
     
     /** GPS Position - parsed from firmware gpsinfo command output */
+    @Immutable
     data class GpsPosition(
         val latitude: Double,
         val longitude: Double,
@@ -1464,6 +1491,7 @@ data class Handshake(
     }
     
     /** Wardrive Statistics - parsed from firmware wardrive output (both heartbeat and multiline formats) */
+    @Immutable
     data class WardriveStats(
         val accessPoints: Int,
         val loggedOk: Int,
@@ -1569,6 +1597,7 @@ data class Handshake(
      * SD:FILE:[N] filename size
      * SD:DIR:[N] foldername (no trailing slash)
      */
+    @Immutable
     data class SdEntry(
         val index: Int,
         val name: String,
@@ -1601,6 +1630,7 @@ data class Handshake(
     }
     
     /** SD Card status */
+    @Immutable
     data class SdStatus(
         val mounted: Boolean,
         val type: String,
@@ -1610,6 +1640,7 @@ data class Handshake(
     ) : GhostResponse()
     
     /** SD Card operation result - handles all SD:OK and SD:ERR responses */
+    @Immutable
     data class SdOperationResult(
         val success: Boolean,
         val operation: String,
@@ -1668,6 +1699,7 @@ data class Handshake(
     }
     
     /** SD File read result */
+    @Immutable
     data class SdReadResult(
         val filename: String,
         val size: Long,
@@ -1680,6 +1712,7 @@ data class Handshake(
     // ==================== Portal Models ====================
     
     /** Portal credentials captured */
+    @Immutable
     data class PortalCredentials(
         val username: String,
         val password: String,
@@ -1697,6 +1730,7 @@ data class Handshake(
     }
     
     /** Portal info */
+    @Immutable
     data class PortalInfo(
         val name: String,
         val path: String
@@ -1708,6 +1742,7 @@ data class Handshake(
      *  Parsed: "Captured: <protocol> A:0x<addr> C:0x<cmd>"
      *  Raw: "Captured RAW signal (<samples> samples)"
      */
+    @Immutable
     data class IrLearned(
         val protocol: String?,
         val address: String?,
@@ -1741,6 +1776,7 @@ data class Handshake(
     }
     
     /** IR learn saved to file - "Saved to /path/to/file.ir" */
+    @Immutable
     data class IrLearnSaved(val path: String) : GhostResponse() {
         companion object {
             fun parse(line: String): IrLearnSaved? {
@@ -1752,6 +1788,7 @@ data class Handshake(
     }
     
     /** IR learn status messages */
+    @Immutable
     data class IrLearnStatus(
         val status: String, // STARTED, WAITING, TIMEOUT
         val message: String
@@ -1772,6 +1809,7 @@ data class Handshake(
     }
     
     /** IR dazzler status */
+    @Immutable
     data class IrDazzlerStatus(
         val status: String // STARTED, STOPPING, NOT_RUNNING, ALREADY_RUNNING, FAILED
     ) : GhostResponse() {
@@ -1788,6 +1826,7 @@ data class Handshake(
      *  Format: [N] filename.ir or [N] filename.json
      *  Example: [0] Samsung.ir
      */
+    @Immutable
     data class IrRemote(
         val index: Int,
         val filename: String
@@ -1809,6 +1848,7 @@ data class Handshake(
      *  Format: [N] button_name (protocol) or [N] button_name
      *  Example: [0] Power (NEC), [1] Volume_Up, [2] CH+ (RC5)
      */
+    @Immutable
     data class IrButton(
         val index: Int,
         val name: String,
@@ -1841,6 +1881,7 @@ data class Handshake(
     // ==================== Settings Models ====================
     
     /** Setting key-value pair */
+    @Immutable
     data class SettingValue(
         val key: String,
         val value: String
@@ -1856,6 +1897,7 @@ data class Handshake(
     // ==================== Ethernet Models ====================
     
     /** Ethernet info */
+    @Immutable
     data class EthernetInfo(
         val linkUp: Boolean,
         val ip: String?,
@@ -1865,6 +1907,7 @@ data class Handshake(
     ) : GhostResponse()
     
     /** Port scan result */
+    @Immutable
     data class PortScanResult(
         val ip: String,
         val port: Int,
@@ -1873,6 +1916,7 @@ data class Handshake(
     ) : GhostResponse()
     
     /** ARP scan result */
+    @Immutable
     data class ArpScanResult(
         val ip: String,
         val mac: String,

@@ -1,5 +1,19 @@
 # GhostESP: Companion Changelog
 
+## v0.4.1
+
+- Fixed dual auto-connect race condition that caused intermittent startup connection failures
+- Fixed BLE disconnect callback bypassing connection mutex, preventing stuck/hung states
+- Added 15-second GATT connect timeout so the app no longer hangs in "Connecting..." if a BLE device disappears
+- Fixed USB read loop not cleaning up after consecutive errors, leaving zombie connections
+- Fixed stale BLE GATT connections leaking when late STATE_CONNECTED callbacks arrive after timeout
+- Fixed `failBleConnection` closing GATT synchronously instead of deferring to a coroutine
+- Removed ineffective `withTimeout` wrappers around non-suspend `disconnectInternal` calls
+- Added `DisposableEffect` cleanup to BLE, WiFi, Evil Portal, IR, and BadUSB screens to stop scans/attacks when navigating away
+- Fixed BLE scan continuing after selecting a USB device from the connection dialog
+- Fixed `binaryChannel` not being drained on disconnect, preventing memory leaks
+- Optimized terminal buffer from O(n) list copy per line to O(1) ArrayDeque with snapshot
+
 ## v0.4.0
 
 - Changed the app icon to use the new evil mascot image

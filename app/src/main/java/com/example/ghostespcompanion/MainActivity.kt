@@ -134,22 +134,22 @@ fun GhostESPApp(
         }
     }
 
+    // Single auto-connect entry point: try saved device first, then fall back to USB scan
     LaunchedEffect(autoConnect, connectionState) {
-        if (autoConnect && !hasAutoConnected.value && connectionState == SerialManager.ConnectionState.DISCONNECTED) {
-            hasAutoConnected.value = true
-            val devices = viewModel.fetchAvailableDevices()
-            when (devices.size) {
-                0 -> { /* no devices, nothing to show */ }
-                1 -> viewModel.connectWithAutoBaud(devices.first())
-                else -> showDeviceDialog = true
-            }
-        }
-    }
+        if (!autoConnect || hasAutoConnected.value) return@LaunchedEffect
+        if (connectionState != SerialManager.ConnectionState.DISCONNECTED) return@LaunchedEffect
+        hasAutoConnected.value = true
 
-    // Reconnect to the last device once Bluetooth/USB is ready
-    LaunchedEffect(Unit) {
-        if (autoConnect) {
-            viewModel.connectSavedDevice()
+        // Try reconnecting to the last saved device (USB or BLE)
+        val savedConnected = viewModel.connectSavedDeviceSync()
+        if (savedConnected) return@LaunchedEffect
+
+        // No saved device or it wasn't found — fall back to USB scan
+        val devices = viewModel.fetchAvailableDevices()
+        when (devices.size) {
+            0 -> { /* no devices available */ }
+            1 -> viewModel.connectWithAutoBaud(devices.first())
+            else -> showDeviceDialog = true
         }
     }
     Scaffold(
@@ -238,6 +238,7 @@ fun GhostESPApp(
                 isBleScanning = isBleScanning,
                 onUsbSelected = { device, baud ->
                     showDeviceDialog = false
+                    viewModel.stopBleBridgeScan()
                     viewModel.connectWithBaud(device, baud)
                 },
                 onBleSelected = { device ->

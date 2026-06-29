@@ -151,6 +151,7 @@ fun TerminalScreen(
                     
                     itemsIndexed(
                         items = terminalLines,
+                        key = { index, line -> "${index}_${line.hashCode()}" },
                         contentType = { _, _ -> "terminal_line" }
                     ) { index, line ->
                         val isCommand = line.startsWith("> ")

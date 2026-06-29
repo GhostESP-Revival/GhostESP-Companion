@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.navigation.NavHostController
@@ -104,84 +105,94 @@ fun GhostESPNavGraph(
     ) {
         // Main bottom navigation screens — use default (fast fade) transitions
         composable(route = Screen.Dashboard.route) {
+            val onNavigateToWifi = remember { { navController.navigate(Screen.Wifi.route) } }
+            val onNavigateToBle = remember { { navController.navigate(Screen.Ble.route) } }
+            val onNavigateToIr = remember { { navController.navigate(Screen.Ir.route) } }
+            val onNavigateToMore = remember { { navController.navigate(Screen.More.route) } }
+            val onNavigateToNfc = remember { { navController.navigate(Screen.Nfc.route) } }
+            val onNavigateToGps = remember { { navController.navigate(Screen.Gps.route) } }
+            val onNavigateToBadUsb = remember { { navController.navigate(Screen.BadUsb.route) } }
+            val onNavigateToSd = remember { { navController.navigate(Screen.SdManager.route) } }
+            val onScanWifiAndNavigate = remember { {
+                sharedViewModel.scanWifi()
+                navController.navigate(Screen.Wifi.route)
+            } }
+            val onScanBleAndNavigate = remember { { navController.navigate(Screen.FlipperDetect.route) } }
+            val onScanNfcAndNavigate = remember { { navController.navigate(Screen.Settings.route) } }
+
             DashboardScreen(
                 viewModel = sharedViewModel,
-                onNavigateToWifi = { navController.navigate(Screen.Wifi.route) },
-                onNavigateToBle = { navController.navigate(Screen.Ble.route) },
-                onNavigateToIr = { navController.navigate(Screen.Ir.route) },
-                onNavigateToMore = { navController.navigate(Screen.More.route) },
-                onNavigateToNfc = { navController.navigate(Screen.Nfc.route) },
-                onNavigateToGps = { navController.navigate(Screen.Gps.route) },
-                onNavigateToBadUsb = { navController.navigate(Screen.BadUsb.route) },
-                onNavigateToSd = { navController.navigate(Screen.SdManager.route) },
-                onScanWifiAndNavigate = {
-                    sharedViewModel.scanWifi()
-                    navController.navigate(Screen.Wifi.route)
-                },
-                onScanBleAndNavigate = {
-                    navController.navigate(Screen.FlipperDetect.route)
-                },
-                onScanNfcAndNavigate = {
-                    navController.navigate(Screen.Settings.route)
-                }
+                onNavigateToWifi = onNavigateToWifi,
+                onNavigateToBle = onNavigateToBle,
+                onNavigateToIr = onNavigateToIr,
+                onNavigateToMore = onNavigateToMore,
+                onNavigateToNfc = onNavigateToNfc,
+                onNavigateToGps = onNavigateToGps,
+                onNavigateToBadUsb = onNavigateToBadUsb,
+                onNavigateToSd = onNavigateToSd,
+                onScanWifiAndNavigate = onScanWifiAndNavigate,
+                onScanBleAndNavigate = onScanBleAndNavigate,
+                onScanNfcAndNavigate = onScanNfcAndNavigate
             )
         }
 
         composable(route = Screen.Wifi.route) {
+            val onNavigateToApDetail = remember { { apIndex: Int -> navController.navigate(Screen.WifiApDetail.createRoute(apIndex)) } }
+            val onNavigateToPortal = remember { { navController.navigate(Screen.EvilPortal.route) } }
+            val onNavigateToTrack = remember { { apIndex: Int -> navController.navigate(Screen.TrackAp.createRoute(apIndex)) } }
+
             WifiScreen(
                 viewModel = sharedViewModel,
-                onNavigateToApDetail = { apIndex ->
-                    navController.navigate(Screen.WifiApDetail.createRoute(apIndex))
-                },
-                onNavigateToPortal = {
-                    navController.navigate(Screen.EvilPortal.route)
-                },
-                onNavigateToTrack = { apIndex ->
-                    navController.navigate(Screen.TrackAp.createRoute(apIndex))
-                }
+                onNavigateToApDetail = onNavigateToApDetail,
+                onNavigateToPortal = onNavigateToPortal,
+                onNavigateToTrack = onNavigateToTrack
             )
         }
 
         composable(route = Screen.Ble.route) {
+            val onNavigateToFlipper = remember { { navController.navigate(Screen.FlipperDetect.route) } }
+            val onNavigateToGattDetail = remember { { gattIndex: Int -> navController.navigate(Screen.GattDetail.createRoute(gattIndex)) } }
+            val onNavigateToTrackGatt = remember { { gattIndex: Int -> navController.navigate(Screen.TrackGatt.createRoute(gattIndex)) } }
+            val onNavigateToTrackFlipper = remember { { flipperIndex: Int -> navController.navigate(Screen.TrackFlipper.createRoute(flipperIndex)) } }
+
             BleScreen(
                 viewModel = sharedViewModel,
-                onNavigateToFlipper = {
-                    navController.navigate(Screen.FlipperDetect.route)
-                },
-                onNavigateToGattDetail = { gattIndex ->
-                    navController.navigate(Screen.GattDetail.createRoute(gattIndex))
-                },
-                onNavigateToTrackGatt = { gattIndex ->
-                    navController.navigate(Screen.TrackGatt.createRoute(gattIndex))
-                },
-                onNavigateToTrackFlipper = { flipperIndex ->
-                    navController.navigate(Screen.TrackFlipper.createRoute(flipperIndex))
-                }
+                onNavigateToFlipper = onNavigateToFlipper,
+                onNavigateToGattDetail = onNavigateToGattDetail,
+                onNavigateToTrackGatt = onNavigateToTrackGatt,
+                onNavigateToTrackFlipper = onNavigateToTrackFlipper
             )
         }
 
         composable(route = Screen.Ir.route) {
+            val onNavigateToLearn = remember { { navController.navigate(Screen.IrLearn.route) } }
+            val onNavigateToRemoteDetail = remember { { remoteIndex: Int -> navController.navigate(Screen.IrRemoteDetail.createRoute(remoteIndex)) } }
+
             IrScreen(
                 viewModel = sharedViewModel,
-                onNavigateToLearn = {
-                    navController.navigate(Screen.IrLearn.route)
-                },
-                onNavigateToRemoteDetail = { remoteIndex ->
-                    navController.navigate(Screen.IrRemoteDetail.createRoute(remoteIndex))
-                }
+                onNavigateToLearn = onNavigateToLearn,
+                onNavigateToRemoteDetail = onNavigateToRemoteDetail
             )
         }
 
         composable(route = Screen.More.route) {
+            val onNavigateToNfc = remember { { navController.navigate(Screen.Nfc.route) } }
+            val onNavigateToBadUsb = remember { { navController.navigate(Screen.BadUsb.route) } }
+            val onNavigateToGps = remember { { navController.navigate(Screen.Gps.route) } }
+            val onNavigateToEthernet = remember { { navController.navigate(Screen.Ethernet.route) } }
+            val onNavigateToSd = remember { { navController.navigate(Screen.SdManager.route) } }
+            val onNavigateToSettings = remember { { navController.navigate(Screen.Settings.route) } }
+            val onNavigateToTerminal = remember { { navController.navigate(Screen.Terminal.route) } }
+
             MoreMenuScreen(
                 viewModel = sharedViewModel,
-                onNavigateToNfc = { navController.navigate(Screen.Nfc.route) },
-                onNavigateToBadUsb = { navController.navigate(Screen.BadUsb.route) },
-                onNavigateToGps = { navController.navigate(Screen.Gps.route) },
-                onNavigateToEthernet = { navController.navigate(Screen.Ethernet.route) },
-                onNavigateToSd = { navController.navigate(Screen.SdManager.route) },
-                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                onNavigateToTerminal = { navController.navigate(Screen.Terminal.route) }
+                onNavigateToNfc = onNavigateToNfc,
+                onNavigateToBadUsb = onNavigateToBadUsb,
+                onNavigateToGps = onNavigateToGps,
+                onNavigateToEthernet = onNavigateToEthernet,
+                onNavigateToSd = onNavigateToSd,
+                onNavigateToSettings = onNavigateToSettings,
+                onNavigateToTerminal = onNavigateToTerminal
             )
         }
 

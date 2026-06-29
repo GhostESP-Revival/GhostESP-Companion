@@ -3,6 +3,7 @@ package com.example.ghostespcompanion.ui.viewmodel
 import android.content.Context
 import android.content.Intent
 import android.hardware.usb.UsbDevice
+import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ghostespcompanion.data.LocationHelper
@@ -38,6 +39,7 @@ import javax.inject.Inject
  * on background dispatchers to keep the UI thread free for animations
  * and rendering.
  */
+@Stable
 @HiltViewModel
 class MainViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
@@ -59,9 +61,11 @@ class MainViewModel @Inject constructor(
     val rawOutput: SharedFlow<String> = ghostRepository.rawOutput
 
     // Terminal buffer - maintains history even when terminal screen is not visible
-    // Bounded to prevent memory issues (keeps last 1000 lines)
+    // Uses ArrayDeque for O(1) add/remove instead of O(n) list copy on every line
+    private val terminalDeque = ArrayDeque<String>(MAX_TERMINAL_LINES + 64)
     private val _terminalLines = MutableStateFlow<List<String>>(emptyList())
     val terminalLines: StateFlow<List<String>> = _terminalLines.asStateFlow()
+    @Volatile private var terminalDirty = false
 
     companion object {
         private const val MAX_TERMINAL_LINES = 1000
@@ -72,32 +76,27 @@ class MainViewModel @Inject constructor(
 
     init {
         // Collect raw output and store in terminal buffer
-        // This ensures no data is lost when terminal screen is not visible
-        // Build the new list on Default dispatcher to avoid main thread list copies
+        // Uses ArrayDeque for O(1) insert/remove, batches StateFlow updates every 50ms
+        // to avoid recomposing on every single serial line
         viewModelScope.launch(Dispatchers.Default) {
             ghostRepository.rawOutput.collect { line ->
-                val startNanos = System.nanoTime()
-                _terminalLines.value = buildList {
-                    val currentLines = _terminalLines.value
-                    // If at capacity, drop oldest line(s) to make room
-                    val startIndex = if (currentLines.size >= MAX_TERMINAL_LINES) {
-                        currentLines.size - MAX_TERMINAL_LINES + 1
-                    } else {
-                        0
+                synchronized(terminalDeque) {
+                    if (terminalDeque.size >= MAX_TERMINAL_LINES) {
+                        terminalDeque.removeFirst()
                     }
-                    // Add all lines we want to keep
-                    for (i in startIndex until currentLines.size) {
-                        add(currentLines[i])
-                    }
-                    // Add new line
-                    add(line)
+                    terminalDeque.addLast(line)
+                    terminalDirty = true
                 }
-                terminalBuildCount++
-                val elapsedMs = (System.nanoTime() - startNanos) / 1_000_000
-                if (elapsedMs >= 5) {
-                    terminalSlowCount++
-                    if (terminalSlowCount % 20 == 1) {
-                        android.util.Log.w("MainViewModel.PERF", "terminal build slow: ${elapsedMs}ms lines=${_terminalLines.value.size}")
+            }
+        }
+        // Separate coroutine to batch StateFlow emissions
+        viewModelScope.launch(Dispatchers.Default) {
+            while (true) {
+                kotlinx.coroutines.delay(50)
+                if (terminalDirty) {
+                    synchronized(terminalDeque) {
+                        _terminalLines.value = terminalDeque.toList()
+                        terminalDirty = false
                     }
                 }
             }
@@ -133,6 +132,9 @@ class MainViewModel @Inject constructor(
      * Clear terminal history
      */
     fun clearTerminal() {
+        synchronized(terminalDeque) {
+            terminalDeque.clear()
+        }
         _terminalLines.value = emptyList()
     }
 
@@ -304,6 +306,11 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.connectSavedDevice()
         }
+    }
+
+    /** Suspend version — returns true if a saved device was found and connection was attempted. */
+    suspend fun connectSavedDeviceSync(): Boolean = withContext(Dispatchers.IO) {
+        ghostRepository.connectSavedDevice()
     }
 
     fun forgetSavedDevice() {

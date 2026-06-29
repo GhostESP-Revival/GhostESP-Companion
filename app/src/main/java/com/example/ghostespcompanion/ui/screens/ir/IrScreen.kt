@@ -45,7 +45,16 @@ fun IrScreen(
     val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     
-    val isIrSupported = deviceInfo?.let { 
+    // Stop IR dazzler when leaving this screen
+    DisposableEffect(Unit) {
+        onDispose {
+            if (isDazzlerRunning) {
+                viewModel.stopIrDazzler()
+            }
+        }
+    }
+    
+    val isIrSupported = deviceInfo?.let {
         it.hasFeature(GhostResponse.DeviceFeature.INFRARED_TX) || 
         it.hasFeature(GhostResponse.DeviceFeature.INFRARED_RX) 
     } ?: true

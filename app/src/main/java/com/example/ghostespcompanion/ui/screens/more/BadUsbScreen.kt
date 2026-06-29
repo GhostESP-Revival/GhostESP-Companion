@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -78,6 +79,21 @@ fun BadUsbScreen(
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val isBadUsbSupported = deviceInfo?.hasFeature(GhostResponse.DeviceFeature.BADUSB) ?: true
     val hasDeviceInfo = deviceInfo != null
+
+    // Stop all BadUSB operations when leaving this screen
+    DisposableEffect(Unit) {
+        onDispose {
+            if (runningScript != null) {
+                viewModel.stopBadUsb()
+            }
+            if (keyboardActive) {
+                viewModel.stopBadUsbKeyboard()
+            }
+            if (jigglerActive) {
+                viewModel.stopBadUsbJiggler()
+            }
+        }
+    }
 
     LaunchedEffect(isConnected) {
         if (isConnected) {

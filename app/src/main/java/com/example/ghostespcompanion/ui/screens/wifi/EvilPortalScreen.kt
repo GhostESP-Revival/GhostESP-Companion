@@ -61,6 +61,15 @@ fun EvilPortalScreen(
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val privacyMode = appSettings.privacyMode
     
+    // Stop portal when leaving this screen
+    DisposableEffect(Unit) {
+        onDispose {
+            if (isPortalRunning) {
+                viewModel.stopPortal()
+            }
+        }
+    }
+    
     val portalFiles = remember(sdEntries) {
         sdEntries
             .filter { !it.isDirectory && it.name.endsWith(".html", ignoreCase = true) }

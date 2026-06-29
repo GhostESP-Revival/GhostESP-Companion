@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.ui.res.painterResource
 import com.example.ghostespcompanion.R
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,6 +89,16 @@ fun BleScreen(
     ) { granted ->
         if (granted.values.all { it }) {
             viewModel.startBleBridgeScan()
+        }
+    }
+
+    // Stop BLE scan and spam when leaving this screen
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.stopBleScan()
+            if (isSpamming) {
+                viewModel.stopBleSpam()
+            }
         }
     }
 
@@ -880,6 +891,7 @@ private fun BleDeviceCard(
 /**
  * Preview data class for BLE device
  */
+@Immutable
 data class BleDevicePreview(
     val name: String,
     val mac: String,

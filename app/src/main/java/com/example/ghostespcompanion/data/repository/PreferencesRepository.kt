@@ -1,6 +1,7 @@
 package com.example.ghostespcompanion.data.repository
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
@@ -67,6 +68,7 @@ private suspend fun writeSavedDevice(context: Context, device: SavedDevice?) {
 /**
  * Data class representing app settings
  */
+@Immutable
 data class AppSettings(
     val darkMode: Boolean = true,
     val hapticFeedback: Boolean = true,
