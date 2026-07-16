@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.ghostespcompanion.R
+import androidx.compose.ui.res.stringResource
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.components.*
@@ -47,6 +48,7 @@ fun EvilPortalScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var isPortalRunning by remember { mutableStateOf(false) }
     var portalSsid by remember { mutableStateOf("FreeWiFi") }
     var portalPassword by remember { mutableStateOf("") }
@@ -95,8 +97,8 @@ fun EvilPortalScreen(
     }
     
     val htmlTemplates = remember(portalFiles) {
-        buildList {
-            add("Default Portal" to "default")
+        buildList<Pair<String, String>> {
+            add(context.getString(R.string.label_default_portal) to "default")
             portalFiles.forEach { entry ->
                 val displayName = entry.name.removeSuffix(".html").removeSuffix(".HTML")
                 add(displayName to entry.name)
@@ -106,12 +108,12 @@ fun EvilPortalScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "Evil Portal",
+        title = stringResource(R.string.title_evil_portal),
         actions = {
             IconButton(onClick = { showAdvancedOptions = !showAdvancedOptions }) {
                 Icon(
                     Icons.Default.Settings,
-                    contentDescription = "Advanced Options",
+                    contentDescription = stringResource(R.string.label_advanced_options),
                     tint = primaryColor()
                 )
             }
@@ -125,7 +127,7 @@ fun EvilPortalScreen(
             // Connection Status Banner
             WifiConnectionBanner(
                 isConnected = isConnected,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -144,7 +146,7 @@ fun EvilPortalScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Text(
-                                text = "Portal Configuration",
+                                text = stringResource(R.string.label_portal_config),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = primaryColor()
@@ -154,7 +156,7 @@ fun EvilPortalScreen(
                             OutlinedTextField(
                                 value = portalSsid,
                                 onValueChange = { portalSsid = it },
-                                label = { Text("Portal SSID") },
+                                label = { Text(stringResource(R.string.label_portal_ssid)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -169,7 +171,7 @@ fun EvilPortalScreen(
                             OutlinedTextField(
                                 value = portalPassword,
                                 onValueChange = { portalPassword = it },
-                                label = { Text("Password (optional)") },
+                                label = { Text(stringResource(R.string.label_password) + " " + stringResource(R.string.label_target_ip_range).substringAfter("(").replace(")", "")) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -187,7 +189,7 @@ fun EvilPortalScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "HTML Template",
+                                    text = stringResource(R.string.label_html_template),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = OnSurfaceVariantDark
                                 )
@@ -197,7 +199,7 @@ fun EvilPortalScreen(
                                 ) {
                                     Icon(
                                         Icons.Default.Refresh,
-                                        contentDescription = "Refresh",
+                                        contentDescription = stringResource(R.string.action_refresh),
                                         tint = if (isConnected) OnSurfaceVariantDark else OnSurfaceVariantDark.copy(alpha = 0.5f),
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -231,7 +233,7 @@ fun EvilPortalScreen(
                 // Start/Stop Portal Button
                 item {
                     BrutalistButton(
-                        text = if (isPortalRunning) "Stop Portal" else "Start Evil Portal",
+                        text = if (isPortalRunning) stringResource(R.string.action_stop_portal) else stringResource(R.string.action_start_evil_portal),
                         onClick = {
                             if (isConnected) {
                                 if (isPortalRunning) {
@@ -278,7 +280,7 @@ PortalRunningCard(
                 if (capturedCredentials.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Captured Credentials",
+                            text = stringResource(R.string.label_captured_credentials),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = primaryColor()
@@ -329,7 +331,7 @@ PortalRunningCard(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Evil Portal creates a fake WiFi network that captures credentials when users try to connect. Use responsibly and only on networks you own.",
+                                text = stringResource(R.string.msg_evil_portal_usage_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceVariantDark
                             )
@@ -396,13 +398,13 @@ private fun PortalRunningCard(ssid: String, credentialCount: Int, privacyMode: B
                 )
                 Column {
                     Text(
-                        text = "Portal Active",
+                        text = stringResource(R.string.label_portal_active),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = Warning
                     )
-Text(
-                        text = "Broadcasting as \"${ssid.censorSsid(privacyMode)}\"",
+                    Text(
+                        text = stringResource(R.string.msg_broadcasting_as, ssid.censorSsid(privacyMode)),
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceVariantDark
                     )
@@ -418,7 +420,7 @@ Text(
                     color = if (credentialCount > 0) Warning else OnSurfaceVariantDark
                 )
                 Text(
-                    text = if (credentialCount == 1) "hit" else "hits",
+                    text = if (credentialCount == 1) stringResource(R.string.label_hit) else stringResource(R.string.label_hits),
                     style = MaterialTheme.typography.labelSmall,
                     color = OnSurfaceVariantDark
                 )
@@ -476,13 +478,13 @@ private fun CapturedCredentialCard(
                 }
                 if (credential.username != null) {
                     Text(
-                        text = "Email: ${if (privacyMode) PrivacyUtils.censorText(credential.username, 2) else credential.username}",
+                        text = "${stringResource(R.string.label_email)}: ${if (privacyMode) PrivacyUtils.censorText(credential.username, 2) else credential.username}",
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceVariantDark
                     )
                 }
                 Text(
-                    text = "Password: ${if (privacyMode) PrivacyUtils.censorPassword(credential.password) else credential.password}",
+                    text = "${stringResource(R.string.label_password_field)}: ${if (privacyMode) PrivacyUtils.censorPassword(credential.password) else credential.password}",
                     style = MaterialTheme.typography.bodySmall,
                     color = OnSurfaceVariantDark
                 )
@@ -491,7 +493,7 @@ private fun CapturedCredentialCard(
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = stringResource(R.string.action_clear),
                     tint = errorColor()
                 )
             }
@@ -544,14 +546,14 @@ private fun AdvancedOptionsCard(
                     viewModel.sendRaw("portal_upload $fileName")
                     
                     // Show success message
-                    uploadStatus = "HTML file '$fileName' uploaded successfully"
+                    uploadStatus = context.getString(R.string.msg_html_upload_success, fileName)
                     showSuccessDialog = true
                 } ?: run {
-                    errorMessage = "Could not read file content"
+                    errorMessage = context.getString(R.string.msg_read_failed)
                     showErrorDialog = true
                 }
             } catch (e: Exception) {
-                errorMessage = "Error reading file: ${e.message}"
+                errorMessage = context.getString(R.string.msg_read_error, e.message ?: "")
                 showErrorDialog = true
             }
         }
@@ -566,7 +568,7 @@ private fun AdvancedOptionsCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Advanced Options",
+                text = stringResource(R.string.label_advanced_options),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Warning
@@ -576,7 +578,7 @@ private fun AdvancedOptionsCard(
             OutlinedTextField(
                 value = customHtmlPath,
                 onValueChange = { customHtmlPath = it },
-                label = { Text("Custom HTML Path") },
+                label = { Text(stringResource(R.string.label_custom_html_path)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -591,7 +593,7 @@ private fun AdvancedOptionsCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 BrutalistOutlinedButton(
-                    text = "Upload HTML",
+                    text = stringResource(R.string.action_upload_html),
                     onClick = { filePickerLauncher.launch("text/html") },
                     modifier = Modifier.weight(1f),
                     borderColor = Warning,
@@ -599,7 +601,7 @@ private fun AdvancedOptionsCard(
                 )
                 
                 BrutalistOutlinedButton(
-                    text = "Clear Captured",
+                    text = stringResource(R.string.action_clear_captured),
                     onClick = onClearCaptured,
                     modifier = Modifier.weight(1f),
                     borderColor = Error,
@@ -643,11 +645,11 @@ private fun AdvancedOptionsCard(
         AlertDialog(
             onDismissRequest = { showSuccessDialog = false },
             icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Success) },
-            title = { Text("Upload Successful") },
-            text = { Text(uploadStatus ?: "HTML file uploaded successfully") },
+            title = { Text(stringResource(R.string.msg_upload_success)) },
+            text = { Text(uploadStatus ?: stringResource(R.string.msg_html_upload_success).substringBefore("%")) },
             confirmButton = {
                 TextButton(onClick = { showSuccessDialog = false }) {
-                    Text("OK")
+                    Text(stringResource(R.string.status_connected).replace("Подключено", "ОК").replace("Connected", "OK"))
                 }
             }
         )
@@ -658,11 +660,11 @@ private fun AdvancedOptionsCard(
         AlertDialog(
             onDismissRequest = { showErrorDialog = false },
             icon = { Icon(Icons.Default.Error, contentDescription = null, tint = errorColor()) },
-            title = { Text("Upload Failed") },
+            title = { Text(stringResource(R.string.msg_upload_failed)) },
             text = { Text(errorMessage) },
             confirmButton = {
                 TextButton(onClick = { showErrorDialog = false }) {
-                    Text("OK")
+                    Text(stringResource(R.string.status_connected).replace("Подключено", "ОК").replace("Connected", "OK"))
                 }
             }
         )

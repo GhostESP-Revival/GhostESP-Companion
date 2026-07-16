@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -72,12 +74,12 @@ fun TrackFlipperScreen(
         }
     }
 
-    val targetName = flipperDevice?.name ?: "Flipper Zero"
+    val targetName = flipperDevice?.name ?: stringResource(R.string.label_flipper_zero)
     val targetMac = flipperDevice?.mac
 
     MainScreen(
         onBack = onBack,
-        title = "Track Flipper",
+        title = stringResource(R.string.action_track_flipper),
         actions = {
             IconButton(onClick = {
                 if (isTracking) {
@@ -90,7 +92,7 @@ fun TrackFlipperScreen(
             }) {
                 Icon(
                     if (isTracking) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (isTracking) "Stop" else "Start",
+                    contentDescription = if (isTracking) stringResource(R.string.action_stop) else stringResource(R.string.action_start),
                     tint = if (isTracking) errorColor() else primaryColor()
                 )
             }
@@ -121,7 +123,7 @@ fun TrackFlipperScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Tracking Flipper",
+                        text = stringResource(R.string.label_tracking_flipper),
                         style = MaterialTheme.typography.labelMedium,
                         color = OnSurfaceVariantDark
                     )
@@ -166,7 +168,7 @@ fun TrackFlipperScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Waiting for signal data...",
+                        text = stringResource(R.string.msg_waiting_signal),
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceVariantDark
                     )
@@ -185,7 +187,7 @@ fun TrackFlipperScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Press play to start tracking",
+                        text = stringResource(R.string.msg_press_play_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceVariantDark
                     )
@@ -199,14 +201,14 @@ fun TrackFlipperScreen(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = "How to use",
+                        text = stringResource(R.string.label_how_to_use),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "• Move closer to increase signal strength\n• Move away to decrease signal strength\n• Use proximity label to gauge distance",
+                        text = stringResource(R.string.msg_track_flipper_instructions),
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceVariantDark
                     )
@@ -265,7 +267,7 @@ private fun FlipperSignalDisplay(
                     color = signalColor
                 )
                 Text(
-                    text = "dBm",
+                    text = stringResource(R.string.label_dbm),
                     style = MaterialTheme.typography.titleMedium,
                     color = OnSurfaceVariantDark
                 )
@@ -288,7 +290,7 @@ private fun FlipperSignalDisplay(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "Signal Quality",
+                text = stringResource(R.string.label_signal_quality),
                 style = MaterialTheme.typography.labelSmall,
                 color = OnSurfaceVariantDark
             )
@@ -353,9 +355,9 @@ private fun TrackFlipperBanner(
                 Column {
                     Text(
                         text = when {
-                            !isConnected -> "Not Connected"
-                            isTracking -> "Tracking Active"
-                            else -> "Ready to Track"
+                            !isConnected -> stringResource(R.string.status_disconnected)
+                            isTracking -> stringResource(R.string.label_tracking_active)
+                            else -> stringResource(R.string.label_ready_to_track)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
@@ -367,7 +369,7 @@ private fun TrackFlipperBanner(
                     )
                     if (isConnected) {
                         Text(
-                            text = if (isTracking) "Move to find device" else "Press play to start",
+                            text = if (isTracking) stringResource(R.string.msg_move_to_find_device) else stringResource(R.string.msg_press_play_hint),
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
                         )
@@ -377,7 +379,7 @@ private fun TrackFlipperBanner(
 
             if (!isConnected) {
                 BrutalistButton(
-                    text = "Connect",
+                    text = stringResource(R.string.action_connect),
                     onClick = onConnect,
                     containerColor = primaryColor(),
                     modifier = Modifier

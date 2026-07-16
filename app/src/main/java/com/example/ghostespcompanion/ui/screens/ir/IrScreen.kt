@@ -16,6 +16,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -98,12 +100,12 @@ fun IrScreen(
     }
     
     MainScreen(
-        title = "Infrared",
+        title = stringResource(R.string.title_ir),
         actions = {
             IconButton(onClick = onNavigateToLearn) {
                 Icon(
                     Icons.Default.SettingsRemote, 
-                    contentDescription = "Learn Signal",
+                    contentDescription = stringResource(R.string.title_learn_signal),
                     tint = primaryColor()
                 )
             }
@@ -124,7 +126,7 @@ fun IrScreen(
             ) {
                 // Dazzler button
                 BrutalistButton(
-                    text = if (isDazzlerRunning) "Stop" else "Dazzler",
+                    text = if (isDazzlerRunning) stringResource(R.string.action_stop) else stringResource(R.string.label_ir_dazzler),
                     onClick = {
                         if (isConnected) {
                             if (isDazzlerRunning) {
@@ -178,7 +180,7 @@ fun IrScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "IR Dazzler is running - flooding IR signals",
+                            text = stringResource(R.string.msg_ir_dazzler_running),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = dazzlerErrorColor
@@ -208,7 +210,7 @@ fun IrScreen(
             
             // Remote library header
             BrutalistSectionHeader(
-                title = if (isLoadingRemotes) "Loading..." else "Remote Library (${displayRemotes.size})",
+                title = if (isLoadingRemotes) stringResource(R.string.status_connecting) else stringResource(R.string.label_remote_library, displayRemotes.size),
                 modifier = Modifier.padding(horizontal = 16.dp),
                 accentColor = primaryColor()
             )
@@ -238,7 +240,7 @@ fun IrScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "No IR remotes found on device",
+                                text = stringResource(R.string.msg_no_remotes_found),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -267,7 +269,7 @@ fun IrScreen(
                 
                 item {
                     BrutalistOutlinedButton(
-                        text = "Learn Remote",
+                        text = stringResource(R.string.action_learn_remote),
                         onClick = onNavigateToLearn,
                         modifier = Modifier.fillMaxWidth(),
                         borderColor = MaterialTheme.colorScheme.outline,
@@ -283,8 +285,8 @@ fun IrScreen(
             FeatureNotSupportedOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },
-                featureName = "Infrared",
-                message = "This device does not have Infrared hardware support. IR remote control features require IR TX/RX hardware."
+                featureName = stringResource(R.string.title_ir),
+                message = stringResource(R.string.msg_ir_not_supported)
             )
         }
         }
@@ -348,7 +350,7 @@ private fun RemoteCard(
             
             Icon(
                 Icons.Default.ChevronRight,
-                contentDescription = "Open",
+                contentDescription = stringResource(R.string.action_dismiss),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

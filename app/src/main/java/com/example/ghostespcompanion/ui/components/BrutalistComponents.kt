@@ -38,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.theme.*
 
@@ -429,7 +431,7 @@ fun BleConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "Connected" else "Disconnected",
+                        text = if (isConnected) stringResource(R.string.status_connected) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         color = if (isConnected) success else error
                     )
@@ -444,7 +446,7 @@ fun BleConnectionBanner(
             }
             if (!isConnected) {
                 TextButton(onClick = onConnect) {
-                    Text("Connect", color = error)
+                    Text(stringResource(R.string.action_connect), color = error)
                 }
             }
         }
@@ -490,7 +492,7 @@ fun WifiConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "Connected" else "Disconnected",
+                        text = if (isConnected) stringResource(R.string.status_connected) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         color = if (isConnected) success else error
                     )
@@ -505,7 +507,7 @@ fun WifiConnectionBanner(
             }
             if (!isConnected) {
                 TextButton(onClick = onConnect) {
-                    Text("Connect", color = error)
+                    Text(stringResource(R.string.action_connect), color = error)
                 }
             }
         }
@@ -551,7 +553,7 @@ fun NfcConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "NFC Ready" else "NFC Unavailable",
+                        text = if (isConnected) stringResource(R.string.nfc_ready) else stringResource(R.string.nfc_unavailable),
                         style = MaterialTheme.typography.labelMedium,
                         color = if (isConnected) success else error
                     )
@@ -600,7 +602,7 @@ fun EthernetConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "Connected" else "Disconnected",
+                        text = if (isConnected) stringResource(R.string.status_connected) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         color = if (isConnected) success else error
                     )
@@ -615,7 +617,7 @@ fun EthernetConnectionBanner(
             }
             if (!isConnected) {
                 TextButton(onClick = onConnect) {
-                    Text("Connect", color = error)
+                    Text(stringResource(R.string.action_connect), color = error)
                 }
             }
         }
@@ -665,14 +667,14 @@ fun DeviceInfoDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Device Info",
+                        text = stringResource(R.string.label_device_info),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
+                            contentDescription = stringResource(R.string.action_dismiss),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -682,26 +684,26 @@ fun DeviceInfoDialog(
                 
                 if (deviceInfo != null) {
                     deviceInfo.firmwareVersion?.let { fw ->
-                        DeviceInfoRow(label = "Firmware", value = fw)
+                        DeviceInfoRow(label = stringResource(R.string.label_firmware), value = fw)
                     }
                     deviceInfo.gitCommit?.let { commit ->
-                        DeviceInfoRow(label = "Git Commit", value = commit)
+                        DeviceInfoRow(label = stringResource(R.string.label_git_commit), value = commit)
                     }
-                    DeviceInfoRow(label = "Model", value = deviceInfo.model)
-                    DeviceInfoRow(label = "Revision", value = "v${deviceInfo.revision}")
-                    DeviceInfoRow(label = "CPU Cores", value = deviceInfo.cores.toString())
-                    DeviceInfoRow(label = "Features", value = deviceInfo.features)
+                    DeviceInfoRow(label = stringResource(R.string.label_model), value = deviceInfo.model)
+                    DeviceInfoRow(label = stringResource(R.string.label_revision), value = "v${deviceInfo.revision}")
+                    DeviceInfoRow(label = stringResource(R.string.label_cpu_cores), value = deviceInfo.cores.toString())
+                    DeviceInfoRow(label = stringResource(R.string.label_features), value = deviceInfo.features)
                     DeviceInfoRow(
-                        label = "Free Heap",
-                        value = "${deviceInfo.freeHeap} bytes"
+                        label = stringResource(R.string.label_free_heap),
+                        value = stringResource(R.string.label_bytes, deviceInfo.freeHeap.toString())
                     )
                     DeviceInfoRow(
-                        label = "Min Free Heap",
-                        value = "${deviceInfo.minFreeHeap} bytes"
+                        label = stringResource(R.string.label_min_free_heap),
+                        value = stringResource(R.string.label_bytes, deviceInfo.minFreeHeap.toString())
                     )
-                    DeviceInfoRow(label = "IDF Version", value = deviceInfo.idfVersion)
+                    DeviceInfoRow(label = stringResource(R.string.label_idf_version), value = deviceInfo.idfVersion)
                     deviceInfo.buildConfig?.let { config ->
-                        DeviceInfoRow(label = "Build Config", value = config)
+                        DeviceInfoRow(label = stringResource(R.string.label_build_config), value = config)
                     }
                     
                     if (deviceInfo.enabledFeatures.isNotEmpty()) {
@@ -710,7 +712,7 @@ fun DeviceInfoDialog(
                         Spacer(modifier = Modifier.height(12.dp))
                         
                         Text(
-                            text = "Enabled Features",
+                            text = stringResource(R.string.label_enabled_features),
                             style = MaterialTheme.typography.labelLarge,
                             color = primary,
                             fontWeight = FontWeight.Bold
@@ -719,30 +721,30 @@ fun DeviceInfoDialog(
                         
                         val featureNames = deviceInfo.enabledFeatures.map { feature ->
                             when (feature) {
-                                GhostResponse.DeviceFeature.DISPLAY -> "Display"
-                                GhostResponse.DeviceFeature.TOUCHSCREEN -> "Touchscreen"
-                                GhostResponse.DeviceFeature.STATUS_DISPLAY -> "Status Display"
-                                GhostResponse.DeviceFeature.NFC -> "NFC"
-                                GhostResponse.DeviceFeature.BADUSB -> "BadUSB"
-                                GhostResponse.DeviceFeature.INFRARED_TX -> "Infrared TX"
-                                GhostResponse.DeviceFeature.INFRARED_RX -> "Infrared RX"
-                                GhostResponse.DeviceFeature.GPS -> "GPS"
-                                GhostResponse.DeviceFeature.ETHERNET -> "Ethernet"
-                                GhostResponse.DeviceFeature.BATTERY -> "Battery"
-                                GhostResponse.DeviceFeature.BATTERY_ADC -> "Battery ADC"
-                                GhostResponse.DeviceFeature.FUEL_GAUGE -> "Fuel Gauge"
-                                GhostResponse.DeviceFeature.RTC_CLOCK -> "RTC Clock"
-                                GhostResponse.DeviceFeature.COMPASS -> "Compass"
-                                GhostResponse.DeviceFeature.ACCELEROMETER -> "Accelerometer"
-                                GhostResponse.DeviceFeature.JOYSTICK -> "Joystick"
-                                GhostResponse.DeviceFeature.CARDPUTER -> "Cardputer"
-                                GhostResponse.DeviceFeature.TDECK -> "T-Deck"
-                                GhostResponse.DeviceFeature.ROTARY_ENCODER -> "Rotary Encoder"
-                                GhostResponse.DeviceFeature.USB_KEYBOARD -> "USB Keyboard"
-                                GhostResponse.DeviceFeature.GHOST_BOARD -> "Ghost Board"
-                                GhostResponse.DeviceFeature.S3TWATCH -> "S3TWatch"
-                                GhostResponse.DeviceFeature.SD_CARD_SPI -> "SD Card (SPI)"
-                                GhostResponse.DeviceFeature.SD_CARD_MMC -> "SD Card (MMC)"
+                                GhostResponse.DeviceFeature.DISPLAY -> stringResource(R.string.feature_display)
+                                GhostResponse.DeviceFeature.TOUCHSCREEN -> stringResource(R.string.feature_touchscreen)
+                                GhostResponse.DeviceFeature.STATUS_DISPLAY -> stringResource(R.string.feature_status_display)
+                                GhostResponse.DeviceFeature.NFC -> stringResource(R.string.feature_nfc)
+                                GhostResponse.DeviceFeature.BADUSB -> stringResource(R.string.feature_badusb)
+                                GhostResponse.DeviceFeature.INFRARED_TX -> stringResource(R.string.feature_infrared_tx)
+                                GhostResponse.DeviceFeature.INFRARED_RX -> stringResource(R.string.feature_infrared_rx)
+                                GhostResponse.DeviceFeature.GPS -> stringResource(R.string.feature_gps)
+                                GhostResponse.DeviceFeature.ETHERNET -> stringResource(R.string.feature_ethernet)
+                                GhostResponse.DeviceFeature.BATTERY -> stringResource(R.string.feature_battery)
+                                GhostResponse.DeviceFeature.BATTERY_ADC -> stringResource(R.string.feature_battery_adc)
+                                GhostResponse.DeviceFeature.FUEL_GAUGE -> stringResource(R.string.feature_fuel_gauge)
+                                GhostResponse.DeviceFeature.RTC_CLOCK -> stringResource(R.string.feature_rtc_clock)
+                                GhostResponse.DeviceFeature.COMPASS -> stringResource(R.string.feature_compass)
+                                GhostResponse.DeviceFeature.ACCELEROMETER -> stringResource(R.string.feature_accelerometer)
+                                GhostResponse.DeviceFeature.JOYSTICK -> stringResource(R.string.feature_joystick)
+                                GhostResponse.DeviceFeature.CARDPUTER -> stringResource(R.string.feature_cardputer)
+                                GhostResponse.DeviceFeature.TDECK -> stringResource(R.string.feature_tdeck)
+                                GhostResponse.DeviceFeature.ROTARY_ENCODER -> stringResource(R.string.feature_rotary_encoder)
+                                GhostResponse.DeviceFeature.USB_KEYBOARD -> stringResource(R.string.feature_usb_keyboard)
+                                GhostResponse.DeviceFeature.GHOST_BOARD -> stringResource(R.string.feature_ghost_board)
+                                GhostResponse.DeviceFeature.S3TWATCH -> stringResource(R.string.feature_s3twatch)
+                                GhostResponse.DeviceFeature.SD_CARD_SPI -> stringResource(R.string.feature_sd_card_spi)
+                                GhostResponse.DeviceFeature.SD_CARD_MMC -> stringResource(R.string.feature_sd_card_mmc)
                             }
                         }
                         
@@ -763,7 +765,7 @@ fun DeviceInfoDialog(
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         Text(
-                            text = "Parse Errors",
+                            text = stringResource(R.string.label_parse_errors),
                             style = MaterialTheme.typography.labelLarge,
                             color = error,
                             fontWeight = FontWeight.Bold
@@ -794,7 +796,7 @@ fun DeviceInfoDialog(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (showRawResponse) "Hide Raw Response" else "Show Raw Response",
+                                text = if (showRawResponse) stringResource(R.string.action_hide_raw_response) else stringResource(R.string.action_show_raw_response),
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
@@ -839,7 +841,7 @@ fun DeviceInfoDialog(
                                 strokeWidth = 2.dp
                             )
                             Text(
-                                text = "Fetching device info...",
+                                text = stringResource(R.string.msg_fetching_device_info),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -850,7 +852,7 @@ fun DeviceInfoDialog(
                             val isError = status.startsWith("FAILED")
                             val statusColor = if (isError) errorColor() else MaterialTheme.colorScheme.tertiary
                             Text(
-                                text = "Parse: $status",
+                                text = stringResource(R.string.label_parse_status, status),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                                 color = statusColor
@@ -871,7 +873,7 @@ fun DeviceInfoDialog(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (showRaw) "Hide Raw Response" else "Show Raw Response",
+                                    text = if (showRaw) stringResource(R.string.action_hide_raw_response) else stringResource(R.string.action_show_raw_response),
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }
@@ -907,7 +909,7 @@ fun DeviceInfoDialog(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (showLog) "Hide Serial Debug Log" else "Serial Debug Log (${chipInfoDebugLog.size})",
+                                    text = if (showLog) stringResource(R.string.action_hide_serial_debug) else stringResource(R.string.action_show_serial_debug, chipInfoDebugLog.size),
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }
@@ -936,7 +938,7 @@ fun DeviceInfoDialog(
                 
                 // Refresh button
                 BrutalistOutlinedButton(
-                    text = "Refresh",
+                    text = stringResource(R.string.action_refresh),
                     onClick = onRefresh,
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = {
@@ -996,8 +998,8 @@ fun ComingSoonOverlay(
     show: Boolean,
     onProceed: () -> Unit,
     viewName: String = "",
-    title: String = "Coming Soon",
-    message: String = "This feature is under development."
+    title: String = stringResource(R.string.title_coming_soon),
+    message: String = stringResource(R.string.msg_coming_soon)
 ) {
     val primary = primaryColor()
     
@@ -1069,7 +1071,7 @@ fun ComingSoonOverlay(
                     
                     // Dismiss Button
                     BrutalistButton(
-                        text = "Dismiss",
+                        text = stringResource(R.string.action_dismiss),
                         onClick = onProceed,
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = primary,
@@ -1150,14 +1152,14 @@ fun FeatureNotSupportedOverlay(
                     }
                     
                     Text(
-                        text = "Not Supported",
+                        text = stringResource(R.string.title_not_supported),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     
                     Text(
-                        text = message ?: "This feature requires hardware support not available on your device.",
+                        text = message ?: stringResource(R.string.msg_not_supported),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1171,7 +1173,7 @@ fun FeatureNotSupportedOverlay(
                             contentColor = primary
                         )
                     ) {
-                        Text("Proceed")
+                        Text(stringResource(R.string.action_proceed))
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
                             imageVector = Icons.Default.ArrowForward,

@@ -19,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -73,12 +75,12 @@ fun TrackGattScreen(
         }
     }
     
-    val targetName = trackHeader?.targetName ?: gattDevice?.name ?: "Unknown"
+    val targetName = trackHeader?.targetName ?: gattDevice?.name ?: stringResource(R.string.label_unknown)
     val targetMac = trackHeader?.targetBssid ?: gattDevice?.mac
     
     MainScreen(
         onBack = onBack,
-        title = "Track GATT Device",
+        title = stringResource(R.string.title_track_gatt_device),
         actions = {
             IconButton(onClick = {
                 if (isTracking) {
@@ -91,7 +93,7 @@ fun TrackGattScreen(
             }) {
                 Icon(
                     if (isTracking) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (isTracking) "Stop" else "Start",
+                    contentDescription = if (isTracking) stringResource(R.string.action_stop) else stringResource(R.string.action_start),
                     tint = if (isTracking) errorColor() else primaryColor()
                 )
             }
@@ -121,7 +123,7 @@ fun TrackGattScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Tracking Device",
+                        text = stringResource(R.string.label_tracking_device),
                         style = MaterialTheme.typography.labelMedium,
                         color = OnSurfaceVariantDark
                     )
@@ -167,7 +169,7 @@ fun TrackGattScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Waiting for signal data...",
+                        text = stringResource(R.string.msg_waiting_signal),
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceVariantDark
                     )
@@ -186,7 +188,7 @@ fun TrackGattScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Press play to start tracking",
+                        text = stringResource(R.string.msg_press_play_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceVariantDark
                     )
@@ -200,14 +202,14 @@ fun TrackGattScreen(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = "How to use",
+                        text = stringResource(R.string.label_how_to_use),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "• Move closer to see signal increase\n• Move away to see signal decrease\n• Use to locate the physical device",
+                        text = stringResource(R.string.msg_track_instructions),
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceVariantDark
                     )
@@ -250,9 +252,9 @@ private fun GattSignalDisplay(
     }
     
     val directionText = when (direction) {
-        GhostResponse.TrackDirection.CLOSER -> "GETTING CLOSER"
-        GhostResponse.TrackDirection.FARTHER -> "MOVING AWAY"
-        GhostResponse.TrackDirection.STABLE -> "STABLE"
+        GhostResponse.TrackDirection.CLOSER -> stringResource(R.string.msg_closer)
+        GhostResponse.TrackDirection.FARTHER -> stringResource(R.string.msg_farther)
+        GhostResponse.TrackDirection.STABLE -> stringResource(R.string.msg_stable)
     }
     
     Column(
@@ -287,7 +289,7 @@ private fun GattSignalDisplay(
                     color = signalColor
                 )
                 Text(
-                    text = "dBm",
+                    text = stringResource(R.string.label_dbm),
                     style = MaterialTheme.typography.titleMedium,
                     color = OnSurfaceVariantDark
                 )
@@ -321,12 +323,12 @@ private fun GattSignalDisplay(
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             GattMinMaxCard(
-                label = "MIN",
+                label = stringResource(R.string.label_min),
                 value = minRssi,
                 color = Error
             )
             GattMinMaxCard(
-                label = "MAX",
+                label = stringResource(R.string.label_max),
                 value = maxRssi,
                 color = Success
             )
@@ -338,7 +340,7 @@ private fun GattSignalDisplay(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = "Signal Quality",
+                text = stringResource(R.string.label_signal_quality),
                 style = MaterialTheme.typography.labelSmall,
                 color = OnSurfaceVariantDark
             )
@@ -373,7 +375,7 @@ private fun GattMinMaxCard(
                 color = OnSurfaceVariantDark
             )
             Text(
-                text = "${value} dBm",
+                text = "${value} ${stringResource(R.string.label_dbm)}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = color
@@ -426,9 +428,9 @@ private fun TrackGattBanner(
                 Column {
                     Text(
                         text = when {
-                            !isConnected -> "Not Connected"
-                            isTracking -> "Tracking Active"
-                            else -> "Ready to Track"
+                            !isConnected -> stringResource(R.string.status_disconnected)
+                            isTracking -> stringResource(R.string.label_tracking_active)
+                            else -> stringResource(R.string.label_ready_to_track)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
@@ -440,7 +442,7 @@ private fun TrackGattBanner(
                     )
                     if (isConnected) {
                         Text(
-                            text = if (isTracking) "Move to find device" else "Press play to start",
+                            text = if (isTracking) stringResource(R.string.msg_move_to_find_device) else stringResource(R.string.msg_press_play_hint),
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
                         )
@@ -450,7 +452,7 @@ private fun TrackGattBanner(
             
             if (!isConnected) {
                 BrutalistButton(
-                    text = "Connect",
+                    text = stringResource(R.string.action_connect),
                     onClick = onConnect,
                     containerColor = primaryColor(),
                     modifier = Modifier

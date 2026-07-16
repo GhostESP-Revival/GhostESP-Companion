@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
 import com.example.ghostespcompanion.domain.model.GhostResponse
@@ -56,7 +58,7 @@ fun FlipperDetectScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "Flipper Detection",
+        title = stringResource(R.string.title_flipper_detection),
         actions = {
             IconButton(onClick = {
                 if (isConnected) {
@@ -67,7 +69,7 @@ fun FlipperDetectScreen(
             }) {
                 Icon(
                     Icons.Default.Refresh,
-                    contentDescription = "Refresh",
+                    contentDescription = stringResource(R.string.action_refresh),
                     tint = primaryColor()
                 )
             }
@@ -82,7 +84,7 @@ fun FlipperDetectScreen(
             BleConnectionBanner(
                 isConnected = isConnected,
                 connectionTransport = connectionTransport,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -114,7 +116,7 @@ fun FlipperDetectScreen(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Scanning for Flipper devices...",
+                                text = stringResource(R.string.msg_scanning_flippers),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = OnSurfaceDark
                             )
@@ -126,7 +128,7 @@ fun FlipperDetectScreen(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Scan complete or idle",
+                                text = stringResource(R.string.msg_scan_complete_idle),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = OnSurfaceVariantDark
                             )
@@ -136,7 +138,7 @@ fun FlipperDetectScreen(
                 
                 // Start/Stop Scan Button
                 BrutalistButton(
-                    text = if (isScanning) "Stop Scan" else "Start Scan",
+                    text = if (isScanning) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_scan),
                     onClick = {
                         if (isConnected) {
                             if (isScanning) {
@@ -163,7 +165,7 @@ fun FlipperDetectScreen(
                 // Detected Flippers List
                 if (flipperDevices.isNotEmpty()) {
                     Text(
-                        text = "Detected Flippers (${flipperDevices.size})",
+                        text = stringResource(R.string.label_detected_flippers, flipperDevices.size),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Warning
@@ -206,12 +208,12 @@ fun FlipperDetectScreen(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "No Flipper devices detected",
+                                text = stringResource(R.string.msg_no_flippers_detected),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = OnSurfaceVariantDark
                             )
                             Text(
-                                text = "Start a scan to search for nearby Flipper Zero devices",
+                                text = stringResource(R.string.msg_flipper_scan_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceVariantDark
                             )
@@ -239,7 +241,7 @@ fun FlipperDetectScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Flipper Zero devices broadcast Bluetooth signals that can be detected. This scan identifies nearby Flipper devices for security auditing.",
+                            text = stringResource(R.string.msg_flipper_bt_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = OnSurfaceVariantDark
                         )
@@ -295,7 +297,7 @@ private fun FlipperDeviceCard(
                 )
                 Column {
                     Text(
-                        text = flipper.name ?: "Flipper Zero (${flipper.flipperType})",
+                        text = flipper.name ?: "${stringResource(R.string.label_flipper_zero)} (${flipper.flipperType})",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = OnSurfaceDark
@@ -306,7 +308,7 @@ private fun FlipperDeviceCard(
                         color = OnSurfaceVariantDark
                     )
                     Text(
-                        text = "Signal: ${flipper.rssi} dBm",
+                        text = "${stringResource(R.string.label_signal)}: ${flipper.rssi} ${stringResource(R.string.label_dbm)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = when {
                             flipper.rssi >= -50 -> successColor()
@@ -320,7 +322,7 @@ private fun FlipperDeviceCard(
             IconButton(onClick = onAction) {
                 Icon(
                     Icons.Default.MoreVert,
-                    contentDescription = "Actions",
+                    contentDescription = stringResource(R.string.title_actions),
                     tint = OnSurfaceVariantDark
                 )
             }
@@ -346,9 +348,9 @@ private fun FlipperDeviceDetailSheet(
     }
 
     val signalText = when {
-        device.rssi >= -60 -> "Excellent"
-        device.rssi >= -80 -> "Good"
-        else -> "Weak"
+        device.rssi >= -60 -> stringResource(R.string.signal_excellent)
+        device.rssi >= -80 -> stringResource(R.string.signal_good)
+        else -> stringResource(R.string.signal_weak)
     }
 
     ModalBottomSheet(
@@ -383,7 +385,7 @@ private fun FlipperDeviceDetailSheet(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = (device.name ?: "Flipper Zero").censorDevice(privacyMode),
+                        text = (device.name ?: stringResource(R.string.label_flipper_zero)).censorDevice(privacyMode),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -404,12 +406,12 @@ private fun FlipperDeviceDetailSheet(
             ) {
                 Column {
                     Text(
-                        text = "Signal",
+                        text = stringResource(R.string.label_signal),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${device.rssi} dBm ($signalText)",
+                        text = "${device.rssi} ${stringResource(R.string.label_dbm)} ($signalText)",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = signalColor
@@ -417,7 +419,7 @@ private fun FlipperDeviceDetailSheet(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "Type",
+                        text = stringResource(R.string.label_type),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -439,7 +441,7 @@ private fun FlipperDeviceDetailSheet(
             ) {
                 Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Track Flipper")
+                Text(stringResource(R.string.action_track_flipper))
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -486,14 +488,14 @@ private fun BleConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) successColor() else errorColor()
                     )
                     if (isConnected) {
                         Text(
-                            text = "Ready to scan",
+                            text = stringResource(R.string.label_ready_to_scan),
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
                         )
@@ -510,7 +512,7 @@ private fun BleConnectionBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

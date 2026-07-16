@@ -15,6 +15,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ghostespcompanion.R
+import androidx.compose.ui.res.stringResource
 import com.example.ghostespcompanion.ui.components.*
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.theme.*
@@ -40,7 +41,7 @@ fun MoreMenuScreen(
 ) {
     val openUrl = rememberUrlOpener()
     
-    MainScreen(title = "More") { paddingValues ->
+    MainScreen(title = stringResource(R.string.title_more)) { paddingValues ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -51,7 +52,7 @@ fun MoreMenuScreen(
             // Tools section
             item {
                 BrutalistSectionHeader(
-                    title = "Tools",
+                    title = stringResource(R.string.header_tools),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     accentColor = primaryColor()
                 )
@@ -60,8 +61,8 @@ fun MoreMenuScreen(
             item {
                 MenuItem(
                     icon = Icons.Default.Nfc,
-                    title = "NFC",
-                    subtitle = "Read, write, and emulate NFC tags",
+                    title = stringResource(R.string.title_nfc),
+                    subtitle = stringResource(R.string.subtitle_nfc),
                     accentColor = tertiaryColor(),
                     onClick = onNavigateToNfc
                 )
@@ -70,8 +71,8 @@ fun MoreMenuScreen(
             item {
                 MenuItem(
                     icon = Icons.Default.Usb,
-                    title = "BadUSB",
-                    subtitle = "USB HID attacks",
+                    title = stringResource(R.string.title_bad_usb),
+                    subtitle = stringResource(R.string.subtitle_badusb),
                     accentColor = errorColor(),
                     onClick = onNavigateToBadUsb
                 )
@@ -80,8 +81,8 @@ fun MoreMenuScreen(
             item {
                 MenuItem(
                     icon = Icons.Default.GpsFixed,
-                    title = "GPS / Wardrive",
-                    subtitle = "Location tracking and logging",
+                    title = stringResource(R.string.title_gps_wardrive),
+                    subtitle = stringResource(R.string.subtitle_gps),
                     accentColor = secondaryColor(),
                     onClick = onNavigateToGps
                 )
@@ -90,8 +91,8 @@ fun MoreMenuScreen(
             item {
                 MenuItem(
                     icon = Icons.Default.SettingsEthernet,
-                    title = "Ethernet",
-                    subtitle = "Network tools and scanning",
+                    title = stringResource(R.string.title_ethernet),
+                    subtitle = stringResource(R.string.subtitle_ethernet),
                     accentColor = primaryColor(),
                     onClick = onNavigateToEthernet
                 )
@@ -100,8 +101,8 @@ fun MoreMenuScreen(
             item {
                 MenuItem(
                     icon = Icons.Default.SdCard,
-                    title = "SD Manager",
-                    subtitle = "Browse and manage files",
+                    title = stringResource(R.string.title_sd_manager),
+                    subtitle = stringResource(R.string.subtitle_sd),
                     accentColor = tertiaryColor(),
                     onClick = onNavigateToSd
                 )
@@ -110,7 +111,7 @@ fun MoreMenuScreen(
             // Debug section
             item {
                 BrutalistSectionHeader(
-                    title = "Debug",
+                    title = stringResource(R.string.header_debug),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     accentColor = primaryColor()
                 )
@@ -119,8 +120,8 @@ fun MoreMenuScreen(
             item {
                 MenuItem(
                     icon = Icons.Default.Terminal,
-                    title = "Terminal",
-                    subtitle = "Raw serial console",
+                    title = stringResource(R.string.title_terminal),
+                    subtitle = stringResource(R.string.subtitle_terminal),
                     accentColor = secondaryColor(),
                     onClick = onNavigateToTerminal
                 )
@@ -129,7 +130,7 @@ fun MoreMenuScreen(
             // Settings section
             item {
                 BrutalistSectionHeader(
-                    title = "Settings",
+                    title = stringResource(R.string.title_settings),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     accentColor = primaryColor()
                 )
@@ -138,8 +139,8 @@ fun MoreMenuScreen(
             item {
                 MenuItem(
                     icon = Icons.Default.Settings,
-                    title = "Settings",
-                    subtitle = "App configuration",
+                    title = stringResource(R.string.title_settings),
+                    subtitle = stringResource(R.string.subtitle_settings),
                     accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = onNavigateToSettings
                 )
@@ -148,7 +149,7 @@ fun MoreMenuScreen(
             // About section
             item {
                 BrutalistSectionHeader(
-                    title = "About",
+                    title = stringResource(R.string.header_about),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     accentColor = primaryColor()
                 )
@@ -225,7 +226,7 @@ private fun MenuItem(
             
             Icon(
                 Icons.Default.ChevronRight,
-                contentDescription = "Open",
+                contentDescription = stringResource(R.string.action_dismiss),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -265,7 +266,7 @@ private fun AboutCard(
                 ) {
                     Image(
                         painter = iconPainter,
-                        contentDescription = "GhostESP Companion Icon",
+                        contentDescription = stringResource(R.string.desc_app_icon),
                         modifier = Modifier.size(40.dp)
                     )
                 }
@@ -274,19 +275,19 @@ private fun AboutCard(
             Spacer(modifier = Modifier.height(12.dp))
             
             Text(
-                text = "GhostESP Companion",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "v0.4.1 BETA",
+                text = stringResource(R.string.label_version_beta),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "A companion app for GhostESP devices",
+                text = stringResource(R.string.msg_app_desc_short),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -298,14 +299,14 @@ private fun AboutCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 BrutalistChip(
-                    text = "GitHub",
+                    text = stringResource(R.string.label_github),
                     onClick = onGitHubClick,
                     backgroundColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
                     borderColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f),
                     textColor = MaterialTheme.colorScheme.secondary
                 )
                 BrutalistChip(
-                    text = "Docs",
+                    text = stringResource(R.string.label_docs),
                     onClick = onDocsClick,
                     backgroundColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.1f),
                     borderColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f),

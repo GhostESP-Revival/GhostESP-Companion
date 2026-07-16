@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -101,7 +103,7 @@ fun ApDetailScreen(
             // Connection Status Banner
             ApDetailWifiBanner(
                 isConnected = isConnected,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -133,21 +135,21 @@ fun ApDetailScreen(
                                 ) {
                                     Icon(
                                         Icons.Default.Check,
-                                        contentDescription = "Connected",
+                                        contentDescription = stringResource(R.string.status_connected),
                                         tint = successColor(),
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
-                                            text = "Currently Connected",
+                                            text = stringResource(R.string.status_connected),
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = successColor()
                                         )
                                         connectedIp?.let {
                                             Text(
-                                                text = "IP: $it",
+                                                text = stringResource(R.string.label_ip_prefix, it),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = successColor()
                                             )
@@ -159,18 +161,24 @@ fun ApDetailScreen(
                         }
                         
                         Text(
-                            text = "Network Information",
+                            text = stringResource(R.string.title_network_information),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = primaryColor()
                         )
                         
-                        NetworkInfoRow("SSID", displayAp.ssid.censorSsid(privacyMode))
-                        NetworkInfoRow("BSSID", displayAp.bssid.censorMac(privacyMode))
-                        NetworkInfoRow("Channel", displayAp.channel.toString())
-                        NetworkInfoRow("Security", displayAp.security)
-                        NetworkInfoRow("Signal", "${displayAp.rssi} dBm")
-                        displayAp.vendor?.let { NetworkInfoRow("Vendor", it) }
+                        NetworkInfoRow(stringResource(R.string.label_ssid), displayAp.ssid.censorSsid(privacyMode))
+                        NetworkInfoRow(stringResource(R.string.label_bssid), displayAp.bssid.censorMac(privacyMode))
+                        NetworkInfoRow(stringResource(R.string.label_channel), displayAp.channel.toString())
+                        val securityLabel = when (displayAp.security) {
+                            "Open" -> stringResource(R.string.label_open_network)
+                            "WPA3" -> stringResource(R.string.label_wpa3)
+                            "WPA2" -> stringResource(R.string.label_wpa2)
+                            else -> displayAp.security
+                        }
+                        NetworkInfoRow(stringResource(R.string.label_security), securityLabel)
+                        NetworkInfoRow(stringResource(R.string.label_signal), "${displayAp.rssi} ${stringResource(R.string.label_dbm)}")
+                        displayAp.vendor?.let { NetworkInfoRow(stringResource(R.string.label_vendor), it) }
                         
                         // Signal strength indicator
                         Row(
@@ -178,7 +186,7 @@ fun ApDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Signal Quality",
+                                text = stringResource(R.string.label_signal_quality),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = OnSurfaceVariantDark,
                                 modifier = Modifier.weight(1f)
@@ -190,7 +198,7 @@ fun ApDetailScreen(
                 
                 // Action Buttons
                 Text(
-                    text = "Actions",
+                    text = stringResource(R.string.title_actions),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Primary
@@ -202,7 +210,7 @@ fun ApDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     BrutalistOutlinedButton(
-                        text = "Set Target",
+                        text = stringResource(R.string.action_set_target),
                         onClick = {
                             if (isConnected) {
                                 viewModel.selectAp(apIndex.toString())
@@ -213,7 +221,7 @@ fun ApDetailScreen(
                     )
                     
                     BrutalistOutlinedButton(
-                        text = "Track",
+                        text = stringResource(R.string.action_track),
                         onClick = {
                             if (isConnected) {
                                 onNavigateToTrack(apIndex)
@@ -226,7 +234,7 @@ fun ApDetailScreen(
                 
                 // Deauth Button
                 BrutalistButton(
-                    text = if (isDeauthing) "Stop Deauth" else "Start Deauth",
+                    text = if (isDeauthing) stringResource(R.string.action_stop_deauth) else stringResource(R.string.action_start_deauth),
                     onClick = {
                         if (isConnected) {
                             if (isDeauthing) {
@@ -273,7 +281,7 @@ fun ApDetailScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Currently Connected${connectedIp?.let { " ($it)" } ?: ""}",
+                                text = stringResource(R.string.status_connected) + (connectedIp?.let { " ($it)" } ?: ""),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Medium,
                                 color = successColor()
@@ -282,7 +290,7 @@ fun ApDetailScreen(
                     }
                 } else {
                     BrutalistOutlinedButton(
-                        text = "Connect to Network",
+                        text = stringResource(R.string.action_connect_to_network),
                         onClick = { showConnectDialog = true },
                         modifier = Modifier.fillMaxWidth(),
                         borderColor = successColor(),
@@ -293,14 +301,14 @@ fun ApDetailScreen(
                 
                 // Station Scan Section
                 Text(
-                    text = "Station Scanner",
+                    text = stringResource(R.string.title_station_scanner),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = primaryColor()
                 )
                 
                 BrutalistButton(
-                    text = if (isScanningStations) "Stop Station Scan" else "Scan for Stations",
+                    text = if (isScanningStations) stringResource(R.string.action_stop_stations_scan) else stringResource(R.string.action_scan_stations),
                     onClick = {
                         if (isConnected) {
                             if (isScanningStations) {
@@ -327,7 +335,7 @@ fun ApDetailScreen(
                 // Station List - Only show stations associated with this AP
                 if (associatedStations.isNotEmpty()) {
                     Text(
-                        text = "Associated Stations (${associatedStations.size})",
+                        text = stringResource(R.string.label_associated_stations, associatedStations.size),
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceVariantDark
                     )
@@ -340,12 +348,12 @@ fun ApDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "${selectedStationIndexes.size} selected",
+                                text = stringResource(R.string.label_selected_count, selectedStationIndexes.size),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = errorColor()
                             )
                             BrutalistButton(
-                                text = "Deauth Selected",
+                                text = stringResource(R.string.action_deauth_selected),
                                 onClick = {
                                     if (isConnected) {
                                         // Start deauth for selected stations
@@ -361,7 +369,7 @@ fun ApDetailScreen(
                                 leadingIcon = { Icon(Icons.Default.Warning, contentDescription = null) }
                             )
                             BrutalistOutlinedButton(
-                                text = "Clear",
+                                text = stringResource(R.string.action_clear),
                                 onClick = { selectedStationIndexes = emptySet() },
                                 borderColor = OnSurfaceVariantDark,
                                 textColor = OnSurfaceVariantDark
@@ -401,7 +409,7 @@ associatedStations.forEach { station ->
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Scanning for stations...",
+                            text = stringResource(R.string.msg_scanning_stations),
                             style = MaterialTheme.typography.bodyMedium,
                             color = OnSurfaceVariantDark
                         )
@@ -410,7 +418,7 @@ associatedStations.forEach { station ->
                 
                 // Capture Options
                 Text(
-                    text = "Capture Options",
+                    text = stringResource(R.string.title_capture_options),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = primaryColor()
@@ -421,7 +429,7 @@ associatedStations.forEach { station ->
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     BrutalistButton(
-                        text = "Capture Handshake",
+                        text = stringResource(R.string.title_handshake_capture),
                         onClick = {
                             onNavigateToHandshake(apIndex)
                         },
@@ -455,15 +463,15 @@ associatedStations.forEach { station ->
     if (showConnectDialog) {
         AlertDialog(
             onDismissRequest = { showConnectDialog = false },
-            title = { Text("Connect to ${displayAp.ssid}") },
+            title = { Text(stringResource(R.string.title_connect_to_ssid, displayAp.ssid)) },
             text = {
                 Column {
-                    Text("Enter password if required:")
+                    Text(stringResource(R.string.msg_enter_password))
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Password") },
+                        label = { Text(stringResource(R.string.label_password)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -479,7 +487,7 @@ associatedStations.forEach { station ->
                         password = ""
                     }
                 ) {
-                    Text("Connect")
+                    Text(stringResource(R.string.action_connect))
                 }
             },
             dismissButton = {
@@ -487,7 +495,7 @@ associatedStations.forEach { station ->
                     showConnectDialog = false
                     password = ""
                 }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -554,10 +562,10 @@ private fun SignalStrengthIndicator(rssi: Int) {
     
     Text(
         text = when {
-            rssi >= -50 -> "Excellent"
-            rssi >= -60 -> "Good"
-            rssi >= -70 -> "Fair"
-            else -> "Weak"
+            rssi >= -50 -> stringResource(R.string.signal_excellent)
+            rssi >= -60 -> stringResource(R.string.signal_good)
+            rssi >= -70 -> stringResource(R.string.signal_fair)
+            else -> stringResource(R.string.signal_weak)
         },
         style = MaterialTheme.typography.labelSmall,
         color = color
@@ -598,14 +606,14 @@ private fun ApDetailWifiBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) Success else Error
                     )
                     if (isConnected) {
                         Text(
-                            text = "Ready to interact",
+                            text = stringResource(R.string.msg_ready_to_interact),
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
                         )
@@ -622,7 +630,7 @@ private fun ApDetailWifiBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -694,7 +702,7 @@ Column(modifier = Modifier.weight(1f)) {
                 // Show RSSI if available
                 if (station.rssi > -100) {
                     Text(
-                        text = "Signal: ${station.rssi} dBm",
+                        text = stringResource(R.string.label_signal_dbm, station.rssi),
                         style = MaterialTheme.typography.labelSmall,
                         color = when {
                             station.rssi >= -50 -> Success
@@ -713,7 +721,7 @@ Column(modifier = Modifier.weight(1f)) {
                     color = Error.copy(alpha = 0.2f)
                 ) {
                     Text(
-                        text = "SELECTED",
+                        text = stringResource(R.string.label_selected),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = Error,

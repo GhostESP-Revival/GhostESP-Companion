@@ -15,6 +15,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -54,13 +56,13 @@ fun NfcScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "NFC",
+        title = stringResource(R.string.title_nfc),
         actions = {
             IconButton(onClick = onNavigateToChameleon) {
-                Icon(Icons.Default.CreditCard, contentDescription = "Chameleon Ultra")
+                Icon(Icons.Default.CreditCard, contentDescription = stringResource(R.string.title_chameleon_ultra))
             }
             IconButton(onClick = onNavigateToSaved) {
-                Icon(Icons.Default.Folder, contentDescription = "Saved Tags")
+                Icon(Icons.Default.Folder, contentDescription = stringResource(R.string.title_saved_tags))
             }
         }
     ) { paddingValues ->
@@ -81,8 +83,8 @@ fun NfcScreen(
             ) {
                 item {
                     QuickActionCard(
-                        title = "Scan Tag",
-                        subtitle = "Read NFC tag",
+                        title = stringResource(R.string.title_scan_tag),
+                        subtitle = stringResource(R.string.action_scan),
                         icon = Icons.Default.Nfc,
                         onClick = {
                             if (isConnected) {
@@ -95,8 +97,8 @@ fun NfcScreen(
                 }
                 item {
                     QuickActionCard(
-                        title = "Write Tag",
-                        subtitle = "Coming soon",
+                        title = stringResource(R.string.label_write_tag),
+                        subtitle = stringResource(R.string.title_coming_soon),
                         icon = Icons.Default.Edit,
                         onClick = {},
                         enabled = false
@@ -104,16 +106,16 @@ fun NfcScreen(
                 }
                 item {
                     QuickActionCard(
-                        title = "Chameleon",
-                        subtitle = "Emulate tags",
+                        title = stringResource(R.string.label_chameleon),
+                        subtitle = stringResource(R.string.label_emulate_tags),
                         icon = Icons.Default.CreditCard,
                         onClick = onNavigateToChameleon
                     )
                 }
                 item {
                     QuickActionCard(
-                        title = "Saved",
-                        subtitle = "View saved tags",
+                        title = stringResource(R.string.label_saved),
+                        subtitle = stringResource(R.string.label_view_saved_tags),
                         icon = Icons.Default.Folder,
                         onClick = onNavigateToSaved
                     )
@@ -141,12 +143,12 @@ fun NfcScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Waiting for NFC tag...",
+                            text = stringResource(R.string.msg_waiting_for_tag),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = "Place a tag near the device",
+                            text = stringResource(R.string.msg_place_tag_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -155,7 +157,7 @@ fun NfcScreen(
                             isScanning = false
                             viewModel.stopNfcScan()
                         }) {
-                            Text("Cancel")
+                            Text(stringResource(R.string.action_cancel))
                         }
                     }
                 }
@@ -181,7 +183,7 @@ fun NfcScreen(
             
             // Recent tags section
             Text(
-                text = "Recent Tags (${nfcTags.size})",
+                text = stringResource(R.string.label_recent_tags, nfcTags.size),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -213,7 +215,7 @@ fun NfcScreen(
                                     style = MaterialTheme.typography.titleSmall
                                 )
                                 Text(
-                                    text = "UID: ${tag.uid.take(8)}...",
+                                    text = stringResource(R.string.label_uid_prefix, tag.uid.take(8)),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -238,12 +240,12 @@ fun NfcScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "No recent tags",
+                            text = stringResource(R.string.msg_no_recent_tags),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Scan a tag to get started",
+                            text = stringResource(R.string.msg_scan_tag_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -257,16 +259,16 @@ fun NfcScreen(
             FeatureNotSupportedOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },
-                featureName = "NFC",
-                message = "This device does not have NFC hardware support. Some features may not work."
+                featureName = stringResource(R.string.title_nfc),
+                message = stringResource(R.string.msg_nfc_unsupported)
             )
         } else {
             ComingSoonOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },
-                viewName = "NFC",
-                title = "Coming Soon",
-                message = "NFC features are currently under development. Full tag reading, writing, and emulation support coming soon."
+                viewName = stringResource(R.string.title_nfc),
+                title = stringResource(R.string.title_coming_soon),
+                message = stringResource(R.string.msg_nfc_coming_soon)
             )
         }
         }

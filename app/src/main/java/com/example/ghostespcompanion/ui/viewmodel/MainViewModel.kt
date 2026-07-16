@@ -6,6 +6,7 @@ import android.hardware.usb.UsbDevice
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.LocationHelper
 import com.example.ghostespcompanion.data.PhoneLocation
 import com.example.ghostespcompanion.data.ble.BleBridgeDevice
@@ -112,7 +113,11 @@ class MainViewModel @Inject constructor(
                 if (isConnected && !wasConnected) {
                     // Just connected - success haptic
                     settingsManager.performHapticFeedback(settings.hapticFeedback, SettingsManager.HAPTIC_SUCCESS)
-                    settingsManager.showNotification("GhostESP Connected", "Device connected successfully", settings.showNotifications)
+                    settingsManager.showNotification(
+                        appContext.getString(R.string.notification_connected_title),
+                        appContext.getString(R.string.notification_connected_msg),
+                        settings.showNotifications
+                    )
                     // Check WiFi status to identify connected AP
                     ghostRepository.getWifiStatus()
                 } else if (!isConnected && wasConnected && state == SerialManager.ConnectionState.DISCONNECTED) {
@@ -773,7 +778,7 @@ class MainViewModel @Inject constructor(
     fun shareSavedWardriveCsv(context: Context, uriString: String) {
         ghostRepository.getSavedWardriveCsvShareIntent(context, uriString)?.let { intent ->
             try {
-                context.startActivity(Intent.createChooser(intent, "Share CSV"))
+                context.startActivity(Intent.createChooser(intent, context.getString(R.string.title_share_csv)))
             } catch (e: Exception) {
                 android.util.Log.w("MainViewModel", "No activity to share CSV: ${e.message}")
             }

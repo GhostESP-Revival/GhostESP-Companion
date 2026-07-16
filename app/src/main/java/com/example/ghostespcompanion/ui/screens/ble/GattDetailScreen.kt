@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -56,7 +58,7 @@ fun GattDetailScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "GATT Device",
+        title = stringResource(R.string.label_gatt_device),
         actions = {
             IconButton(onClick = {
                 if (isConnected && gattDevice != null) {
@@ -73,7 +75,7 @@ fun GattDetailScreen(
                 } else {
                     Icon(
                         Icons.Default.Refresh,
-                        contentDescription = "Refresh",
+                        contentDescription = stringResource(R.string.action_refresh),
                         tint = primaryColor()
                     )
                 }
@@ -115,7 +117,7 @@ fun GattDetailScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = (device.name ?: "Unknown").censorDevice(privacyMode),
+                                    text = (device.name ?: stringResource(R.string.label_unknown)).censorDevice(privacyMode),
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = Primary
@@ -128,7 +130,7 @@ fun GattDetailScreen(
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = "${device.rssi} dBm",
+                                    text = "${device.rssi} ${stringResource(R.string.label_dbm)}",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = when {
                                         device.rssi >= -60 -> SignalExcellent
@@ -153,7 +155,7 @@ fun GattDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     BrutalistOutlinedButton(
-                        text = "Track Device",
+                        text = stringResource(R.string.action_track),
                         onClick = { onNavigateToTrack(gattIndex) },
                         modifier = Modifier.weight(1f),
                         leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
@@ -183,7 +185,7 @@ fun GattDetailScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Enumerating services...",
+                            text = stringResource(R.string.msg_enumerating_services),
                             style = MaterialTheme.typography.bodyMedium,
                             color = primaryColor()
                         )
@@ -191,7 +193,7 @@ fun GattDetailScreen(
                 }
             } else if (gattServices.isNotEmpty()) {
                 Text(
-                    text = "Services (${gattServices.size})",
+                    text = stringResource(R.string.label_services_count, gattServices.size),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Primary
@@ -228,7 +230,7 @@ fun GattDetailScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Connect to device to enumerate services",
+                            text = stringResource(R.string.msg_connect_to_enumerate),
                             style = MaterialTheme.typography.bodyMedium,
                             color = warningColor()
                         )
@@ -270,13 +272,13 @@ private fun GattServiceCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = service.name ?: "Unknown Service",
+                        text = service.name ?: stringResource(R.string.label_unknown_service),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "UUID: ${service.uuid}",
+                        text = stringResource(R.string.label_uuid_prefix_full, service.uuid),
                         style = MaterialTheme.typography.labelSmall,
                         color = OnSurfaceVariantDark
                     )
@@ -289,7 +291,7 @@ private fun GattServiceCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    text = "Characteristics:",
+                    text = stringResource(R.string.label_characteristics),
                     style = MaterialTheme.typography.labelMedium,
                     color = OnSurfaceVariantDark
                 )
@@ -326,7 +328,7 @@ private fun GattServiceCard(
             }
             
             Text(
-                text = "Handles: ${service.startHandle}-${service.endHandle}",
+                text = stringResource(R.string.label_handles, service.startHandle, service.endHandle),
                 style = MaterialTheme.typography.labelSmall,
                 color = OnSurfaceVariantDark,
                 modifier = Modifier.padding(top = 8.dp)
@@ -379,9 +381,9 @@ private fun GattDetailConnectionBanner(
                 Column {
                     Text(
                         text = when {
-                            !isConnected -> "Not Connected"
-                            isEnumerating -> "Enumerating..."
-                            else -> "Connected"
+                            !isConnected -> stringResource(R.string.status_disconnected)
+                            isEnumerating -> stringResource(R.string.status_connecting).replace("…", "")
+                            else -> stringResource(R.string.status_connected)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
@@ -396,7 +398,7 @@ private fun GattDetailConnectionBanner(
             
             if (!isConnected) {
                 BrutalistButton(
-                    text = "Connect",
+                    text = stringResource(R.string.action_connect),
                     onClick = onConnect,
                     containerColor = primaryColor(),
                     modifier = Modifier

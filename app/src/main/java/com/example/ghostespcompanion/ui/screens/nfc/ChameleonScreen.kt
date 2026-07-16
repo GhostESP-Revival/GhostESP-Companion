@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.components.*
@@ -36,28 +38,29 @@ fun ChameleonScreen(
     val statusMessage by viewModel.statusMessage.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     
+    val emptyStr = stringResource(R.string.label_empty)
     // Available slots (Chameleon Ultra has 8 slots)
-    val slots = remember {
+    val slots = remember(emptyStr) {
         listOf(
             ChameleonSlot(0, "Slot 1", "MIFARE Classic 1K", true),
             ChameleonSlot(1, "Slot 2", "NTAG213", false),
-            ChameleonSlot(2, "Slot 3", "Empty", false),
-            ChameleonSlot(3, "Slot 4", "Empty", false),
-            ChameleonSlot(4, "Slot 5", "Empty", false),
-            ChameleonSlot(5, "Slot 6", "Empty", false),
-            ChameleonSlot(6, "Slot 7", "Empty", false),
-            ChameleonSlot(7, "Slot 8", "Empty", false)
+            ChameleonSlot(2, "Slot 3", emptyStr, false),
+            ChameleonSlot(3, "Slot 4", emptyStr, false),
+            ChameleonSlot(4, "Slot 5", emptyStr, false),
+            ChameleonSlot(5, "Slot 6", emptyStr, false),
+            ChameleonSlot(6, "Slot 7", emptyStr, false),
+            ChameleonSlot(7, "Slot 8", emptyStr, false)
         )
     }
     
     MainScreen(
         onBack = onBack,
-        title = "Chameleon Ultra",
+        title = stringResource(R.string.title_chameleon_ultra),
         actions = {
             IconButton(onClick = { showSlotDialog = true }) {
                 Icon(
                     Icons.Default.Add,
-                    contentDescription = "Add Tag",
+                    contentDescription = stringResource(R.string.action_add_tag),
                     tint = primaryColor()
                 )
             }
@@ -71,7 +74,7 @@ fun ChameleonScreen(
             // Connection Status Banner
             ChameleonConnectionBanner(
                 isConnected = isConnected,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -108,13 +111,13 @@ fun ChameleonScreen(
                                 )
                                 Column {
                                     Text(
-                                        text = if (isEmulating) "Emulating" else "Not Emulating",
+                                        text = if (isEmulating) stringResource(R.string.label_emulating) else stringResource(R.string.label_not_emulating),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isEmulating) successColor() else OnSurfaceVariantDark
                                     )
                                     Text(
-                                        text = if (isEmulating) slots[selectedSlot].name else "Select a slot to start",
+                                        text = if (isEmulating) slots[selectedSlot].name else stringResource(R.string.msg_select_slot_hint),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = OnSurfaceVariantDark
                                     )
@@ -123,7 +126,7 @@ fun ChameleonScreen(
                             
                             if (isEmulating) {
                                 BrutalistButton(
-                                    text = "Stop",
+                                    text = stringResource(R.string.action_stop),
                                     onClick = {
                                         if (isConnected) {
                                             viewModel.sendRaw("chameleon_stop")
@@ -141,7 +144,7 @@ fun ChameleonScreen(
                 // Slot Selection
                 item {
                     Text(
-                        text = "Available Slots",
+                        text = stringResource(R.string.label_available_slots),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor()
@@ -172,7 +175,7 @@ fun ChameleonScreen(
                 // Quick Actions
                 item {
                     Text(
-                        text = "Quick Actions",
+                        text = stringResource(R.string.header_quick_actions),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor()
@@ -185,7 +188,7 @@ fun ChameleonScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         BrutalistOutlinedButton(
-                            text = "Scan to Slot",
+                            text = stringResource(R.string.action_scan_to_slot),
                             onClick = {
                                 if (isConnected) {
                                     viewModel.scanNfc()
@@ -196,7 +199,7 @@ fun ChameleonScreen(
                         )
                         
                         BrutalistOutlinedButton(
-                            text = "Clear Slot",
+                            text = stringResource(R.string.action_clear_slot),
                             onClick = {
                                 if (isConnected) {
                                     viewModel.sendRaw("chameleon_clear $selectedSlot")
@@ -216,7 +219,7 @@ fun ChameleonScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         BrutalistOutlinedButton(
-                            text = "Save All",
+                            text = stringResource(R.string.action_save_all),
                             onClick = {
                                 if (isConnected) {
                                     viewModel.sendRaw("chameleon_save")
@@ -227,7 +230,7 @@ fun ChameleonScreen(
                         )
                         
                         BrutalistOutlinedButton(
-                            text = "Load All",
+                            text = stringResource(R.string.action_load_all),
                             onClick = {
                                 if (isConnected) {
                                     viewModel.sendRaw("chameleon_load")
@@ -280,7 +283,7 @@ fun ChameleonScreen(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Chameleon Ultra can emulate up to 8 different NFC tags. Select a slot and start emulation to clone NFC cards.",
+                                text = stringResource(R.string.msg_chameleon_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceVariantDark
                             )
@@ -359,7 +362,7 @@ private fun ChameleonSlotCard(
                 
                 Column {
                     Text(
-                        text = slot.name,
+                        text = stringResource(R.string.label_slot_n, slot.index + 1),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = when {
@@ -377,7 +380,7 @@ private fun ChameleonSlotCard(
             }
             
             BrutalistButton(
-                text = if (isEmulating) "Stop" else "Emulate",
+                text = if (isEmulating) stringResource(R.string.action_stop) else stringResource(R.string.action_emulate),
                 onClick = onEmulate,
                 containerColor = if (isEmulating) errorColor() else if (slot.hasData) primaryColor() else SurfaceVariantDark,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
@@ -420,14 +423,14 @@ private fun ChameleonConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) successColor() else errorColor()
                     )
                     if (isConnected) {
                         Text(
-                            text = "Ready to emulate",
+                            text = stringResource(R.string.label_ready_to_emulate),
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
                         )
@@ -444,7 +447,7 @@ private fun ChameleonConnectionBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
