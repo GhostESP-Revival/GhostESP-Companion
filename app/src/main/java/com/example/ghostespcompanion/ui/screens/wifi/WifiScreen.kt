@@ -68,6 +68,7 @@ fun WifiScreen(
     var showDeviceInfoDialog by remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
     val availableDevices by viewModel.availableUsbDevices.collectAsState()
+    val usbPortCounts by viewModel.usbPortCounts.collectAsState()
     
     // Attack states
     var activeDeauthIndex by remember { mutableStateOf<Int?>(null) }
@@ -223,15 +224,16 @@ fun WifiScreen(
                 val usbDebugLog by viewModel.usbDebugLog.collectAsState()
                 ConnectionSelectionDialog(
                     usbDevices = availableDevices,
+                    usbPortCounts = usbPortCounts,
                     bleDevices = availableBleDevices,
                     allUsbDevices = allUsbDevices,
                     usbDebugLog = usbDebugLog,
                     bluetoothEnabled = viewModel.isBluetoothEnabled(),
                     bluetoothSupported = viewModel.isBluetoothSupported(),
                     isBleScanning = isBleScanning,
-                    onUsbSelected = { device, baud ->
+                    onUsbSelected = { device, baud, portIndex ->
                         showDeviceDialog = false
-                        viewModel.connectWithBaud(device, baud)
+                        viewModel.connectWithBaud(device, baud, portIndex)
                     },
                     onBleSelected = { device ->
                         showDeviceDialog = false
@@ -513,41 +515,43 @@ fun WifiScreen(
     
     // AP Detail Bottom Sheet
     if (showApDetailSheet && selectedAp != null) {
-        ApDetailSheet(
-            accessPoint = selectedAp!!,
-            isAttacking = activeDeauthIndex == selectedAp!!.index,
-            privacyMode = privacyMode,
-            isCurrentConnection = connectedSsid != null && selectedAp!!.ssid == connectedSsid,
-            connectedIp = if (connectedSsid != null && selectedAp!!.ssid == connectedSsid) wifiConnection?.ip else null,
-            onDismiss = { showApDetailSheet = false },
-            onSelect = { 
-                showApDetailSheet = false
-                onNavigateToApDetail(selectedAp!!.index)
-            },
-            onShowAttackOptions = { 
-                showApDetailSheet = false
-                showAttackOptionsSheet = true
-            },
-            onDeauth = { 
-                if (activeDeauthIndex == selectedAp!!.index) {
-                    viewModel.stopDeauth()
-                    activeDeauthIndex = null
-                } else {
-                    // Stop any existing deauth first
-                    if (activeDeauthIndex != null) {
+        selectedAp?.let { ap ->
+            ApDetailSheet(
+                accessPoint = ap,
+                isAttacking = activeDeauthIndex == ap.index,
+                privacyMode = privacyMode,
+                isCurrentConnection = connectedSsid != null && ap.ssid == connectedSsid,
+                connectedIp = if (connectedSsid != null && ap.ssid == connectedSsid) wifiConnection?.ip else null,
+                onDismiss = { showApDetailSheet = false },
+                onSelect = {
+                    showApDetailSheet = false
+                    onNavigateToApDetail(ap.index)
+                },
+                onShowAttackOptions = {
+                    showApDetailSheet = false
+                    showAttackOptionsSheet = true
+                },
+                onDeauth = {
+                    if (activeDeauthIndex == ap.index) {
                         viewModel.stopDeauth()
+                        activeDeauthIndex = null
+                    } else {
+                        // Stop any existing deauth first
+                        if (activeDeauthIndex != null) {
+                            viewModel.stopDeauth()
+                        }
+                        viewModel.selectAp(ap.index.toString())
+                        viewModel.startDeauth()
+                        activeDeauthIndex = ap.index
                     }
-                    viewModel.selectAp(selectedAp!!.index.toString())
-                    viewModel.startDeauth()
-                    activeDeauthIndex = selectedAp!!.index
+                },
+                onTrack = {
+                    viewModel.trackAp()
+                    showApDetailSheet = false
+                    onNavigateToTrack(ap.index)
                 }
-            },
-            onTrack = {
-                viewModel.trackAp()
-                showApDetailSheet = false
-                onNavigateToTrack(selectedAp!!.index)
-            }
-        )
+            )
+        }
     }
     
     // Attack Options Bottom Sheet

@@ -191,7 +191,7 @@ private object ResponsePatterns {
     val SD_SUCCESS = Regex("^SD:OK.*$")
     
     // Portal credentials — firmware logs: "Captured credentials: <email> / <password>"
-    val PORTAL_CREDS = Regex("Captured credentials:\\s*(.+)\\s*/\\s*(.+)")
+    val PORTAL_CREDS = Regex("Captured credentials:\\s*(.+?)\\s*/\\s*(.+)")
     
     // IR learned signal - firmware outputs: "Captured: <protocol> A:<addr> C:<cmd>" or "Captured RAW signal (<n> samples)"
     val IR_LEARNED_PARSED = Regex("Captured:\\s*(\\S+)\\s+A:0x([0-9A-Fa-f]+)\\s+C:0x([0-9A-Fa-f]+)")
@@ -794,8 +794,8 @@ data class Handshake(
                 if (!values.containsKey("connected")) return null
                 
                 return WifiStatus(
-                    connected = values["connected"]?.toBooleanStrictOrNull() ?: false,
-                    hasSavedNetwork = values["has_saved_network"]?.toBooleanStrictOrNull() ?: false,
+                    connected = values["connected"]?.equals("true", ignoreCase = true) ?: false,
+                    hasSavedNetwork = values["has_saved_network"]?.equals("true", ignoreCase = true) ?: false,
                     connectedSsid = values["connected_ssid"]?.takeIf { it.isNotEmpty() },
                     connectedRssi = values["connected_rssi"]?.toIntOrNull(),
                     connectedBssid = values["connected_bssid"]?.takeIf { it.isNotEmpty() },
@@ -820,7 +820,7 @@ data class Handshake(
          * Generate a unique identifier for this device
          * Uses MAC if available, otherwise falls back to name + rssi
          */
-        fun getUniqueId(): String = mac ?: "ble_${name ?: "unknown"}_$rssi"
+        fun getUniqueId(): String = mac ?: "ble_${name ?: "unknown"}"
         
         companion object {
             fun parse(line: String): BleDevice? {
@@ -1165,8 +1165,8 @@ data class Handshake(
                         typeStr.contains("NTAG213", ignoreCase = true) -> NfcTagType.NTAG213
                         typeStr.contains("NTAG215", ignoreCase = true) -> NfcTagType.NTAG215
                         typeStr.contains("NTAG216", ignoreCase = true) -> NfcTagType.NTAG216
-                        typeStr.contains("MIFARE", ignoreCase = true) -> NfcTagType.MIFARE_CLASSIC
                         typeStr.contains("DESFIRE", ignoreCase = true) -> NfcTagType.MIFARE_DESFIRE
+                        typeStr.contains("MIFARE", ignoreCase = true) -> NfcTagType.MIFARE_CLASSIC
                         else -> NfcTagType.UNKNOWN
                     },
                     data = line
@@ -1405,7 +1405,7 @@ data class Handshake(
     
     /** Device identification response */
     data object GhostEspOk : GhostResponse() {
-        fun matches(line: String): Boolean = ResponsePatterns.GHOSTESP_OK.matches(line)
+        fun matches(line: String): Boolean = ResponsePatterns.GHOSTESP_OK.containsMatchIn(line)
     }
     
     // ==================== GPS Models ====================
@@ -1427,7 +1427,7 @@ data class Handshake(
     ) : GhostResponse() {
         companion object {
             fun parse(line: String): GpsPosition? {
-                if (!line.contains("GPS Info") && !line.contains("Lat:") && !line.contains("Lon:")) return null
+                if (!line.contains("GPS Info") && !line.contains("Lat:") && !line.contains("Long:")) return null
                 
                 val fixStr = ResponsePatterns.GPS_FIX.find(line)?.groupValues?.get(1) ?: "No Fix"
                 val hasFix = fixStr.equals("3D", ignoreCase = true) || fixStr.equals("2D", ignoreCase = true) || fixStr.equals("Fix", ignoreCase = true)
@@ -1440,19 +1440,7 @@ data class Handshake(
                 val lonMatch = ResponsePatterns.GPS_LON.find(line)
                 
                 if (latMatch == null || lonMatch == null) {
-                    return GpsPosition(
-                        latitude = 0.0,
-                        longitude = 0.0,
-                        altitude = null,
-                        speed = null,
-                        satellites = satsUsed,
-                        satellitesInView = satsInView,
-                        fix = hasFix,
-                        fixType = fixStr,
-                        hdop = null,
-                        direction = null,
-                        directionName = null
-                    )
+                    return null
                 }
                 
                 val latDeg = latMatch.groupValues[1].toDoubleOrNull() ?: 0.0

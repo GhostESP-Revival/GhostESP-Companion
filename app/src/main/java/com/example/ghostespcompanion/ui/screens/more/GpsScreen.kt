@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -58,7 +59,7 @@ fun GpsScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
-    var showOverlay by remember { mutableStateOf(true) }
+    var showOverlay by rememberSaveable { mutableStateOf(true) }
     var showCsvExplorer by remember { mutableStateOf(false) }
     var showSdCardWarning by remember { mutableStateOf(false) }
     var usePhoneGps by remember { mutableStateOf(false) }

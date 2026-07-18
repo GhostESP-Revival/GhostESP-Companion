@@ -15,6 +15,7 @@ import com.example.ghostespcompanion.data.repository.GhostRepository
 import com.example.ghostespcompanion.data.repository.PhoneWardriveAp
 import com.example.ghostespcompanion.data.repository.PhoneWardriveStats
 import com.example.ghostespcompanion.data.repository.SavedWardriveCsv
+import com.example.ghostespcompanion.data.repository.SavedConnectionAttempt
 import com.example.ghostespcompanion.data.repository.PreferencesRepository
 import com.example.ghostespcompanion.data.repository.SettingsManager
 import com.example.ghostespcompanion.data.serial.SerialManager
@@ -24,6 +25,8 @@ import com.example.ghostespcompanion.service.BackgroundOperationService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -237,6 +240,12 @@ class MainViewModel @Inject constructor(
     private val _allUsbDevices = MutableStateFlow<List<UsbDevice>>(emptyList())
     val allUsbDevices: StateFlow<List<UsbDevice>> = _allUsbDevices.asStateFlow()
 
+    private val _usbPortCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val usbPortCounts: StateFlow<Map<String, Int>> = _usbPortCounts.asStateFlow()
+    private val _connectionSelectionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val connectionSelectionRequests: SharedFlow<Unit> = _connectionSelectionRequests.asSharedFlow()
+    private var usbAttachRefreshJob: Job? = null
+
     val availableBleDevices: StateFlow<List<BleBridgeDevice>> = ghostRepository.availableBleDevices
     val isBleScanning: StateFlow<Boolean> = ghostRepository.isBleScanning
 
@@ -246,15 +255,51 @@ class MainViewModel @Inject constructor(
 
     fun refreshAvailableDevices() {
         viewModelScope.launch(Dispatchers.IO) {
-            _availableUsbDevices.value = ghostRepository.getAvailableDevices()
+            updateAvailableUsbDevices(ghostRepository.getAvailableDevices())
         }
     }
 
     /** Suspend version — for callers (e.g. LaunchedEffect) that need the result inline. */
     suspend fun fetchAvailableDevices(): List<UsbDevice> = withContext(Dispatchers.IO) {
         val devices = ghostRepository.getAvailableDevices()
-        _availableUsbDevices.value = devices
+        updateAvailableUsbDevices(devices)
         devices
+    }
+
+    private fun updateAvailableUsbDevices(devices: List<UsbDevice>) {
+        _availableUsbDevices.value = devices
+        _usbPortCounts.value = devices.associate { device ->
+            device.deviceName to ghostRepository.getSerialPortCount(device)
+        }
+    }
+
+    fun getSerialPortCount(device: UsbDevice): Int = ghostRepository.getSerialPortCount(device)
+
+    fun onUsbDeviceAttached(device: UsbDevice) {
+        usbAttachRefreshJob?.cancel()
+        usbAttachRefreshJob = viewModelScope.launch(Dispatchers.IO) {
+            repeat(4) {
+                val devices = ghostRepository.getAvailableDevices()
+                updateAvailableUsbDevices(devices)
+                _allUsbDevices.value = ghostRepository.getAllUsbDevices()
+                if (devices.any { it.deviceId == device.deviceId }) {
+                    val autoConnect = preferencesRepository.appSettings.first().autoConnect
+                    if (autoConnect && connectionState.value == SerialManager.ConnectionState.DISCONNECTED) {
+                        when (ghostRepository.connectSavedDevice()) {
+                            SavedConnectionAttempt.NOT_FOUND -> {
+                                if (!ghostRepository.connectWithAutoBaud(device)) {
+                                    _connectionSelectionRequests.tryEmit(Unit)
+                                }
+                            }
+                            SavedConnectionAttempt.FAILED -> _connectionSelectionRequests.tryEmit(Unit)
+                            SavedConnectionAttempt.STARTED -> Unit
+                        }
+                    }
+                    return@launch
+                }
+                delay(250)
+            }
+        }
     }
 
     fun refreshAllUsbDevices() {
@@ -270,24 +315,34 @@ class MainViewModel @Inject constructor(
     fun stopBleBridgeScan() = ghostRepository.stopBleBridgeScan()
 
     fun connect(device: UsbDevice) {
+        if (connectionState.value == SerialManager.ConnectionState.CONNECTING) return
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.connect(device)
         }
     }
 
-    fun connectWithAutoBaud(device: UsbDevice) {
+    fun connectWithAutoBaud(device: UsbDevice, portIndex: Int = 0) {
+        if (connectionState.value == SerialManager.ConnectionState.CONNECTING ||
+            connectionState.value == SerialManager.ConnectionState.CONNECTED
+        ) return
         viewModelScope.launch(Dispatchers.IO) {
-            ghostRepository.connectWithAutoBaud(device)
+            ghostRepository.connectWithAutoBaud(device, portIndex)
         }
     }
 
-    fun connectWithBaud(device: UsbDevice, baudRate: Int) {
+    fun connectWithBaud(device: UsbDevice, baudRate: Int, portIndex: Int = 0) {
+        if (connectionState.value == SerialManager.ConnectionState.CONNECTING ||
+            connectionState.value == SerialManager.ConnectionState.CONNECTED
+        ) return
         viewModelScope.launch(Dispatchers.IO) {
-            ghostRepository.connect(device, baudRate)
+            ghostRepository.connect(device, baudRate, portIndex)
         }
     }
 
     fun connectBle(device: BleBridgeDevice) {
+        if (connectionState.value == SerialManager.ConnectionState.CONNECTING ||
+            connectionState.value == SerialManager.ConnectionState.CONNECTED
+        ) return
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.connectBle(device)
         }
@@ -297,19 +352,24 @@ class MainViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun connectFirstAvailable() {
+        if (connectionState.value == SerialManager.ConnectionState.CONNECTING ||
+            connectionState.value == SerialManager.ConnectionState.CONNECTED
+        ) return
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.connectFirstAvailable()
         }
     }
 
     fun connectSavedDevice() {
+        if (connectionState.value == SerialManager.ConnectionState.CONNECTING ||
+            connectionState.value == SerialManager.ConnectionState.CONNECTED
+        ) return
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.connectSavedDevice()
         }
     }
 
-    /** Suspend version — returns true if a saved device was found and connection was attempted. */
-    suspend fun connectSavedDeviceSync(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun connectSavedDeviceSync(): SavedConnectionAttempt = withContext(Dispatchers.IO) {
         ghostRepository.connectSavedDevice()
     }
 
@@ -348,8 +408,10 @@ class MainViewModel @Inject constructor(
      * Force disconnect - use when normal disconnect hangs or connection is stuck
      */
     fun forceDisconnect() {
-        stopAllBackgroundOperations()
-        ghostRepository.forceDisconnect()
+        viewModelScope.launch(Dispatchers.IO) {
+            stopAllBackgroundOperations()
+            ghostRepository.forceDisconnect()
+        }
     }
 
     fun isConnected(): Boolean = ghostRepository.isConnected()
@@ -373,11 +435,18 @@ class MainViewModel @Inject constructor(
         val scanDuration = duration ?: 5
         viewModelScope.launch(Dispatchers.IO) {
             _isWifiScanning.value = true
-            ghostRepository.scanWifi(scanDuration, live)
+            try {
+                ghostRepository.scanWifi(scanDuration, live)
+            } catch (e: Exception) {
+                _isWifiScanning.value = false
+                return@launch
+            }
         }
-        viewModelScope.launch {
-            kotlinx.coroutines.delay((scanDuration + 1) * 1000L)
-            _isWifiScanning.value = false
+        if (!live) {
+            viewModelScope.launch {
+                kotlinx.coroutines.delay((scanDuration + 1) * 1000L)
+                _isWifiScanning.value = false
+            }
         }
     }
     
@@ -1013,6 +1082,12 @@ class MainViewModel @Inject constructor(
     fun setPrivacyMode(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setPrivacyMode(enabled)
+        }
+    }
+
+    fun setDtrCompatibilityMode(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setDtrCompatibilityMode(enabled)
         }
     }
 

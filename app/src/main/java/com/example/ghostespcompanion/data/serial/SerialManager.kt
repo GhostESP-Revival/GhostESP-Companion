@@ -2,6 +2,7 @@ package com.example.ghostespcompanion.data.serial
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
@@ -15,7 +16,10 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
@@ -44,6 +48,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
 
 /**
  * USB Serial Manager for GhostESP communication
@@ -263,7 +268,10 @@ class SerialManager @Inject constructor(
 
     // Mutex to prevent concurrent connect/disconnect races
     private val connectionMutex = Mutex()
+    private val connectionRequestMutex = Mutex()
+    private val usbPermissionMutex = Mutex()
     private val bleWriteMutex = Mutex()
+    private val usbPermissionRequestId = AtomicInteger(0)
 
     // Baud rate resolved during auto-detection (null = not yet detected)
     private val _detectedBaudRate = MutableStateFlow<Int?>(null)
@@ -318,8 +326,9 @@ class SerialManager @Inject constructor(
         private const val BLE_GATT_CONNECT_TIMEOUT_MS = 15000L
         private const val BLE_FALLBACK_FLUSH_BYTES = 64
         private const val RX_IDLE_POLL_MS = 50L
-        /** Ordered list of baud rates to probe. 115200 first — covers stock GhostESP firmware. */
-        private val PROBE_BAUD_RATES = listOf(115200, 9600, 57600, 230400, 420600, 460800, 921600)
+        /** Stock GhostESP firmware normally uses one of these rates. */
+        private val PROBE_BAUD_RATES = listOf(115200, 460800)
+        private const val USB_PERMISSION_TIMEOUT_MS = 60_000L
     }
 
     private val bleScanCallback = object : ScanCallback() {
@@ -498,9 +507,82 @@ class SerialManager @Inject constructor(
             .find { it.device == device }?.let { return it }
 
         return try {
-            val cdc = CdcAcmSerialDriver(device)
-            if (cdc.ports.isNotEmpty()) cdc else null
+            if (CdcAcmSerialDriver.probe(device)) CdcAcmSerialDriver(device) else null
         } catch (e: Exception) { null }
+    }
+
+    fun getSerialPortCount(device: UsbDevice): Int = findDriver(device)?.ports?.size ?: 0
+
+    private suspend fun awaitUsbPermission(device: UsbDevice): Boolean {
+        if (usbManager.hasPermission(device)) return true
+
+        return usbPermissionMutex.withLock {
+            if (usbManager.hasPermission(device)) return@withLock true
+
+            withTimeoutOrNull(USB_PERMISSION_TIMEOUT_MS) {
+                suspendCancellableCoroutine { continuation ->
+                    val requestId = usbPermissionRequestId.incrementAndGet()
+                    val action = "${context.packageName}.USB_PERMISSION.$requestId"
+                    val cleanedUp = AtomicBoolean(false)
+                    var receiver: BroadcastReceiver? = null
+                    var pendingIntent: PendingIntent? = null
+
+                    fun cleanup() {
+                        if (!cleanedUp.compareAndSet(false, true)) return
+                        try { receiver?.let(context::unregisterReceiver) } catch (_: Exception) {}
+                        pendingIntent?.cancel()
+                    }
+
+                    fun finish(granted: Boolean) {
+                        cleanup()
+                        if (continuation.isActive) {
+                            runCatching { continuation.resume(granted) }
+                        }
+                    }
+
+                    receiver = object : BroadcastReceiver() {
+                        override fun onReceive(receiveContext: Context?, intent: Intent?) {
+                            if (intent?.action != action) return
+                            val resultDevice = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                            }
+                            if (resultDevice?.deviceId != device.deviceId) return
+                            finish(
+                                intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) &&
+                                    usbManager.hasPermission(device)
+                            )
+                        }
+                    }
+
+                    continuation.invokeOnCancellation { cleanup() }
+
+                    try {
+                        ContextCompat.registerReceiver(
+                            context,
+                            receiver,
+                            IntentFilter(action),
+                            ContextCompat.RECEIVER_NOT_EXPORTED
+                        )
+                        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+                        val permissionIntent = PendingIntent.getBroadcast(
+                            context,
+                            requestId,
+                            Intent(action).setPackage(context.packageName),
+                            flags
+                        )
+                        pendingIntent = permissionIntent
+                        usbManager.requestPermission(device, permissionIntent)
+                    } catch (e: Exception) {
+                        usbLog("USB permission request failed: ${e.message}")
+                        finish(false)
+                    }
+                }
+            } ?: false
+        }
     }
 
     /**
@@ -549,8 +631,7 @@ class SerialManager @Inject constructor(
         var cdcCount = 0
         for (device in allDevices) {
             val isSerialDevice = try {
-                val testDriver = CdcAcmSerialDriver(device)
-                testDriver.ports.isNotEmpty()
+                CdcAcmSerialDriver.probe(device)
             } catch (e: Exception) {
                 false
             }
@@ -698,81 +779,126 @@ class SerialManager @Inject constructor(
      * - Force-closes previous connection before attempting new one
      */
     @Suppress("DEPRECATION")
-    suspend fun connect(device: UsbDevice, baudRate: Int = 115200): Boolean = connectionMutex.withLock {
-        if (isConnecting.get()) {
+    suspend fun connect(
+        device: UsbDevice,
+        baudRate: Int = 115200,
+        portIndex: Int = 0,
+        assertDtr: Boolean = false
+    ): Boolean = connectionRequestMutex.withLock {
+        if (isConnecting.get() || _connectionState.value == ConnectionState.CONNECTING ||
+            isConnectedFlag.get() || _connectionState.value == ConnectionState.CONNECTED
+        ) {
             return@withLock false
         }
-
         try {
-            disconnectInternal()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            forceReset()
+            _connectionState.value = ConnectionState.CONNECTING
+            if (!awaitUsbPermission(device)) return@withLock handleUsbPermissionDenied(device)
+            connectInternal(device, baudRate, portIndex, assertDtr)
+        } catch (e: CancellationException) {
+            resetCancelledUsbConnectionAttempt()
+            throw e
         }
+    }
 
-        isConnecting.set(true)
-
-        _connectionState.value = ConnectionState.CONNECTING
-
-        try {
-            android.util.Log.d("SerialManager", "Connecting to ${device.deviceName} @ $baudRate baud")
-
-            serialDriver = findDriver(device)
-
-            if (serialDriver == null) {
-                android.util.Log.e("SerialManager", "Could not find serial driver for device")
-                _connectionState.value = ConnectionState.ERROR
-                _connectionTransport.value = ConnectionTransport.NONE
-                isConnecting.set(false)
+    private suspend fun connectInternal(
+        device: UsbDevice,
+        baudRate: Int,
+        portIndex: Int,
+        assertDtr: Boolean
+    ): Boolean = connectionMutex.withLock {
+            if (isConnecting.get()) {
                 return@withLock false
             }
 
-            android.util.Log.d("SerialManager", "Driver: ${serialDriver!!::class.simpleName} (${serialDriver!!.ports.size} ports)")
-
-            serialPort = serialDriver!!.ports.firstOrNull() ?: run {
-                _connectionState.value = ConnectionState.ERROR
-                _connectionTransport.value = ConnectionTransport.NONE
-                isConnecting.set(false)
-                return@withLock false
-            }
-
-            usbConnection = usbManager.openDevice(device) ?: run {
-                _connectionState.value = ConnectionState.ERROR
-                _connectionTransport.value = ConnectionTransport.NONE
-                isConnecting.set(false)
-                return@withLock false
-            }
-
-            serialPort?.open(usbConnection)
-            serialPort?.setParameters(baudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-
-            serialPort?.setDTR(true)
-            serialPort?.setRTS(true)
-
-            resetParsingState()
-
-            isBleTransport = false
-            _connectionTransport.value = ConnectionTransport.USB
-            isConnectedFlag.set(true)
-            isConnecting.set(false)
-            startReading()
-            startConsumer()
-            startFlushTimer()
-
-            _connectionState.value = ConnectionState.CONNECTED
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            _connectionState.value = ConnectionState.ERROR
-            _connectionTransport.value = ConnectionTransport.NONE
-            isConnecting.set(false)
             try {
                 disconnectInternal()
-            } catch (ex: Exception) {
-                ex.printStackTrace()
+            } catch (e: Exception) {
+                e.printStackTrace()
                 forceReset()
             }
-            false
+
+            isConnecting.set(true)
+
+            _connectionState.value = ConnectionState.CONNECTING
+
+            try {
+                android.util.Log.d("SerialManager", "Connecting to ${device.deviceName} port=$portIndex @ $baudRate baud")
+
+                serialDriver = findDriver(device)
+
+                if (serialDriver == null) {
+                    android.util.Log.e("SerialManager", "Could not find serial driver for device")
+                    _connectionState.value = ConnectionState.ERROR
+                    _connectionTransport.value = ConnectionTransport.NONE
+                    isConnecting.set(false)
+                    return@withLock false
+                }
+
+                android.util.Log.d("SerialManager", "Driver: ${serialDriver!!::class.simpleName} (${serialDriver!!.ports.size} ports)")
+
+                serialPort = serialDriver!!.ports.getOrNull(portIndex) ?: run {
+                    usbLog("Serial port index $portIndex is unavailable")
+                    _connectionState.value = ConnectionState.ERROR
+                    _connectionTransport.value = ConnectionTransport.NONE
+                    isConnecting.set(false)
+                    return@withLock false
+                }
+
+                usbConnection = usbManager.openDevice(device) ?: run {
+                    _connectionState.value = ConnectionState.ERROR
+                    _connectionTransport.value = ConnectionTransport.NONE
+                    isConnecting.set(false)
+                    return@withLock false
+                }
+
+                serialPort?.open(usbConnection)
+                serialPort?.setParameters(baudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+
+                // ESP auto-reset circuits commonly map these lines to EN and GPIO0.
+                serialPort?.setDTR(assertDtr)
+                serialPort?.setRTS(false)
+
+                resetParsingState()
+
+                isBleTransport = false
+                _connectionTransport.value = ConnectionTransport.USB
+                isConnectedFlag.set(true)
+                isConnecting.set(false)
+                startReading()
+                startConsumer()
+                startFlushTimer()
+
+                _connectionState.value = ConnectionState.CONNECTED
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                isConnecting.set(false)
+                try {
+                    disconnectInternal()
+                } catch (ex: Exception) {
+                    ex.printStackTrace()
+                    forceReset()
+                }
+                _connectionState.value = ConnectionState.ERROR
+                _connectionTransport.value = ConnectionTransport.NONE
+                false
+            }
+    }
+
+    private fun handleUsbPermissionDenied(device: UsbDevice): Boolean {
+        usbLog("USB permission denied for ${device.deviceName}")
+        if (!isConnectedFlag.get()) {
+            _connectionState.value = ConnectionState.ERROR
+            _connectionTransport.value = ConnectionTransport.NONE
+        }
+        return false
+    }
+
+    private fun resetCancelledUsbConnectionAttempt() {
+        if (!isConnectedFlag.get()) {
+            isConnecting.set(false)
+            _connectionState.value = ConnectionState.DISCONNECTED
+            _connectionTransport.value = ConnectionTransport.NONE
         }
     }
 
@@ -799,20 +925,43 @@ class SerialManager @Inject constructor(
      * For native USB CDC devices (ESP32-S3 JTAG) the rate is a no-op — 115200 will
      * succeed on the first probe and connect immediately.
      */
-    suspend fun connectWithAutoBaud(device: UsbDevice): Boolean {
-        val baud = withContext(Dispatchers.IO) { detectBaudRate(device) } ?: 115200
-        _detectedBaudRate.value = baud
-        usbLog("Auto-baud result: $baud")
-        return connect(device, baud)
+    suspend fun connectWithAutoBaud(
+        device: UsbDevice,
+        portIndex: Int = 0,
+        assertDtr: Boolean = false
+    ): Boolean = connectionRequestMutex.withLock {
+        if (isConnecting.get() || _connectionState.value == ConnectionState.CONNECTING ||
+            isConnectedFlag.get() || _connectionState.value == ConnectionState.CONNECTED
+        ) {
+            return@withLock false
+        }
+        try {
+            _connectionState.value = ConnectionState.CONNECTING
+            if (!awaitUsbPermission(device)) return@withLock handleUsbPermissionDenied(device)
+
+            val baud = withContext(Dispatchers.IO) {
+                detectBaudRate(device, portIndex, assertDtr)
+            } ?: 115200
+            _detectedBaudRate.value = baud
+            usbLog("Auto-baud result: $baud")
+            connectInternal(device, baud, portIndex, assertDtr)
+        } catch (e: CancellationException) {
+            resetCancelledUsbConnectionAttempt()
+            throw e
+        }
     }
 
     /**
      * Iterate PROBE_BAUD_RATES and return the first one that yields a valid ASCII
      * response, or null if none do (caller should fall back to 115200).
      */
-    private suspend fun detectBaudRate(device: UsbDevice): Int? {
+    private suspend fun detectBaudRate(
+        device: UsbDevice,
+        portIndex: Int,
+        assertDtr: Boolean
+    ): Int? {
         for (baud in PROBE_BAUD_RATES) {
-            if (probeBaudRate(device, baud)) return baud
+            if (probeBaudRate(device, baud, portIndex, assertDtr)) return baud
         }
         return null
     }
@@ -821,20 +970,26 @@ class SerialManager @Inject constructor(
      * Open [device] at [baud], send a "\r\n" probe, wait 350 ms, then check whether
      * >= 75 % of the received bytes are printable ASCII. Returns true on a match.
      *
-     * The probe port is opened and closed independently of the main connection so it
-     * doesn't disturb the connection mutex or the main serial state.
-     * DTR/RTS are intentionally NOT toggled here to avoid accidentally resetting the ESP.
+     * The probe port is opened and closed independently of the main connection. It uses
+     * the same control-line policy as the final connection.
      */
-    private suspend fun probeBaudRate(device: UsbDevice, baud: Int): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun probeBaudRate(
+        device: UsbDevice,
+        baud: Int,
+        portIndex: Int,
+        assertDtr: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
         var probePort: UsbSerialPort? = null
         var probeConnection: android.hardware.usb.UsbDeviceConnection? = null
         try {
             val driver = findDriver(device) ?: return@withContext false
-            probePort = driver.ports.firstOrNull() ?: return@withContext false
+            probePort = driver.ports.getOrNull(portIndex) ?: return@withContext false
             probeConnection = usbManager.openDevice(device) ?: return@withContext false
 
             probePort.open(probeConnection)
             probePort.setParameters(baud, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+            probePort.setDTR(assertDtr)
+            probePort.setRTS(false)
 
             probePort.write("\r\n".toByteArray(Charsets.US_ASCII), 500)
             delay(350)
@@ -1418,14 +1573,12 @@ class SerialManager @Inject constructor(
                         e.printStackTrace()
 
                         if (consecutiveErrors > 5) {
-                            mainScope.launch {
-                                _connectionState.value = ConnectionState.ERROR
-                            }
                             isConnectedFlag.set(false)
                             // Clean up the broken connection
                             scope.launch {
                                 connectionMutex.withLock {
                                     disconnectInternal()
+                                    _connectionState.value = ConnectionState.ERROR
                                 }
                             }
                             break

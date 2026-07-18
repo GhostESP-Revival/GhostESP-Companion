@@ -37,6 +37,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
 
+enum class SavedConnectionAttempt {
+    NOT_FOUND,
+    STARTED,
+    FAILED
+}
+
 /**
  * Repository for GhostESP device communication
  *
@@ -183,7 +189,7 @@ class GhostRepository @Inject constructor(
     private var phoneWardriveStartedAt = 0L
     
     // Handshake capture state - using SharedFlow to emit each handshake event
-    private val _handshakeEvents = MutableSharedFlow<GhostResponse.Handshake>(replay = 0, extraBufferCapacity = 16)
+    private val _handshakeEvents = MutableSharedFlow<GhostResponse.Handshake>(replay = 1, extraBufferCapacity = 16)
     val handshakeEvents: SharedFlow<GhostResponse.Handshake> = _handshakeEvents.asSharedFlow()
     
     // PCAP file path
@@ -262,6 +268,8 @@ class GhostRepository @Inject constructor(
      * Get available USB devices
      */
     fun getAvailableDevices(): List<UsbDevice> = serialManager.getAvailableDevices()
+
+    fun getSerialPortCount(device: UsbDevice): Int = serialManager.getSerialPortCount(device)
     
     fun getAllUsbDevices(): List<UsbDevice> = serialManager.getAllUsbDevices()
     
@@ -282,16 +290,21 @@ class GhostRepository @Inject constructor(
     /**
      * Connect to a specific device
      */
-    suspend fun connect(device: UsbDevice): Boolean = serialManager.connect(device)
-    suspend fun connect(device: UsbDevice, baudRate: Int): Boolean {
-        val ok = serialManager.connect(device, baudRate)
+    suspend fun connect(
+        device: UsbDevice,
+        baudRate: Int = 115200,
+        portIndex: Int = 0
+    ): Boolean {
+        val assertDtr = preferencesRepository.appSettings.first().dtrCompatibilityMode
+        val ok = serialManager.connect(device, baudRate, portIndex, assertDtr)
         if (ok) {
             preferencesRepository.setSavedDevice(
                 SavedDevice.Usb(
                     vendorId = device.vendorId,
                     productId = device.productId,
                     deviceName = device.deviceName,
-                    baudRate = baudRate
+                    baudRate = baudRate,
+                    portIndex = portIndex
                 )
             )
         }
@@ -308,14 +321,23 @@ class GhostRepository @Inject constructor(
         return ok
     }
 
-    suspend fun connectSavedDevice(): Boolean {
-        val saved = preferencesRepository.getSavedDevice() ?: return false
+    suspend fun connectSavedDevice(): SavedConnectionAttempt {
+        val saved = preferencesRepository.getSavedDevice() ?: return SavedConnectionAttempt.NOT_FOUND
         return when (saved) {
             is SavedDevice.Usb -> {
-                val device = serialManager.getAvailableDevices().firstOrNull { d ->
+                val devices = serialManager.getAvailableDevices()
+                val device = devices.firstOrNull { d ->
+                    d.deviceName == saved.deviceName &&
+                        d.vendorId == saved.vendorId && d.productId == saved.productId
+                } ?: devices.firstOrNull { d ->
                     d.vendorId == saved.vendorId && d.productId == saved.productId
-                } ?: return false
-                serialManager.connectWithAutoBaud(device)
+                } ?: return SavedConnectionAttempt.NOT_FOUND
+                val assertDtr = preferencesRepository.appSettings.first().dtrCompatibilityMode
+                if (serialManager.connect(device, saved.baudRate, saved.portIndex, assertDtr)) {
+                    SavedConnectionAttempt.STARTED
+                } else {
+                    SavedConnectionAttempt.FAILED
+                }
             }
             is SavedDevice.Ble -> {
                 val device = BleBridgeDevice(
@@ -323,7 +345,11 @@ class GhostRepository @Inject constructor(
                     name = saved.name,
                     rssi = 0
                 )
-                serialManager.connectBle(device)
+                if (serialManager.connectBle(device)) {
+                    SavedConnectionAttempt.STARTED
+                } else {
+                    SavedConnectionAttempt.FAILED
+                }
             }
         }
     }
@@ -333,14 +359,32 @@ class GhostRepository @Inject constructor(
     /**
      * Connect with automatic baud rate detection
      */
-    suspend fun connectWithAutoBaud(device: UsbDevice): Boolean = serialManager.connectWithAutoBaud(device)
+    suspend fun connectWithAutoBaud(device: UsbDevice, portIndex: Int = 0): Boolean {
+        val assertDtr = preferencesRepository.appSettings.first().dtrCompatibilityMode
+        val ok = serialManager.connectWithAutoBaud(device, portIndex, assertDtr)
+        if (ok) {
+            preferencesRepository.setSavedDevice(
+                SavedDevice.Usb(
+                    vendorId = device.vendorId,
+                    productId = device.productId,
+                    deviceName = device.deviceName,
+                    baudRate = serialManager.detectedBaudRate.value ?: 115200,
+                    portIndex = portIndex
+                )
+            )
+        }
+        return ok
+    }
 
     val detectedBaudRate = serialManager.detectedBaudRate
 
     /**
      * Connect to first available device
      */
-    suspend fun connectFirstAvailable(): Boolean = serialManager.connectFirstAvailable()
+    suspend fun connectFirstAvailable(): Boolean {
+        val device = serialManager.getAvailableDevices().firstOrNull() ?: return false
+        return connectWithAutoBaud(device)
+    }
 
     /**
      * Disconnect from device and clear all cached data
