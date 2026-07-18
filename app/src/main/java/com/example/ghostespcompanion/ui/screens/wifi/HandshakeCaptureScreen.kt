@@ -20,6 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -45,6 +48,7 @@ fun HandshakeCaptureScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val connectionState by viewModel.connectionState.collectAsState()
     val accessPoints by viewModel.accessPoints.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
@@ -59,7 +63,11 @@ fun HandshakeCaptureScreen(
     // Track capture state
     var isCapturing by remember { mutableStateOf(false) }
     var handshakeCount by remember { mutableStateOf(0) }
-    var captureStatus by remember { mutableStateOf("Ready to capture") }
+    var captureStatus by remember { mutableStateOf("") }
+    
+    if (captureStatus.isEmpty()) {
+        captureStatus = stringResource(R.string.label_ready_to_capture)
+    }
     
     // Animation for the capture indicator
     val infiniteTransition = rememberInfiniteTransition(label = "capture")
@@ -74,22 +82,25 @@ fun HandshakeCaptureScreen(
     )
     
     // Collect handshake events - each event is emitted individually
+    val capturedMsg = stringResource(R.string.msg_handshake_captured)
     LaunchedEffect(Unit) {
         viewModel.handshakeEvents.collect { handshake ->
             handshakeCount++
-            captureStatus = "Handshake captured! (${handshake.pairType})"
+            captureStatus = capturedMsg.replace("%1\$s", handshake.pairType)
         }
     }
     
     // Parse status messages for capture state changes
+    val listeningMsg = stringResource(R.string.msg_listening_handshakes)
+    val channelMsg = stringResource(R.string.msg_listening_on_channel)
     LaunchedEffect(statusMessage) {
         statusMessage?.let { message ->
             when {
                 message.contains("Starting EAPOL", ignoreCase = true) -> {
-                    captureStatus = "Listening for handshakes..."
+                    captureStatus = listeningMsg
                 }
                 message.contains("EAPOL: locked to channel", ignoreCase = true) -> {
-                    captureStatus = "Listening on channel ${accessPoint?.channel}..."
+                    captureStatus = channelMsg.replace("%1\$d", (accessPoint?.channel ?: 0).toString())
                 }
             }
         }
@@ -112,29 +123,29 @@ fun HandshakeCaptureScreen(
         rssi = -45,
         channel = 6,
         security = "WPA2",
-        vendor = "TP-Link"
+        vendor = stringResource(R.string.label_unknown)
     )
     
     MainScreen(
         onBack = onBack,
-        title = "Handshake Capture",
+        title = stringResource(R.string.title_handshake_capture),
         actions = {
             IconButton(onClick = {
                 if (isCapturing) {
                     viewModel.stopAll()
                     isCapturing = false
-                    captureStatus = "Capture stopped"
+                    captureStatus = context.getString(R.string.msg_capture_stopped)
                 } else if (isConnected) {
                     viewModel.selectAp(apIndex.toString())
                     viewModel.startEapolCapture(displayAp.channel)
                     isCapturing = true
                     handshakeCount = 0
-                    captureStatus = "Starting capture..."
+                    captureStatus = context.getString(R.string.msg_starting_capture)
                 }
             }) {
                 Icon(
                     if (isCapturing) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (isCapturing) "Stop" else "Start",
+                    contentDescription = if (isCapturing) stringResource(R.string.action_stop) else stringResource(R.string.action_start),
                     tint = if (isCapturing) errorColor() else primaryColor()
                 )
             }
@@ -173,7 +184,7 @@ fun HandshakeCaptureScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Target Network",
+                            text = stringResource(R.string.label_target_network),
                             style = MaterialTheme.typography.labelMedium,
                             color = OnSurfaceVariantDark
                         )
@@ -193,7 +204,7 @@ fun HandshakeCaptureScreen(
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             Text(
-                                text = "Ch ${displayAp.channel}",
+                                text = "${stringResource(R.string.label_channel)} ${displayAp.channel}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceVariantDark
                             )
@@ -233,7 +244,7 @@ fun HandshakeCaptureScreen(
                             )
                             Column {
                                 Text(
-                                    text = "Capture Saved",
+                                    text = stringResource(R.string.label_capture_saved),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Medium,
                                     color = successColor()
@@ -271,7 +282,7 @@ fun HandshakeCaptureScreen(
                                     tint = successColor()
                                 )
                                 Text(
-                                    text = "Handshakes Captured",
+                                    text = stringResource(R.string.label_handshakes_captured),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = OnSurfaceDark
                                 )
@@ -294,17 +305,14 @@ fun HandshakeCaptureScreen(
                         modifier = Modifier.padding(16.dp)
                     ) {
                         Text(
-                            text = "How it works",
+                            text = stringResource(R.string.label_how_it_works),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = primaryColor()
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "1. Press play to start capturing\n" +
-                                    "2. Wait for a device to connect to the target network\n" +
-                                    "3. Handshakes are captured automatically\n" +
-                                    "4. PCAP files are saved to SD card",
+                            text = stringResource(R.string.msg_handshake_instructions),
                             style = MaterialTheme.typography.bodySmall,
                             color = OnSurfaceVariantDark
                         )
@@ -319,16 +327,14 @@ fun HandshakeCaptureScreen(
                         modifier = Modifier.padding(16.dp)
                     ) {
                         Text(
-                            text = "Tips",
+                            text = stringResource(R.string.label_tips),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = warningColor()
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "• Toggle WiFi on a connected device to trigger a handshake\n" +
-                                    "• Multiple handshakes improve cracking chances\n" +
-                                    "• Deauth attacks can force reconnections",
+                            text = stringResource(R.string.msg_handshake_tips),
                             style = MaterialTheme.typography.bodySmall,
                             color = OnSurfaceVariantDark
                         )
@@ -337,18 +343,18 @@ fun HandshakeCaptureScreen(
                 
                 // Start/Stop Button
                 BrutalistButton(
-                    text = if (isCapturing) "Stop Capture" else "Start Capture",
+                    text = if (isCapturing) stringResource(R.string.action_stop_capture) else stringResource(R.string.action_start_capture),
                     onClick = {
                         if (isCapturing) {
                             viewModel.stopAll()
                             isCapturing = false
-                            captureStatus = "Capture stopped"
+                            captureStatus = context.getString(R.string.msg_capture_stopped)
                         } else if (isConnected) {
                             viewModel.selectAp(apIndex.toString())
                             viewModel.startEapolCapture(displayAp.channel)
                             isCapturing = true
                             handshakeCount = 0
-                            captureStatus = "Starting capture..."
+                            captureStatus = context.getString(R.string.msg_starting_capture)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -464,10 +470,10 @@ private fun HandshakeWifiBanner(
                 Column {
                     Text(
                         text = when {
-                            !isConnected -> "Not Connected"
-                            handshakeCount > 0 -> "Handshake Captured!"
-                            isCapturing -> "Listening..."
-                            else -> "Ready to Capture"
+                            !isConnected -> stringResource(R.string.status_disconnected)
+                            handshakeCount > 0 -> stringResource(R.string.msg_signal_learned).replace("Signal Learned!", "Handshake Captured!")
+                            isCapturing -> stringResource(R.string.label_listening)
+                            else -> stringResource(R.string.label_ready_to_capture)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
@@ -480,7 +486,7 @@ private fun HandshakeWifiBanner(
                     )
                     if (isConnected) {
                         Text(
-                            text = if (isCapturing) "Waiting for device authentication" else "Press start to begin",
+                            text = if (isCapturing) stringResource(R.string.msg_waiting_for_auth) else stringResource(R.string.msg_press_start_hint),
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
                         )
@@ -490,7 +496,7 @@ private fun HandshakeWifiBanner(
             
             if (!isConnected) {
                 BrutalistButton(
-                    text = "Connect",
+                    text = stringResource(R.string.action_connect),
                     onClick = onConnect,
                     containerColor = primaryColor(),
                     modifier = Modifier

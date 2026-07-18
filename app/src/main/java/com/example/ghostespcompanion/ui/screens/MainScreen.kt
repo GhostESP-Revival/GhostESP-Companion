@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.ui.theme.GhostESPTheme
 
 /**
@@ -46,7 +48,7 @@ fun MainScreen(
                         IconButton(onClick = onBack) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
+                                contentDescription = stringResource(R.string.action_back),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }

@@ -21,30 +21,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
 import com.example.ghostespcompanion.domain.model.GhostResponse
-import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.components.*
+import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.theme.*
-import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.ui.utils.censorMac
 import com.example.ghostespcompanion.ui.utils.censorSsid
 import com.example.ghostespcompanion.ui.viewmodel.MainViewModel
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 
 /**
@@ -172,12 +172,12 @@ fun WifiScreen(
     }
     
     MainScreen(
-        title = "WiFi",
+        title = stringResource(R.string.title_wifi),
         actions = {
             IconButton(onClick = onNavigateToPortal) {
                 Icon(
                     painter = painterResource(R.drawable.ic_evil_portal),
-                    contentDescription = "Evil Portal",
+                    contentDescription = stringResource(R.string.label_evil_portal),
                     tint = primaryColor()
                 )
             }
@@ -191,7 +191,7 @@ fun WifiScreen(
             }) {
                 Icon(
                     Icons.Default.Info,
-                    contentDescription = "Device Info",
+                    contentDescription = stringResource(R.string.label_device_info),
                     tint = primaryColor()
                 )
             }
@@ -207,7 +207,7 @@ fun WifiScreen(
                 isConnected = isConnected,
                 connectionState = connectionState,
                 connectionTransport = connectionTransport,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = {
                     if (connectionState == SerialManager.ConnectionState.ERROR) {
                         viewModel.forceDisconnect()
@@ -261,7 +261,7 @@ fun WifiScreen(
             ) {
                 // Scan Networks Button
                 BrutalistButton(
-                    text = if (isScanning) "Stop Scan" else "Scan Networks",
+                    text = if (isScanning) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_scan_networks),
                     onClick = { 
                         if (isConnected) {
                             if (isScanning) {
@@ -287,7 +287,7 @@ fun WifiScreen(
                 
                 // Scan Stations Button
                 BrutalistButton(
-                    text = if (isScanningStations) "Stop Scan" else "Scan Stations",
+                    text = if (isScanningStations) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_scan_stations),
                     onClick = { 
                         if (isConnected) {
                             if (isScanningStations) {
@@ -325,7 +325,7 @@ fun WifiScreen(
                 if (isConnected) {
                     // Stop All button
                     QuickActionChip(
-                        text = "Stop All",
+                        text = stringResource(R.string.action_stop_all),
                         onClick = {
                             viewModel.stopAll()
                             viewModel.stopWifiScanAndReset()
@@ -340,14 +340,14 @@ fun WifiScreen(
                         selectedColor = errorColor()
                     )
                     QuickActionChip(
-                        text = "Packet Capture",
+                        text = stringResource(R.string.label_packet_capture),
                         onClick = { showPacketCaptureDialog = true },
                         isSelected = activePacketCaptureMode != null,
                         selectedColor = primaryColor()
                     )
                     if (activePacketCaptureMode != null) {
                         QuickActionChip(
-                            text = "Stop Capture",
+                            text = stringResource(R.string.action_stop_capture),
                             onClick = {
                                 viewModel.stopPacketCapture()
                                 activePacketCaptureMode = null
@@ -394,13 +394,13 @@ fun WifiScreen(
             // Results count
             if (displayAccessPoints.isNotEmpty()) {
                 BrutalistSectionHeader(
-                    title = "Found ${displayAccessPoints.size} networks",
+                    title = stringResource(R.string.msg_found_networks_count, displayAccessPoints.size),
                     modifier = Modifier.padding(horizontal = 16.dp),
                     accentColor = primaryColor()
                 )
             } else if (isConnected && !isScanning) {
                 BrutalistSectionHeader(
-                    title = "No networks found - Press Scan",
+                    title = stringResource(R.string.msg_no_networks_found_hint),
                     modifier = Modifier.padding(horizontal = 16.dp),
                     accentColor = OnSurfaceVariantDark
                 )
@@ -481,7 +481,7 @@ fun WifiScreen(
                     if (unassociatedStations.isNotEmpty()) {
                         item {
                             BrutalistSectionHeader(
-                                title = "Unassociated Stations (${unassociatedStations.size})",
+                                title = stringResource(R.string.label_unassociated_stations, unassociatedStations.size),
                                 modifier = Modifier.padding(vertical = 4.dp),
                                 accentColor = warningColor()
                             )
@@ -556,7 +556,7 @@ fun WifiScreen(
     
     // Attack Options Bottom Sheet
     if (showAttackOptionsSheet && selectedAp != null) {
-AttackOptionsSheet(
+        AttackOptionsSheet(
             accessPoint = selectedAp!!,
             activeDeauthIndex = activeDeauthIndex,
             isBeaconSpamming = isBeaconSpamming,
@@ -668,7 +668,7 @@ AttackOptionsSheet(
             containerColor = warningColor(),
             contentColor = MaterialTheme.colorScheme.onPrimary
         ) {
-            Text("Connect to device first to view device info")
+            Text(stringResource(R.string.msg_connect_for_info))
         }
     }
 }
@@ -707,17 +707,17 @@ private fun ActiveAttackBanner(
             Spacer(modifier = Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isScanningStations) "Station Scan Active" else "Active Attacks",
+                    text = if (isScanningStations) stringResource(R.string.label_station_scan_active) else stringResource(R.string.label_active_attacks),
                     style = MaterialTheme.typography.labelMedium,
                     color = if (isScanningStations) warningColor() else errorColor(),
                     fontWeight = FontWeight.Bold
                 )
                 val activities = mutableListOf<String>()
-                if (deauthIndex != null) activities.add("Deauth AP[$deauthIndex]")
-                if (isBeaconSpamming) activities.add("Beacon Spam")
-                if (isKarmaRunning) activities.add("Karma")
-                if (isRickRolling) activities.add("Rick Roll")
-                if (isScanningStations) activities.add("Scanning for stations...")
+                if (deauthIndex != null) activities.add(stringResource(R.string.label_deauth_ap, deauthIndex))
+                if (isBeaconSpamming) activities.add(stringResource(R.string.label_beacon_spam))
+                if (isKarmaRunning) activities.add(stringResource(R.string.label_karma))
+                if (isRickRolling) activities.add(stringResource(R.string.label_rick_roll))
+                if (isScanningStations) activities.add(stringResource(R.string.msg_scanning_stations))
                 Text(
                     text = activities.joinToString(", "),
                     style = MaterialTheme.typography.bodySmall,
@@ -725,7 +725,7 @@ private fun ActiveAttackBanner(
                 )
             }
             TextButton(onClick = onStopAll) {
-                Text("Stop All", color = if (isScanningStations) warningColor() else errorColor(), style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.action_stop_all), color = if (isScanningStations) warningColor() else errorColor(), style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -757,21 +757,21 @@ private fun WifiStatusBanner(
     }
     
     val statusText = when (connectionState) {
-        SerialManager.ConnectionState.CONNECTED -> "Connected to $deviceName"
-        SerialManager.ConnectionState.CONNECTING -> "Connecting..."
-        SerialManager.ConnectionState.ERROR -> "Connection Error"
-        SerialManager.ConnectionState.DISCONNECTED -> "Not Connected"
+        SerialManager.ConnectionState.CONNECTED -> stringResource(R.string.wifi_status_connected_to, deviceName ?: "")
+        SerialManager.ConnectionState.CONNECTING -> stringResource(R.string.status_connecting)
+        SerialManager.ConnectionState.ERROR -> stringResource(R.string.status_error)
+        SerialManager.ConnectionState.DISCONNECTED -> stringResource(R.string.status_disconnected)
     }
     
     val subtitleText = when (connectionState) {
         SerialManager.ConnectionState.CONNECTED -> when (connectionTransport) {
-            SerialManager.ConnectionTransport.USB -> "Connected over USB serial"
-            SerialManager.ConnectionTransport.BLE -> "Connected over wireless bridge"
-            SerialManager.ConnectionTransport.NONE -> "Connected"
+            SerialManager.ConnectionTransport.USB -> stringResource(R.string.wifi_status_ready_usb)
+            SerialManager.ConnectionTransport.BLE -> stringResource(R.string.wifi_status_ready_wireless)
+            SerialManager.ConnectionTransport.NONE -> stringResource(R.string.status_connected)
         }
-        SerialManager.ConnectionState.CONNECTING -> "Please wait..."
-        SerialManager.ConnectionState.ERROR -> "Tap to retry connection"
-        SerialManager.ConnectionState.DISCONNECTED -> "Tap to connect"
+        SerialManager.ConnectionState.CONNECTING -> stringResource(R.string.msg_please_wait)
+        SerialManager.ConnectionState.ERROR -> stringResource(R.string.msg_retry_connection)
+        SerialManager.ConnectionState.DISCONNECTED -> stringResource(R.string.msg_tap_to_connect)
     }
     
     Surface(
@@ -828,281 +828,11 @@ private fun WifiStatusBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
     }
-}
-
-/**
- * Device Selection Dialog
- */
-@Composable
-private fun DeviceSelectionDialog(
-    devices: List<UsbDevice>,
-    allUsbDevices: List<UsbDevice> = emptyList(),
-    onDeviceSelected: (UsbDevice) -> Unit,
-    onDebugClick: () -> Unit = {},
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { 
-            Text("Select Device") 
-        },
-        text = {
-            Column {
-                if (devices.isEmpty()) {
-                    Text("No recognized USB serial devices found.")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (allUsbDevices.isNotEmpty()) {
-                        Text(
-                            "Found ${allUsbDevices.size} USB device(s) but none are recognized as serial devices:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        allUsbDevices.forEach { device ->
-                            Text(
-                                "• ${device.deviceName} (VID:0x${device.vendorId.toString(16)}, PID:0x${device.productId.toString(16)})",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Warning
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 300.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(
-                            items = devices,
-                            key = { it.deviceName },
-                            contentType = { "usb_device" }
-                        ) { device ->
-                            Card(
-                                onClick = { onDeviceSelected(device) },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp)
-                                ) {
-                                    Text(
-                                        text = device.deviceName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        text = "VID: 0x${device.vendorId.toString(16)} PID: 0x${device.productId.toString(16)}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    if (device.manufacturerName != null) {
-                                        Text(
-                                            text = "Manufacturer: ${device.manufacturerName}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Row {
-                TextButton(onClick = onDebugClick) {
-                    Text("Debug Log")
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("Cancel")
-                }
-            }
-        }
-    )
-}
-
-/**
- * Scan button with live scanning indicator
- */
-@Composable
-private fun WifiScanButton(
-    isScanning: Boolean,
-    isConnected: Boolean,
-    onScanClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-    ) {
-        BrutalistButton(
-            text = if (isScanning) "Scanning..." else "Scan Networks",
-            onClick = onScanClick,
-            modifier = Modifier.fillMaxWidth(),
-            containerColor = MaterialTheme.colorScheme.primary,
-            textColor = MaterialTheme.colorScheme.onPrimary,
-            enabled = isConnected,
-            isLoading = isScanning,
-            leadingIcon = {
-                if (!isScanning) {
-                    Icon(
-                        Icons.Default.Search, 
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        )
-    }
-}
-
-/**
- * Packet capture mode picker backed by firmware capture commands.
- */
-@Composable
-private fun PacketCaptureDialog(
-    onDismiss: () -> Unit,
-    onStart: (GhostCommand.CaptureMode, Int?) -> Unit,
-    onStop: () -> Unit
-) {
-    val modes = listOf(
-        GhostCommand.CaptureMode.EAPOL to "EAPOL / Handshakes",
-        GhostCommand.CaptureMode.PROBE to "Probe Requests",
-        GhostCommand.CaptureMode.DEAUTH to "Deauth Frames",
-        GhostCommand.CaptureMode.BEACON to "Beacon Frames",
-        GhostCommand.CaptureMode.RAW to "Raw WiFi",
-        GhostCommand.CaptureMode.WPS to "WPS",
-        GhostCommand.CaptureMode.PWN to "Pwnagotchi",
-        GhostCommand.CaptureMode.BLE to "BLE",
-        GhostCommand.CaptureMode.SKIMMER to "Skimmer BLE",
-        GhostCommand.CaptureMode.IEEE802154 to "802.15.4"
-    )
-    var selectedMode by remember { mutableStateOf(GhostCommand.CaptureMode.EAPOL) }
-    var modeExpanded by remember { mutableStateOf(false) }
-    var selectedQuickChannel by remember { mutableStateOf<Int?>(null) }
-    var customChannel by remember { mutableStateOf("") }
-    val selectedModeLabel = modes.first { it.first == selectedMode }.second
-    val customChannelValue = customChannel.trim().toIntOrNull()
-    val selectedChannel = customChannelValue ?: selectedQuickChannel
-    val channelValid = customChannel.isBlank() || (customChannelValue != null && customChannelValue > 0)
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Packet Capture") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "Auto keeps firmware hopping. A channel lock sends -channel <n> and firmware validates support.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Box {
-                    OutlinedButton(
-                        onClick = { modeExpanded = true },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(selectedModeLabel, modifier = Modifier.weight(1f))
-                        Icon(Icons.Default.ExpandMore, contentDescription = null)
-                    }
-                    DropdownMenu(
-                        expanded = modeExpanded,
-                        onDismissRequest = { modeExpanded = false }
-                    ) {
-                        modes.forEach { (mode, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    selectedMode = mode
-                                    modeExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf<Int?>(null, 1, 6, 11).forEach { channel ->
-                        FilterChip(
-                            selected = customChannel.isBlank() && selectedQuickChannel == channel,
-                            onClick = {
-                                selectedQuickChannel = channel
-                                customChannel = ""
-                            },
-                            label = { Text(channel?.let { "Ch $it" } ?: "Auto") }
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = customChannel,
-                    onValueChange = { value ->
-                        customChannel = value.filter { it.isDigit() }.take(3)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("Custom channel") },
-                    placeholder = { Text("36, 149, 26...") },
-                    isError = !channelValid,
-                    supportingText = {
-                        Text(if (channelValid) "Optional. Leave blank for Auto or quick chip." else "Enter a positive channel number.")
-                    }
-                )
-            }
-        },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onStop) {
-                    Text("Stop")
-                }
-                Button(
-                    enabled = channelValid,
-                    onClick = { onStart(selectedMode, selectedChannel) }
-                ) {
-                    Text(if (selectedChannel == null) "Start" else "Start Ch $selectedChannel")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-/**
- * Quick action chip
- */
-@Composable
-private fun QuickActionChip(
-    text: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    isSelected: Boolean = false,
-    selectedColor: Color = errorColor()
-) {
-    FilterChip(
-        selected = isSelected,
-        onClick = onClick,
-        enabled = enabled,
-        label = { Text(text, style = MaterialTheme.typography.labelSmall) },
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = if (isSelected) selectedColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
-            labelColor = if (isSelected) selectedColor else MaterialTheme.colorScheme.onSurface,
-            selectedContainerColor = selectedColor.copy(alpha = 0.3f)
-        ),
-        border = FilterChipDefaults.filterChipBorder(
-            borderColor = if (isSelected) selectedColor else MaterialTheme.colorScheme.outline,
-            selectedBorderColor = selectedColor,
-            enabled = enabled,
-            selected = isSelected
-        )
-    )
 }
 
 /**
@@ -1147,7 +877,7 @@ private fun WifiApCard(
             // WiFi Icon
             Icon(
                 imageVector = Icons.Default.SignalWifi4Bar,
-                contentDescription = "Signal strength",
+                contentDescription = stringResource(R.string.label_signal_quality),
                 tint = signalColor,
                 modifier = Modifier.size(24.dp)
             )
@@ -1167,7 +897,7 @@ private fun WifiApCard(
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
                             Icons.Default.Warning,
-                            contentDescription = "Attacking",
+                            contentDescription = stringResource(R.string.label_active_attacks),
                             tint = errorColor(),
                             modifier = Modifier.size(16.dp)
                         )
@@ -1179,28 +909,33 @@ private fun WifiApCard(
                     // Security indicator
                     if (accessPoint.security == "Open") {
                         BrutalistChip(
-                            text = "Open",
+                            text = stringResource(R.string.label_open_network),
                             backgroundColor = tertiaryColor().copy(alpha = 0.1f),
                             borderColor = tertiaryColor().copy(alpha = 0.3f),
                             textColor = tertiaryColor()
                         )
                     } else {
+                        val securityLabel = when (accessPoint.security) {
+                            "WPA3" -> stringResource(R.string.label_wpa3)
+                            "WPA2" -> stringResource(R.string.label_wpa2)
+                            else -> accessPoint.security
+                        }
                         Icon(
                             imageVector = Icons.Default.Lock,
-                            contentDescription = "Secured",
+                            contentDescription = stringResource(R.string.desc_secured),
                             modifier = Modifier.size(12.dp),
                             tint = securityColor
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = accessPoint.security,
+                            text = securityLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = securityColor
                         )
                     }
                     
                     Text(
-                        text = "  Ch ${accessPoint.channel}",
+                        text = "  ${stringResource(R.string.label_ch_prefix, accessPoint.channel)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1216,7 +951,7 @@ private fun WifiApCard(
             
             Icon(
                 imageVector = Icons.Default.ChevronRight,
-                contentDescription = "View details",
+                contentDescription = stringResource(R.string.desc_view_details),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -1248,10 +983,10 @@ private fun ApDetailSheet(
     }
     
     val signalText = when {
-        accessPoint.rssi >= -50 -> "Excellent"
-        accessPoint.rssi >= -60 -> "Good"
-        accessPoint.rssi >= -70 -> "Fair"
-        else -> "Weak"
+        accessPoint.rssi >= -50 -> stringResource(R.string.label_excellent)
+        accessPoint.rssi >= -60 -> stringResource(R.string.label_good)
+        accessPoint.rssi >= -70 -> stringResource(R.string.label_fair)
+        else -> stringResource(R.string.label_weak)
     }
     
     ModalBottomSheet(
@@ -1299,13 +1034,13 @@ private fun ApDetailSheet(
                         ) {
                             Icon(
                                 Icons.Default.Check,
-                                contentDescription = "Connected",
+                                contentDescription = null,
                                 tint = successColor(),
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Connected",
+                                text = stringResource(R.string.status_connected),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Medium,
                                 color = successColor()
@@ -1319,7 +1054,7 @@ private fun ApDetailSheet(
             if (isCurrentConnection && connectedIp != null) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "IP: $connectedIp",
+                    text = stringResource(R.string.label_ip_prefix, connectedIp),
                     style = MaterialTheme.typography.bodySmall,
                     color = successColor()
                 )
@@ -1328,11 +1063,11 @@ private fun ApDetailSheet(
             Spacer(modifier = Modifier.height(16.dp))
             
             // Details Grid
-            DetailRow("BSSID", accessPoint.bssid.censorMac(privacyMode))
-            DetailRow("Channel", accessPoint.channel.toString())
-            DetailRow("Security", accessPoint.security)
-            DetailRow("Signal", "${accessPoint.rssi} dBm ($signalText)", signalColor)
-            accessPoint.vendor?.let { DetailRow("Vendor", it) }
+            DetailRow(stringResource(R.string.label_bssid), accessPoint.bssid.censorMac(privacyMode))
+            DetailRow(stringResource(R.string.label_channel), accessPoint.channel.toString())
+            DetailRow(stringResource(R.string.label_security), accessPoint.security)
+            DetailRow(stringResource(R.string.label_signal), "${accessPoint.rssi} dBm ($signalText)", signalColor)
+            accessPoint.vendor?.let { DetailRow(stringResource(R.string.label_vendor), it) }
             
             Spacer(modifier = Modifier.height(24.dp))
             
@@ -1342,13 +1077,13 @@ private fun ApDetailSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 BrutalistOutlinedButton(
-                    text = "View Options",
+                    text = stringResource(R.string.action_view_options),
                     onClick = onSelect,
                     modifier = Modifier.weight(1f),
                     leadingIcon = { Icon(Icons.Default.MoreHoriz, contentDescription = null) }
                 )
                 BrutalistOutlinedButton(
-                    text = "Track",
+                    text = stringResource(R.string.action_track),
                     onClick = onTrack,
                     modifier = Modifier.weight(1f),
                     leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
@@ -1359,7 +1094,7 @@ private fun ApDetailSheet(
             
             // Deauth toggle button
             BrutalistButton(
-                text = if (isAttacking) "Stop Deauth" else "Start Deauth",
+                text = if (isAttacking) stringResource(R.string.action_stop_deauth) else stringResource(R.string.action_start_deauth),
                 onClick = onDeauth,
                 modifier = Modifier.fillMaxWidth(),
                 containerColor = if (isAttacking) warningColor() else errorColor(),
@@ -1376,445 +1111,12 @@ private fun ApDetailSheet(
             
             // Attack Options button
             BrutalistButton(
-                text = "More Attack Options",
+                text = stringResource(R.string.action_more_attack_options),
                 onClick = onShowAttackOptions,
                 modifier = Modifier.fillMaxWidth(),
                 containerColor = primaryColor(),
                 borderColor = primaryColor(),
                 leadingIcon = { Icon(Icons.Default.ArrowForward, contentDescription = null) }
-            )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-    }
-}
-
-/**
- * Device Selection Dialog
- */
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
-private fun DeviceSelectionDialog(
-    devices: List<UsbDevice>,
-    allUsbDevices: List<UsbDevice> = emptyList(),
-    usbDebugLog: List<String> = emptyList(),
-    onDeviceSelected: (UsbDevice, Int) -> Unit,
-    onDebugClick: () -> Unit = {},
-    onDismiss: () -> Unit
-) {
-    var showDebugLog by remember { mutableStateOf(false) }
-    val baudRates = remember { listOf(9600, 57600, 115200, 230400, 420600, 460800, 921600) }
-    var selectedBaud by remember { mutableStateOf(115200) }
-    var baudExpanded by remember { mutableStateOf(false) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = SurfaceDark,
-            border = BorderStroke(1.dp, OutlineDark),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-                    .heightIn(max = 500.dp)
-            ) {
-                Text(
-                    text = "Select Device",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                if (usbDebugLog.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TextButton(
-                        onClick = { showDebugLog = !showDebugLog },
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text(
-                            text = if (showDebugLog) "Hide Debug Log" else "Show Debug Log",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = OnSurfaceVariantDark
-                        )
-                    }
-                }
-
-                if (showDebugLog && usbDebugLog.isNotEmpty()) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 160.dp)
-                            .padding(vertical = 8.dp),
-                        shape = RoundedCornerShape(6.dp),
-                        color = BackgroundDark,
-                        border = BorderStroke(1.dp, OutlineVariantDark)
-                    ) {
-                        LazyColumn(modifier = Modifier.padding(8.dp)) {
-                            items(usbDebugLog) { logLine ->
-                                Text(
-                                    text = logLine,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    color = OnSurfaceVariantDark,
-                                    modifier = Modifier.padding(vertical = 1.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Baud rate selector
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Baud Rate",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    ExposedDropdownMenuBox(
-                        expanded = baudExpanded,
-                        onExpandedChange = { baudExpanded = it },
-                        modifier = Modifier.width(140.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { baudExpanded = true },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor()
-                        ) {
-                            Text(
-                                text = selectedBaud.toString(),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        ExposedDropdownMenu(
-                            expanded = baudExpanded,
-                            onDismissRequest = { baudExpanded = false }
-                        ) {
-                            baudRates.forEach { baud ->
-                                DropdownMenuItem(
-                                    text = { Text(baud.toString()) },
-                                    onClick = {
-                                        selectedBaud = baud
-                                        baudExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (devices.isEmpty()) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "No serial devices found",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = OnSurfaceVariantDark
-                        )
-                        if (allUsbDevices.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Raw USB detected: ${allUsbDevices.size}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = primaryColor()
-                            )
-                            allUsbDevices.forEach { device ->
-                                Text(
-                                    text = "• ${device.productName ?: device.deviceName} (0x${device.vendorId.toString(16)}:0x${device.productId.toString(16)})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = OnSurfaceVariantDark
-                                )
-                            }
-                        } else {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "No USB devices detected",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceVariantDark
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Supported: CH340, CH341, CP210x, FTDI, CDC/ACM",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = primaryColor()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = onDebugClick) {
-                            Text("Refresh Scan")
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 300.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(
-                            items = devices,
-                            key = { "${it.vendorId}-${it.productId}-${it.deviceName}" }
-                        ) { device ->
-                            Card(
-                                onClick = { onDeviceSelected(device, selectedBaud) },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark),
-                                border = BorderStroke(1.dp, OutlineDark),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        text = device.productName ?: device.deviceName.ifEmpty { "USB Device" },
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    device.manufacturerName?.let { manufacturer ->
-                                        Text(
-                                            text = manufacturer,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = primaryColor()
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "VID: 0x${device.vendorId.toString(16)}  PID: 0x${device.productId.toString(16)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = OnSurfaceVariantDark
-                                        )
-                                        Text(
-                                            text = "${device.interfaceCount} if",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = OnSurfaceVariantDark
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel", color = OnSurfaceVariantDark)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Attack Options Bottom Sheet - Shows all available attacks
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AttackOptionsSheet(
-    accessPoint: AccessPointPreview,
-    activeDeauthIndex: Int?,
-    isBeaconSpamming: Boolean,
-    isRickRolling: Boolean,
-    isKarmaRunning: Boolean,
-    privacyMode: Boolean = false,
-    onDismiss: () -> Unit,
-    onDeauth: (Int) -> Unit,
-    onBeaconSpam: () -> Unit,
-    onRickRoll: () -> Unit,
-    onKarma: () -> Unit,
-    onStopAll: () -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = {
-            Surface(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = MaterialTheme.colorScheme.outline,
-                shape = RoundedCornerShape(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(32.dp)
-                        .height(4.dp)
-                )
-            }
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Text(
-                text = "Attack Options",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            
-Text(
-                text = "Target: ${accessPoint.ssid.censorSsid(privacyMode)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Deauth Attack
-            AttackOptionItem(
-                title = "Deauthentication Attack",
-                description = "Disconnect clients from the target AP by sending deauth frames",
-                isActive = activeDeauthIndex == accessPoint.index,
-                icon = Icons.Default.WifiOff,
-                onClick = { onDeauth(accessPoint.index) }
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Beacon Spam
-            AttackOptionItem(
-                title = "Beacon Spam",
-                description = "Flood the area with fake AP beacons",
-                isActive = isBeaconSpamming,
-                icon = Icons.Default.Router,
-                onClick = onBeaconSpam
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Karma Attack
-            AttackOptionItem(
-                title = "Karma Attack",
-                description = "Respond to probe requests with matching AP beacons",
-                isActive = isKarmaRunning,
-                icon = Icons.Default.Phishing,
-                onClick = onKarma
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Rick Roll
-            AttackOptionItem(
-                title = "Rick Roll",
-                description = "Create a Rick Roll themed evil twin AP",
-                isActive = isRickRolling,
-                icon = Icons.Default.MusicNote,
-                onClick = onRickRoll
-            )
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Stop All Button
-            BrutalistOutlinedButton(
-                text = "Stop All Attacks",
-                onClick = onStopAll,
-                modifier = Modifier.fillMaxWidth(),
-                borderColor = errorColor(),
-                textColor = errorColor(),
-                leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
-            )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-    }
-}
-
-/**
- * Station Detail Bottom Sheet - Shows station details and deauth action
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun StationDetailSheet(
-    station: GhostResponse.Station,
-    privacyMode: Boolean,
-    onDismiss: () -> Unit,
-    onDeauth: () -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = {
-            Surface(
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = MaterialTheme.colorScheme.outline,
-                shape = RoundedCornerShape(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(32.dp)
-                        .height(4.dp)
-                )
-            }
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            // Header with station icon
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Devices,
-                    contentDescription = "Station",
-                    tint = warningColor(),
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "Station Details",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Details Grid
-            DetailRow("MAC Address", station.mac.censorMac(privacyMode))
-            station.vendor?.let { DetailRow("Vendor", it) }
-            station.associatedApSsid?.let { DetailRow("Connected AP", it) }
-            station.apBssid?.let { DetailRow("AP BSSID", it.censorMac(privacyMode)) }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Deauth button
-            BrutalistButton(
-                text = "Send Deauth Attack",
-                onClick = onDeauth,
-                modifier = Modifier.fillMaxWidth(),
-                containerColor = errorColor(),
-                borderColor = errorColor(),
-                leadingIcon = { 
-                    Icon(
-                        Icons.Default.WifiOff, 
-                        contentDescription = null 
-                    ) 
-                }
             )
             
             Spacer(modifier = Modifier.height(32.dp))
@@ -1871,7 +1173,7 @@ private fun AttackOptionItem(
                 color = if (isActive) Error else MaterialTheme.colorScheme.outline
             ) {
                 Text(
-                    text = if (isActive) "STOP" else "START",
+                    text = if (isActive) stringResource(R.string.label_stop) else stringResource(R.string.label_start),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
@@ -1881,6 +1183,8 @@ private fun AttackOptionItem(
         }
     }
 }
+
+
 
 /**
  * Detail row for displaying key-value information
@@ -1985,7 +1289,7 @@ private fun WifiApCardWithStations(
                 // WiFi Icon
                 Icon(
                     imageVector = Icons.Default.SignalWifi4Bar,
-                    contentDescription = "Signal strength",
+                    contentDescription = stringResource(R.string.desc_signal_strength),
                     tint = signalColor,
                     modifier = Modifier.size(24.dp)
                 )
@@ -2005,7 +1309,7 @@ private fun WifiApCardWithStations(
                             Spacer(modifier = Modifier.width(8.dp))
                             Icon(
                                 Icons.Default.Warning,
-                                contentDescription = "Attacking",
+                                contentDescription = stringResource(R.string.desc_attacking),
                                 tint = errorColor(),
                                 modifier = Modifier.size(16.dp)
                             )
@@ -2034,28 +1338,33 @@ private fun WifiApCardWithStations(
                         // Security indicator
                         if (accessPoint.security == "Open") {
                             BrutalistChip(
-                                text = "Open",
+                                text = stringResource(R.string.label_open_network),
                                 backgroundColor = tertiaryColor().copy(alpha = 0.1f),
                                 borderColor = tertiaryColor().copy(alpha = 0.3f),
                                 textColor = tertiaryColor()
                             )
                         } else {
+                            val securityLabel = when (accessPoint.security) {
+                                "WPA3" -> stringResource(R.string.label_wpa3)
+                                "WPA2" -> stringResource(R.string.label_wpa2)
+                                else -> accessPoint.security
+                            }
                             Icon(
                                 imageVector = Icons.Default.Lock,
-                                contentDescription = "Secured",
+                                contentDescription = stringResource(R.string.desc_secured),
                                 modifier = Modifier.size(12.dp),
                                 tint = securityColor
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = accessPoint.security,
+                                text = securityLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = securityColor
                             )
                         }
                         
                         Text(
-                            text = "  Ch ${accessPoint.channel}",
+                            text = "  ${stringResource(R.string.label_ch_prefix, accessPoint.channel)}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2071,7 +1380,7 @@ private fun WifiApCardWithStations(
                 
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
-                    contentDescription = "View details",
+                    contentDescription = stringResource(R.string.desc_view_details),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -2088,7 +1397,7 @@ private fun WifiApCardWithStations(
                     .background(warningColor().copy(alpha = 0.6f))
             )
             
-associatedStations.forEachIndexed { index, station ->
+            associatedStations.forEachIndexed { index, station ->
                 val isLast = index == associatedStations.size - 1
                 StationSubItem(
                     station = station,
@@ -2177,7 +1486,7 @@ private fun StationSubItem(
                     // Station icon - smaller
                     Icon(
                         Icons.Default.Devices,
-                        contentDescription = "Station",
+                        contentDescription = stringResource(R.string.desc_station),
                         tint = warningColor(),
                         modifier = Modifier.size(14.dp)
                     )
@@ -2246,7 +1555,7 @@ private fun StationResultCard(
             // Station icon - smaller
             Icon(
                 Icons.Default.Devices,
-                contentDescription = "Station",
+                contentDescription = stringResource(R.string.desc_station),
                 tint = warningColor(),
                 modifier = Modifier.size(14.dp)
             )
@@ -2254,7 +1563,7 @@ private fun StationResultCard(
             Spacer(modifier = Modifier.width(6.dp))
             
             Column(modifier = Modifier.weight(1f)) {
-Text(
+                Text(
                     text = station.mac.censorMac(privacyMode),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Medium,
@@ -2279,3 +1588,346 @@ Text(
         }
     }
 }
+
+/**
+ * Quick action chip
+ */
+@Composable
+private fun QuickActionChip(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    isSelected: Boolean = false,
+    selectedColor: Color = errorColor()
+) {
+    FilterChip(
+        selected = isSelected,
+        onClick = onClick,
+        enabled = enabled,
+        label = { Text(text, style = MaterialTheme.typography.labelSmall) },
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = if (isSelected) selectedColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+            labelColor = if (isSelected) selectedColor else MaterialTheme.colorScheme.onSurface,
+            selectedContainerColor = selectedColor.copy(alpha = 0.3f)
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            borderColor = if (isSelected) selectedColor else MaterialTheme.colorScheme.outline,
+            selectedBorderColor = selectedColor,
+            enabled = enabled,
+            selected = isSelected
+        )
+    )
+}
+
+/**
+ * Attack Options Bottom Sheet - Shows all available attacks
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttackOptionsSheet(
+    accessPoint: AccessPointPreview,
+    activeDeauthIndex: Int?,
+    isBeaconSpamming: Boolean,
+    isRickRolling: Boolean,
+    isKarmaRunning: Boolean,
+    privacyMode: Boolean = false,
+    onDismiss: () -> Unit,
+    onDeauth: (Int) -> Unit,
+    onBeaconSpam: () -> Unit,
+    onRickRoll: () -> Unit,
+    onKarma: () -> Unit,
+    onStopAll: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = {
+            Surface(
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = MaterialTheme.colorScheme.outline,
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(32.dp)
+                        .height(4.dp)
+                )
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.title_attack_options),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            
+            Text(
+                text = stringResource(R.string.label_target, accessPoint.ssid.censorSsid(privacyMode)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Deauth Attack
+            AttackOptionItem(
+                title = stringResource(R.string.label_deauth_attack),
+                description = stringResource(R.string.desc_deauth_attack),
+                isActive = activeDeauthIndex == accessPoint.index,
+                icon = Icons.Default.WifiOff,
+                onClick = { onDeauth(accessPoint.index) }
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Beacon Spam
+            AttackOptionItem(
+                title = stringResource(R.string.label_beacon_spam),
+                description = stringResource(R.string.desc_beacon_spam),
+                isActive = isBeaconSpamming,
+                icon = Icons.Default.Router,
+                onClick = onBeaconSpam
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Karma Attack
+            AttackOptionItem(
+                title = stringResource(R.string.label_karma),
+                description = stringResource(R.string.desc_karma_attack),
+                isActive = isKarmaRunning,
+                icon = Icons.Default.Phishing,
+                onClick = onKarma
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Rick Roll
+            AttackOptionItem(
+                title = stringResource(R.string.label_rick_roll),
+                description = stringResource(R.string.desc_rick_roll),
+                isActive = isRickRolling,
+                icon = Icons.Default.MusicNote,
+                onClick = onRickRoll
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Stop All Button
+            BrutalistOutlinedButton(
+                text = stringResource(R.string.action_stop_all_attacks),
+                onClick = onStopAll,
+                modifier = Modifier.fillMaxWidth(),
+                borderColor = errorColor(),
+                textColor = errorColor(),
+                leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
+            )
+            
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+
+
+/**
+ * Packet capture mode picker backed by firmware capture commands.
+ */
+@Composable
+private fun PacketCaptureDialog(
+    onDismiss: () -> Unit,
+    onStart: (GhostCommand.CaptureMode, Int?) -> Unit,
+    onStop: () -> Unit
+) {
+    val modes = listOf(
+        GhostCommand.CaptureMode.EAPOL to stringResource(R.string.capture_mode_eapol),
+        GhostCommand.CaptureMode.PROBE to stringResource(R.string.capture_mode_probe),
+        GhostCommand.CaptureMode.DEAUTH to stringResource(R.string.capture_mode_deauth),
+        GhostCommand.CaptureMode.BEACON to stringResource(R.string.capture_mode_beacon),
+        GhostCommand.CaptureMode.RAW to stringResource(R.string.capture_mode_raw),
+        GhostCommand.CaptureMode.WPS to stringResource(R.string.capture_mode_wps),
+        GhostCommand.CaptureMode.PWN to stringResource(R.string.capture_mode_pwn),
+        GhostCommand.CaptureMode.BLE to stringResource(R.string.capture_mode_ble),
+        GhostCommand.CaptureMode.SKIMMER to stringResource(R.string.capture_mode_skimmer),
+        GhostCommand.CaptureMode.IEEE802154 to stringResource(R.string.capture_mode_802154)
+    )
+    var selectedMode by remember { mutableStateOf(GhostCommand.CaptureMode.EAPOL) }
+    var modeExpanded by remember { mutableStateOf(false) }
+    var selectedQuickChannel by remember { mutableStateOf<Int?>(null) }
+    var customChannel by remember { mutableStateOf("") }
+    val selectedModeLabel = modes.first { it.first == selectedMode }.second
+    val customChannelValue = customChannel.trim().toIntOrNull()
+    val selectedChannel = customChannelValue ?: selectedQuickChannel
+    val channelValid = customChannel.isBlank() || (customChannelValue != null && customChannelValue > 0)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.title_packet_capture)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = stringResource(R.string.msg_packet_capture_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Box {
+                    OutlinedButton(
+                        onClick = { modeExpanded = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(selectedModeLabel, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.ExpandMore, contentDescription = null)
+                    }
+                    DropdownMenu(
+                        expanded = modeExpanded,
+                        onDismissRequest = { modeExpanded = false }
+                    ) {
+                        modes.forEach { (mode, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    selectedMode = mode
+                                    modeExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf<Int?>(null, 1, 6, 11).forEach { channel ->
+                        FilterChip(
+                            selected = customChannel.isBlank() && selectedQuickChannel == channel,
+                            onClick = {
+                                selectedQuickChannel = channel
+                                customChannel = ""
+                            },
+                            label = { Text(channel?.let { "${stringResource(R.string.label_channel)} $it" } ?: stringResource(R.string.label_auto)) }
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = customChannel,
+                    onValueChange = { value ->
+                        customChannel = value.filter { it.isDigit() }.take(3)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.label_custom_channel)) },
+                    placeholder = { Text(stringResource(R.string.placeholder_custom_channel)) },
+                    isError = !channelValid,
+                    supportingText = {
+                        Text(if (channelValid) stringResource(R.string.msg_custom_channel_hint) else stringResource(R.string.msg_custom_channel_error))
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onStop) {
+                    Text(stringResource(R.string.action_stop))
+                }
+                Button(
+                    enabled = channelValid,
+                    onClick = { onStart(selectedMode, selectedChannel) }
+                ) {
+                    Text(if (selectedChannel == null) stringResource(R.string.status_connecting).replace("…", "") else stringResource(R.string.action_start_capture_channel, selectedChannel))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
+}
+
+/**
+ * Station Detail Bottom Sheet - Shows station details and deauth action
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StationDetailSheet(
+    station: GhostResponse.Station,
+    privacyMode: Boolean,
+    onDismiss: () -> Unit,
+    onDeauth: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = {
+            Surface(
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = MaterialTheme.colorScheme.outline,
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(32.dp)
+                        .height(4.dp)
+                )
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Header with station icon
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Devices,
+                    contentDescription = stringResource(R.string.desc_station),
+                    tint = warningColor(),
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = stringResource(R.string.title_station_details),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Details Grid
+            DetailRow(stringResource(R.string.label_mac_address), station.mac.censorMac(privacyMode))
+            station.vendor?.let { DetailRow(stringResource(R.string.label_vendor), it) }
+            station.associatedApSsid?.let { DetailRow(stringResource(R.string.label_connected_ap), it) }
+            station.apBssid?.let { DetailRow(stringResource(R.string.label_ap_bssid), it.censorMac(privacyMode)) }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Deauth button
+            BrutalistButton(
+                text = stringResource(R.string.action_send_deauth_attack),
+                onClick = onDeauth,
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = errorColor(),
+                borderColor = errorColor(),
+                leadingIcon = { 
+                    Icon(
+                        Icons.Default.WifiOff, 
+                        contentDescription = null 
+                    ) 
+                }
+            )
+            
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+

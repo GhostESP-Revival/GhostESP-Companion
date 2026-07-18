@@ -2,6 +2,7 @@
 
 ## v0.4.2
 
+- Added Russian localization, translated by @MoonshinException
 - Fixed Dashboard "Settings" button incorrectly triggering NFC scan instead of navigating to Settings
 - Fixed NFC scan navigation going to Settings screen instead of NFC screen
 - Fixed EthConfig STATIC mode sending literal "null" when IP/netmask/gateway are missing

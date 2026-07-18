@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -88,13 +90,13 @@ fun IrLearnScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "Learn Signal",
+        title = stringResource(R.string.title_learn_signal),
         actions = {
             if (learnedSignal != null) {
                 IconButton(onClick = { showSaveDialog = true }) {
                     Icon(
                         Icons.Default.Add,
-                        contentDescription = "Add to List",
+                        contentDescription = stringResource(R.string.title_add_to_local),
                         tint = primaryColor()
                     )
                 }
@@ -110,7 +112,7 @@ fun IrLearnScreen(
             // Connection Status Banner
             IrConnectionBanner(
                 isConnected = isConnected,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -142,18 +144,18 @@ fun IrLearnScreen(
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
-                                    text = "Waiting for IR signal...",
+                                    text = stringResource(R.string.msg_waiting_for_ir),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = primaryColor()
                                 )
                                 Text(
-                                    text = "Point your remote at the GhostESP IR receiver",
+                                    text = stringResource(R.string.msg_point_remote_hint),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = OnSurfaceVariantDark
                                 )
                                 Text(
-                                    text = "Timeout in 30 seconds",
+                                    text = stringResource(R.string.msg_timeout_30s),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = OnSurfaceVariantDark
                                 )
@@ -166,13 +168,13 @@ fun IrLearnScreen(
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
-                                    text = "Signal Learned!",
+                                    text = stringResource(R.string.msg_signal_learned),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = successColor()
                                 )
                                 Text(
-                                    text = "Protocol: ${learnedSignal?.protocol}",
+                                    text = "${stringResource(R.string.label_protocol)}: ${learnedSignal?.protocol}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = OnSurfaceDark
                                 )
@@ -185,13 +187,13 @@ fun IrLearnScreen(
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
-                                    text = "Ready to Learn",
+                                    text = stringResource(R.string.label_ready_to_learn),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = OnSurfaceDark
                                 )
                                 Text(
-                                    text = "Press the button below to start learning",
+                                    text = stringResource(R.string.msg_press_to_start_learning),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = OnSurfaceVariantDark
                                 )
@@ -203,7 +205,7 @@ fun IrLearnScreen(
                 // Learn Button
                 item {
                     BrutalistButton(
-                        text = if (isLearning) "Stop Learning" else "Start Learning",
+                        text = if (isLearning) stringResource(R.string.action_stop_learning) else stringResource(R.string.action_start_learning),
                         onClick = {
                             if (isConnected) {
                                 if (isLearning) {
@@ -238,17 +240,17 @@ fun IrLearnScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "Signal Details",
+                                    text = stringResource(R.string.label_signal_details),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = primaryColor()
                                 )
 
-                                SignalDetailRow("Protocol", learnedSignal?.protocol ?: "Unknown")
-                                SignalDetailRow("Address", learnedSignal?.address ?: "N/A")
-                                SignalDetailRow("Command", learnedSignal?.command ?: "N/A")
+                                SignalDetailRow(stringResource(R.string.label_protocol), learnedSignal?.protocol ?: stringResource(R.string.label_unknown))
+                                SignalDetailRow(stringResource(R.string.label_address), learnedSignal?.address ?: "N/A")
+                                SignalDetailRow(stringResource(R.string.label_command), learnedSignal?.command ?: "N/A")
                                 if (learnedSignal?.rawData?.isNotEmpty() == true) {
-                                    SignalDetailRow("Raw Samples", "${learnedSignal?.rawData?.firstOrNull() ?: 0}")
+                                    SignalDetailRow(stringResource(R.string.label_raw_samples), "${learnedSignal?.rawData?.firstOrNull() ?: 0}")
                                 }
                                 
                                 // Show saved path if firmware saved the file
@@ -266,7 +268,7 @@ fun IrLearnScreen(
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = "Saved to: $irLearnSavedPath",
+                                            text = stringResource(R.string.msg_saved_to_path, irLearnSavedPath!!),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = successColor()
                                         )
@@ -281,7 +283,7 @@ fun IrLearnScreen(
                 if (learnedSignals.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Learned Signals (${learnedSignals.size})",
+                            text = stringResource(R.string.label_learned_signals_count, learnedSignals.size),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = primaryColor()
@@ -344,7 +346,7 @@ fun IrLearnScreen(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Point your IR remote at the GhostESP IR receiver and press a button to capture the signal. The signal can then be saved or replayed.",
+                                text = stringResource(R.string.msg_ir_learn_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceVariantDark
                             )
@@ -359,8 +361,8 @@ fun IrLearnScreen(
             FeatureNotSupportedOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },
-                featureName = "IR Learn",
-                message = "This device does not have Infrared RX hardware. Learning IR signals requires an IR receiver."
+                featureName = stringResource(R.string.title_learn_signal),
+                message = stringResource(R.string.msg_ir_rx_unsupported)
             )
         }
         }
@@ -370,23 +372,23 @@ fun IrLearnScreen(
     if (showSaveDialog && learnedSignal != null) {
         AlertDialog(
             onDismissRequest = { showSaveDialog = false },
-            title = { Text("Add to Local List") },
+            title = { Text(stringResource(R.string.title_add_to_local)) },
             text = {
                 Column {
-                    Text("Enter a name for this signal:")
+                    Text(stringResource(R.string.msg_enter_signal_name))
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = signalName,
                         onValueChange = { signalName = it },
-                        label = { Text("Signal Name") },
+                        label = { Text(stringResource(R.string.label_signal_name)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("e.g., TV Power") }
+                        placeholder = { Text(stringResource(R.string.placeholder_signal_name)) }
                     )
                     if (irLearnSavedPath != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Firmware saved to: $irLearnSavedPath",
+                            text = stringResource(R.string.msg_firmware_saved_to, irLearnSavedPath!!),
                             style = MaterialTheme.typography.bodySmall,
                             color = OnSurfaceVariantDark
                         )
@@ -405,7 +407,7 @@ fun IrLearnScreen(
                         showSaveDialog = false
                     }
                 ) {
-                    Text("Add")
+                    Text(stringResource(R.string.label_start))
                 }
             },
             dismissButton = {
@@ -413,7 +415,7 @@ fun IrLearnScreen(
                     showSaveDialog = false
                     signalName = ""
                 }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -500,14 +502,14 @@ private fun LearnedSignalCard(
                 IconButton(onClick = onReplay) {
                     Icon(
                         Icons.Default.PlayArrow,
-                        contentDescription = "Replay",
+                        contentDescription = stringResource(R.string.label_start),
                         tint = successColor()
                     )
                 }
                 IconButton(onClick = onDelete) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "Delete",
+                        contentDescription = stringResource(R.string.action_clear),
                         tint = errorColor()
                     )
                 }
@@ -550,14 +552,14 @@ private fun IrConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) successColor() else errorColor()
                     )
                     if (isConnected) {
                         Text(
-                            text = "Ready to learn IR signals",
+                            text = stringResource(R.string.label_ready_for_ir_learn),
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
                         )
@@ -574,7 +576,7 @@ private fun IrConnectionBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

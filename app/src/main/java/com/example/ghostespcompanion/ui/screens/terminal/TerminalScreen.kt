@@ -22,6 +22,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.theme.*
@@ -62,7 +64,7 @@ fun TerminalScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "Terminal",
+        title = stringResource(R.string.title_terminal),
         actions = {
             // Connection status
             Icon(
@@ -72,9 +74,9 @@ fun TerminalScreen(
                     else -> Icons.Default.Usb
                 },
                 contentDescription = when {
-                    !isConnected -> "Disconnected"
-                    connectionTransport == SerialManager.ConnectionTransport.BLE -> "Connected wirelessly"
-                    else -> "Connected over USB"
+                    !isConnected -> stringResource(R.string.terminal_disconnected)
+                    connectionTransport == SerialManager.ConnectionTransport.BLE -> stringResource(R.string.terminal_connected_wireless)
+                    else -> stringResource(R.string.terminal_connected_usb)
                 },
                 tint = if (isConnected) successColor() else errorColor()
             )
@@ -83,7 +85,7 @@ fun TerminalScreen(
             IconButton(onClick = { viewModel.clearTerminal() }) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Clear",
+                    contentDescription = stringResource(R.string.action_clear),
                     tint = primaryColor()
                 )
             }
@@ -101,7 +103,7 @@ fun TerminalScreen(
             }) {
                 Icon(
                     imageVector = if (isConnected) Icons.Default.LinkOff else Icons.Default.Link,
-                    contentDescription = if (isConnected) "Disconnect" else "Connect",
+                    contentDescription = if (isConnected) stringResource(R.string.action_disconnect) else stringResource(R.string.action_connect),
                     tint = primaryColor()
                 )
             }
@@ -129,21 +131,21 @@ fun TerminalScreen(
                     // Welcome message
                     item {
                         TerminalLine(
-                            text = "GhostESP Terminal",
+                            text = stringResource(R.string.terminal_welcome),
                             color = MaterialTheme.colorScheme.primary,
                             isCommand = false
                         )
                     }
                     item {
                         TerminalLine(
-                            text = "Type 'help' for available commands",
+                            text = stringResource(R.string.terminal_help_hint),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             isCommand = false
                         )
                     }
                     item {
                         TerminalLine(
-                            text = "----------------------------------------",
+                            text = stringResource(R.string.terminal_separator),
                             color = MaterialTheme.colorScheme.outline,
                             isCommand = false
                         )
@@ -213,7 +215,7 @@ fun TerminalScreen(
                             Box {
                                 if (commandText.isEmpty()) {
                                     Text(
-                                        text = "Enter command...",
+                                        text = stringResource(R.string.terminal_command_prompt),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                         fontFamily = FontFamily.Monospace
                                     )
@@ -237,7 +239,7 @@ fun TerminalScreen(
                     ) {
                         Icon(
                             Icons.Default.Send,
-                            contentDescription = "Send",
+                            contentDescription = stringResource(R.string.label_start),
                             tint = if (commandText.isNotBlank() && isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

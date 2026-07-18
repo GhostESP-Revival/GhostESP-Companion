@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -67,7 +69,7 @@ val connectionState by viewModel.connectionState.collectAsState()
     
     MainScreen(
         onBack = onBack,
-        title = "Ethernet",
+        title = stringResource(R.string.title_ethernet),
         actions = {
             IconButton(onClick = {
                 if (isConnected) {
@@ -76,7 +78,7 @@ val connectionState by viewModel.connectionState.collectAsState()
             }) {
                 Icon(
                     Icons.Default.Info,
-                    contentDescription = "Network Info",
+                    contentDescription = stringResource(R.string.label_network_information),
                     tint = primaryColor()
                 )
             }
@@ -93,7 +95,7 @@ val connectionState by viewModel.connectionState.collectAsState()
             // Connection Status Banner
             EthernetConnectionBanner(
                 isConnected = isConnected,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -112,17 +114,17 @@ val connectionState by viewModel.connectionState.collectAsState()
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "Network Information",
+                                text = stringResource(R.string.title_network_information),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = primaryColor()
                             )
                             
-                            NetworkInfoRow("IP Address", networkInfo.ip)
-                            NetworkInfoRow("Subnet Mask", networkInfo.subnet)
-                            NetworkInfoRow("Gateway", networkInfo.gateway)
-                            NetworkInfoRow("DNS", networkInfo.dns)
-                            NetworkInfoRow("MAC", networkInfo.mac)
+                            NetworkInfoRow(stringResource(R.string.label_ip_address), networkInfo.ip)
+                            NetworkInfoRow(stringResource(R.string.label_subnet_mask), networkInfo.subnet)
+                            NetworkInfoRow(stringResource(R.string.label_gateway), networkInfo.gateway)
+                            NetworkInfoRow(stringResource(R.string.label_dns), networkInfo.dns)
+                            NetworkInfoRow(stringResource(R.string.label_mac_address), networkInfo.mac)
                         }
                     }
                 }
@@ -130,7 +132,7 @@ val connectionState by viewModel.connectionState.collectAsState()
                 // Tool Selection
                 item {
                     Text(
-                        text = "Network Tools",
+                        text = stringResource(R.string.label_network_tools),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor()
@@ -143,14 +145,14 @@ val connectionState by viewModel.connectionState.collectAsState()
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ToolButton(
-                            text = "Scan",
+                            text = stringResource(R.string.action_scan).lowercase().replaceFirstChar { it.uppercase() },
                             icon = Icons.Default.Search,
                             selected = selectedTool == EthernetTool.NETWORK_SCAN,
                             onClick = { selectedTool = EthernetTool.NETWORK_SCAN },
                             modifier = Modifier.weight(1f)
                         )
                         ToolButton(
-                            text = "Fingerprint",
+                            text = stringResource(R.string.label_fingerprint),
                             icon = Icons.Default.Fingerprint,
                             selected = selectedTool == EthernetTool.FINGERPRINT,
                             onClick = { selectedTool = EthernetTool.FINGERPRINT },
@@ -165,14 +167,14 @@ val connectionState by viewModel.connectionState.collectAsState()
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ToolButton(
-                            text = "DNS",
+                            text = stringResource(R.string.label_dns),
                             icon = Icons.Default.Dns,
                             selected = selectedTool == EthernetTool.DNS,
                             onClick = { selectedTool = EthernetTool.DNS },
                             modifier = Modifier.weight(1f)
                         )
                         ToolButton(
-                            text = "HTTP",
+                            text = stringResource(R.string.label_http),
                             icon = Icons.Default.Http,
                             selected = selectedTool == EthernetTool.HTTP,
                             onClick = { selectedTool = EthernetTool.HTTP },
@@ -188,16 +190,16 @@ val connectionState by viewModel.connectionState.collectAsState()
                             OutlinedTextField(
                                 value = targetIp,
                                 onValueChange = { targetIp = it },
-                                label = { Text("Target IP/Range (optional)") },
+                                label = { Text(stringResource(R.string.label_target_ip_range)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("e.g., 192.168.1.0/24") }
+                                placeholder = { Text(stringResource(R.string.placeholder_ip_range)) }
                             )
                         }
                         
                         item {
                             BrutalistButton(
-                                text = if (isScanning) "Stop Scan" else "Start Network Scan",
+                                text = if (isScanning) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_start_network_scan),
                                 onClick = {
                                     if (isConnected) {
                                         if (isScanning) {
@@ -225,7 +227,7 @@ val connectionState by viewModel.connectionState.collectAsState()
                         if (scanResults.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Discovered Devices (${scanResults.size})",
+                                    text = stringResource(R.string.label_discovered_devices, scanResults.size),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = successColor()
@@ -245,16 +247,16 @@ scanResults.forEach { device ->
                             OutlinedTextField(
                                 value = targetIp,
                                 onValueChange = { targetIp = it },
-                                label = { Text("Target IP") },
+                                label = { Text(stringResource(R.string.label_target_ip)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("e.g., 192.168.1.1") }
+                                placeholder = { Text(stringResource(R.string.placeholder_target_ip)) }
                             )
                         }
                         
                         item {
                             BrutalistButton(
-                                text = "Fingerprint Device",
+                                text = stringResource(R.string.action_fingerprint_device),
                                 onClick = {
                                     if (isConnected && targetIp.isNotBlank()) {
                                         viewModel.sendRaw("eth_fingerprint $targetIp")
@@ -274,10 +276,10 @@ scanResults.forEach { device ->
                             OutlinedTextField(
                                 value = dnsQuery,
                                 onValueChange = { dnsQuery = it },
-                                label = { Text("Domain or IP") },
+                                label = { Text(stringResource(R.string.label_domain_or_ip)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("e.g., example.com") }
+                                placeholder = { Text(stringResource(R.string.placeholder_domain)) }
                             )
                         }
                         
@@ -287,7 +289,7 @@ scanResults.forEach { device ->
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 BrutalistButton(
-                                    text = "Lookup",
+                                    text = stringResource(R.string.action_lookup),
                                     onClick = {
                                         if (isConnected && dnsQuery.isNotBlank()) {
                                             viewModel.sendRaw("dns_lookup $dnsQuery")
@@ -301,7 +303,7 @@ scanResults.forEach { device ->
                                 )
                                 
                                 BrutalistOutlinedButton(
-                                    text = "Reverse",
+                                    text = stringResource(R.string.action_reverse),
                                     onClick = {
                                         if (isConnected && dnsQuery.isNotBlank()) {
                                             viewModel.sendRaw("dns_reverse $dnsQuery")
@@ -322,10 +324,10 @@ scanResults.forEach { device ->
                             OutlinedTextField(
                                 value = httpUrl,
                                 onValueChange = { httpUrl = it },
-                                label = { Text("URL") },
+                                label = { Text(stringResource(R.string.label_url)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("e.g., http://example.com") }
+                                placeholder = { Text(stringResource(R.string.placeholder_url)) }
                             )
                         }
                         
@@ -350,7 +352,7 @@ scanResults.forEach { device ->
                         
                         item {
                             BrutalistButton(
-                                text = "Send Request",
+                                text = stringResource(R.string.action_send_request),
                                 onClick = {
                                     if (isConnected && httpUrl.isNotBlank()) {
                                         viewModel.sendRaw("http_${httpMethod.lowercase()} $httpUrl")
@@ -407,7 +409,7 @@ scanResults.forEach { device ->
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Ethernet tools require a compatible network adapter connected to the GhostESP device.",
+                                text = stringResource(R.string.msg_ethernet_adapter_required),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OnSurfaceVariantDark
                             )
@@ -422,16 +424,16 @@ scanResults.forEach { device ->
             FeatureNotSupportedOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },
-                featureName = "Ethernet",
-                message = "This device does not have Ethernet hardware support. Network tools require an Ethernet adapter."
+                featureName = stringResource(R.string.title_ethernet),
+                message = stringResource(R.string.msg_ethernet_unsupported)
             )
         } else {
             ComingSoonOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },
-                viewName = "Ethernet",
-                title = "Coming Soon",
-                message = "Ethernet features are currently under development. Network scanning and tools coming soon."
+                viewName = stringResource(R.string.title_ethernet),
+                title = stringResource(R.string.title_coming_soon),
+                message = stringResource(R.string.msg_ethernet_coming_soon)
             )
         }
         }
@@ -607,14 +609,14 @@ private fun EthernetConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) successColor() else errorColor()
                     )
                     if (isConnected) {
                         Text(
-                            text = "Ethernet ready",
+                            text = stringResource(R.string.label_ethernet_ready),
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
                         )
@@ -631,7 +633,7 @@ private fun EthernetConnectionBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

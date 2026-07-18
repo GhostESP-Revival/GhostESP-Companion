@@ -45,6 +45,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -91,7 +93,7 @@ fun ConnectionSelectionDialog(
                     .heightIn(max = 560.dp)
             ) {
                 Text(
-                    text = "Connect",
+                    text = stringResource(R.string.action_connect),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -103,13 +105,13 @@ fun ConnectionSelectionDialog(
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("Wired") },
+                        text = { Text(stringResource(R.string.label_wired)) },
                         icon = { Icon(Icons.Default.Cable, contentDescription = null) }
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        text = { Text("Wireless") },
+                        text = { Text(stringResource(R.string.label_wireless)) },
                         icon = { Icon(Icons.Default.Bluetooth, contentDescription = null) }
                     )
                 }
@@ -119,7 +121,7 @@ fun ConnectionSelectionDialog(
                 if (selectedTab == 0) {
                     if (usbDebugLog.isNotEmpty()) {
                         TextButton(onClick = { showDebugLog = !showDebugLog }) {
-                            Text(if (showDebugLog) "Hide Debug Log" else "Show Debug Log")
+                            Text(if (showDebugLog) stringResource(R.string.action_hide_debug_log) else stringResource(R.string.action_show_debug_log, usbDebugLog.size))
                         }
                     }
 
@@ -152,7 +154,7 @@ fun ConnectionSelectionDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Baud Rate", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.label_baud_rate), style = MaterialTheme.typography.bodyMedium)
                         ExposedDropdownMenuBox(
                             expanded = baudExpanded,
                             onExpandedChange = { baudExpanded = it },
@@ -183,11 +185,11 @@ fun ConnectionSelectionDialog(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     if (usbDevices.isEmpty()) {
-                        Text("No serial devices found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.msg_no_serial_devices), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (allUsbDevices.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                "Raw USB devices: ${allUsbDevices.size}",
+                                stringResource(R.string.label_raw_usb_devices, allUsbDevices.size),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -206,7 +208,7 @@ fun ConnectionSelectionDialog(
                                     Column(modifier = Modifier.padding(16.dp)) {
                                         Text(device.deviceName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                                         Text(
-                                            "VID: 0x${device.vendorId.toString(16)} PID: 0x${device.productId.toString(16)}",
+                                            stringResource(R.string.label_usb_ids, device.vendorId.toString(16), device.productId.toString(16)),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -219,7 +221,7 @@ fun ConnectionSelectionDialog(
                                         }
                                         device.manufacturerName?.let {
                                             Text(
-                                                "Manufacturer: $it",
+                                                stringResource(R.string.label_manufacturer, it),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -232,14 +234,14 @@ fun ConnectionSelectionDialog(
                 } else {
                     when {
                         !bluetoothSupported -> {
-                            Text("Bluetooth LE is not supported on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.msg_ble_not_supported), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         !bluetoothEnabled -> {
-                            Text("Bluetooth is off. Turn it on, then scan for the BLE bridge.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.msg_bluetooth_off), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         bleDevices.isEmpty() -> {
                             Text(
-                                if (isBleScanning) "Scanning for GhostESP BLE bridges..." else "No BLE bridges found yet.",
+                                if (isBleScanning) stringResource(R.string.msg_scanning_bridges) else stringResource(R.string.msg_no_bridges_found),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -257,7 +259,7 @@ fun ConnectionSelectionDialog(
                                         Column(modifier = Modifier.padding(16.dp)) {
                                             Text(device.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                                             Text(
-                                                "${device.address} • RSSI ${device.rssi} dBm",
+                                                "${device.address} • ${stringResource(R.string.label_signal)} ${device.rssi} dBm",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -282,10 +284,10 @@ fun ConnectionSelectionDialog(
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (selectedTab == 0) "Refresh Wired" else if (isBleScanning) "Scanning..." else "Scan Wireless")
+                        Text(if (selectedTab == 0) stringResource(R.string.action_refresh_wired) else if (isBleScanning) stringResource(R.string.status_connecting) else stringResource(R.string.action_scan_wireless))
                     }
                     TextButton(onClick = onDismiss) {
-                        Text("Close")
+                        Text(stringResource(R.string.action_dismiss))
                     }
                 }
             }

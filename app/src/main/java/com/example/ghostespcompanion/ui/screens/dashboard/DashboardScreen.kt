@@ -40,7 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
@@ -130,7 +130,7 @@ val connectionState by viewModel.connectionState.collectAsState()
         showDeviceDialog = true
     }
     
-    MainScreen(title = "Dashboard") { paddingValues ->
+    MainScreen(title = stringResource(R.string.title_dashboard)) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier
@@ -156,7 +156,7 @@ val connectionState by viewModel.connectionState.collectAsState()
                 // Quick Stats Section - Links to More menu items
             item {
                 BrutalistSectionHeader(
-                    title = "Quick Links",
+                    title = stringResource(R.string.header_quick_links),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     accentColor = primaryColor()
                 )
@@ -176,7 +176,7 @@ val connectionState by viewModel.connectionState.collectAsState()
             // Quick Actions Section - Navigate AND trigger action
             item {
                 BrutalistSectionHeader(
-                    title = "Quick Actions",
+                    title = stringResource(R.string.header_quick_actions),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     accentColor = primaryColor()
                 )
@@ -195,7 +195,7 @@ val connectionState by viewModel.connectionState.collectAsState()
             // Channel Congestion (always show)
             item {
                 BrutalistSectionHeader(
-                    title = "Channel Congestion",
+                    title = stringResource(R.string.header_channel_congestion),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     accentColor = primaryColor()
                 )
@@ -214,7 +214,7 @@ val connectionState by viewModel.connectionState.collectAsState()
             // Recent WiFi Networks (always show)
             item {
                 BrutalistSectionHeader(
-                    title = "Recent WiFi Networks",
+                    title = stringResource(R.string.header_recent_wifi),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     accentColor = primaryColor()
                 )
@@ -223,8 +223,8 @@ val connectionState by viewModel.connectionState.collectAsState()
             if (!isConnected) {
                 item {
                     ScanPlaceholderCard(
-                        message = "Connect to device and scan networks",
-                        actionText = "Connect",
+                        message = stringResource(R.string.msg_connect_scan_networks),
+                        actionText = stringResource(R.string.action_connect),
                         onClick = openConnectionDialog,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
@@ -249,8 +249,8 @@ val connectionState by viewModel.connectionState.collectAsState()
             } else {
                 item {
                     ScanPlaceholderCard(
-                        message = "No networks scanned yet",
-                        actionText = "Scan Networks",
+                        message = stringResource(R.string.msg_no_networks_scanned),
+                        actionText = stringResource(R.string.action_scan_networks),
                         onClick = onScanWifiAndNavigate,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
@@ -362,7 +362,7 @@ private fun ConnectionStatusCard(
                 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isConnected) "Connected" else "Disconnected",
+                        text = if (isConnected) stringResource(R.string.status_connected) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) successColor() else MaterialTheme.colorScheme.onSurface
@@ -376,7 +376,7 @@ private fun ConnectionStatusCard(
                         )
                     } else if (!isConnected) {
                         Text(
-                            text = "Connect to GhostESP device",
+                            text = stringResource(R.string.prompt_connect_device),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -392,7 +392,7 @@ private fun ConnectionStatusCard(
                     enabled = !isLoading
                 ) {
                     Text(
-                        text = if (isConnected) "Disconnect" else "Connect"
+                        text = if (isConnected) stringResource(R.string.action_disconnect) else stringResource(R.string.action_connect)
                     )
                 }
             }
@@ -409,12 +409,12 @@ private fun ConnectionStatusCard(
                 ) {
                     deviceInfo.firmwareVersion?.let { fw ->
                         DeviceInfoItem(
-                            label = "Firmware",
+                            label = stringResource(R.string.label_firmware),
                             value = fw
                         )
                     }
                     DeviceInfoItem(
-                        label = "Build",
+                        label = stringResource(R.string.label_build),
                         value = deviceInfo.buildConfig ?: "v${deviceInfo.revision}"
                     )
                 }
@@ -423,10 +423,11 @@ private fun ConnectionStatusCard(
     }
 }
 
+@Composable
 private fun connectionTransportLabel(transport: SerialManager.ConnectionTransport): String = when (transport) {
-    SerialManager.ConnectionTransport.USB -> "USB"
-    SerialManager.ConnectionTransport.BLE -> "Wireless"
-    SerialManager.ConnectionTransport.NONE -> "Unknown"
+    SerialManager.ConnectionTransport.USB -> stringResource(R.string.label_usb)
+    SerialManager.ConnectionTransport.BLE -> stringResource(R.string.label_wireless)
+    SerialManager.ConnectionTransport.NONE -> stringResource(R.string.label_unknown)
 }
 
 @Composable
@@ -470,28 +471,28 @@ private fun QuickLinksGrid(
     ) {
         QuickLinkCard(
             icon = Icons.Default.Wifi,
-            label = "WiFi",
+            label = stringResource(R.string.title_wifi),
             color = primaryColor(),
             onClick = onWifiClick,
             modifier = Modifier.weight(1f)
         )
         QuickLinkCard(
             icon = Icons.Default.Bluetooth,
-            label = "BLE",
+            label = stringResource(R.string.title_ble),
             color = secondaryColor(),
             onClick = onBleClick,
             modifier = Modifier.weight(1f)
         )
         QuickLinkCard(
             icon = Icons.Default.SettingsRemote,
-            label = "IR",
+            label = stringResource(R.string.title_ir),
             color = tertiaryColor(),
             onClick = onIrClick,
             modifier = Modifier.weight(1f)
         )
         QuickLinkCard(
             icon = Icons.Default.SdCard,
-            label = "SD",
+            label = stringResource(R.string.label_sd),
             color = errorColor(),
             onClick = onSdClick,
             modifier = Modifier.weight(1f)
@@ -567,21 +568,21 @@ private fun QuickActionsCard(
         ) {
             QuickActionButton(
                 icon = Icons.Default.Wifi,
-                label = "Scan WiFi",
+                label = stringResource(R.string.label_scan_wifi),
                 enabled = isConnected,
                 onClick = onScanWifi,
                 color = primaryColor()
             )
             QuickActionButton(
                 painter = painterResource(R.drawable.ic_dolphin),
-                label = "Scan Flippers",
+                label = stringResource(R.string.label_scan_flippers),
                 enabled = isConnected,
                 onClick = onScanBle,
                 color = secondaryColor()
             )
             QuickActionButton(
                 icon = Icons.Default.Nfc,
-                label = "Scan NFC",
+                label = stringResource(R.string.action_scan_new_tag),
                 enabled = isConnected,
                 onClick = onScanNfc,
                 color = tertiaryColor()
@@ -660,7 +661,7 @@ private fun RecentNetworkItem(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = ap.ssid.ifEmpty { "<Hidden>" }.censorSsid(privacyMode),
+                    text = ap.ssid.ifEmpty { stringResource(R.string.label_hidden) }.censorSsid(privacyMode),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -674,7 +675,7 @@ private fun RecentNetworkItem(
                 )
             }
             Text(
-                text = "${ap.rssi} dBm",
+                text = "${ap.rssi} ${stringResource(R.string.label_dbm)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (ap.rssi > -50) successColor() else if (ap.rssi > -70) warningColor() else errorColor()
             )
@@ -726,7 +727,7 @@ private fun ChannelCongestionChart(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (hasScanData) "${accessPoints.size} networks across ${channelCounts.size} channels" else "No scan data",
+                        text = if (hasScanData) stringResource(R.string.msg_networks_channels_count, accessPoints.size, channelCounts.size) else stringResource(R.string.msg_no_scan_data),
                         style = MaterialTheme.typography.labelSmall,
                         color = labelColor
                     )
@@ -734,9 +735,9 @@ private fun ChannelCongestionChart(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CongestionLegendDot(color = successColor(), label = "Low")
-                        CongestionLegendDot(color = warningColor(), label = "Med")
-                        CongestionLegendDot(color = errorColor(), label = "High")
+                        CongestionLegendDot(color = successColor(), label = stringResource(R.string.label_congestion_low))
+                        CongestionLegendDot(color = warningColor(), label = stringResource(R.string.label_congestion_med))
+                        CongestionLegendDot(color = errorColor(), label = stringResource(R.string.label_congestion_high))
                     }
                 }
 
@@ -744,7 +745,7 @@ private fun ChannelCongestionChart(
 
                 // 2.4GHz section
                 Text(
-                    text = "2.4 GHz",
+                    text = stringResource(R.string.label_2_4ghz),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -765,7 +766,7 @@ private fun ChannelCongestionChart(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "5 GHz",
+                        text = stringResource(R.string.label_5ghz),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -783,11 +784,10 @@ private fun ChannelCongestionChart(
                 }
             }
             
-            // Overlay when no scan data or not connected
             if (!hasScanData) {
                 ScanOverlay(
-                    message = if (!isConnected) "Connect to device and scan networks" else "Scan networks to view channel congestion",
-                    actionText = if (!isConnected) "Connect & Scan" else "Scan Networks",
+                    message = if (!isConnected) stringResource(R.string.msg_connect_scan_networks) else stringResource(R.string.msg_scan_networks_view_congestion),
+                    actionText = if (!isConnected) stringResource(R.string.action_connect_scan) else stringResource(R.string.action_scan_networks),
                     onClick = onScanClick
                 )
             }
@@ -974,7 +974,7 @@ private fun DashboardDeviceSelectionDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = if (devices.isEmpty()) "No Devices Found" else "Select Device (${devices.size})",
+                    text = if (devices.isEmpty()) stringResource(R.string.title_no_devices_found) else stringResource(R.string.title_select_device, devices.size),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -985,7 +985,7 @@ private fun DashboardDeviceSelectionDialog(
                         onClick = { showDebugLog = !showDebugLog }
                     ) {
                         Text(
-                            text = if (showDebugLog) "Hide Debug Log" else "Show Debug Log (${usbDebugLog.size})",
+                            text = if (showDebugLog) stringResource(R.string.action_hide_debug_log) else stringResource(R.string.action_show_debug_log, usbDebugLog.size),
                             style = MaterialTheme.typography.labelSmall,
                             color = primaryColor()
                         )
@@ -1023,7 +1023,7 @@ private fun DashboardDeviceSelectionDialog(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "No serial devices found",
+                            text = stringResource(R.string.msg_no_serial_devices),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1031,7 +1031,7 @@ private fun DashboardDeviceSelectionDialog(
                         
                         if (allUsbDevices.isNotEmpty()) {
                             Text(
-                                text = "Raw USB devices: ${allUsbDevices.size}",
+                                text = stringResource(R.string.label_raw_usb_devices, allUsbDevices.size),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = primaryColor()
                             )
@@ -1041,7 +1041,7 @@ private fun DashboardDeviceSelectionDialog(
                         TextButton(onClick = onDebugClick) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Refresh")
+                            Text(stringResource(R.string.action_refresh))
                         }
                     }
                 } else {
@@ -1065,7 +1065,7 @@ private fun DashboardDeviceSelectionDialog(
                                     modifier = Modifier.padding(12.dp)
                                 ) {
                                     Text(
-                                        text = device.productName ?: device.deviceName.ifEmpty { "USB Device" },
+                                        text = device.productName ?: device.deviceName.ifEmpty { stringResource(R.string.label_usb_device) },
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Medium
                                     )
@@ -1081,12 +1081,12 @@ private fun DashboardDeviceSelectionDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "VID: 0x${device.vendorId.toString(16)} PID: 0x${device.productId.toString(16)}",
+                                            text = stringResource(R.string.label_usb_ids, device.vendorId.toString(16), device.productId.toString(16)),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Text(
-                                            text = "${device.interfaceCount} interfaces",
+                                            text = stringResource(R.string.label_usb_interfaces, device.interfaceCount),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -1103,7 +1103,7 @@ private fun DashboardDeviceSelectionDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                 }
             }

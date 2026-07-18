@@ -12,6 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
@@ -106,7 +108,7 @@ fun IrRemoteDetailScreen(
                     viewModel.showIrRemote(remoteIndex)
                 }
             }) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = primaryColor())
+                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.action_refresh), tint = primaryColor())
             }
         },
         floatingActionButton = {
@@ -118,7 +120,7 @@ fun IrRemoteDetailScreen(
                         showLearnDialog = true
                     },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("Add Button") },
+                    text = { Text(stringResource(R.string.label_add_button)) },
                     containerColor = primaryColor(),
                     contentColor = OnPrimary
                 )
@@ -132,7 +134,7 @@ fun IrRemoteDetailScreen(
         ) {
             IrDetailConnectionBanner(
                 isConnected = isConnected,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -142,7 +144,7 @@ fun IrRemoteDetailScreen(
                     .padding(16.dp)
             ) {
                 BrutalistSectionHeader(
-                    title = if (isLoadingButtons) "Loading buttons..." else "Buttons (${irButtons.size})",
+                    title = if (isLoadingButtons) stringResource(R.string.msg_loading_buttons) else "${stringResource(R.string.title_remotes).replace("пульты", "Кнопки").replace("Remotes", "Buttons")} (${irButtons.size})",
                     accentColor = primaryColor()
                 )
                 
@@ -165,8 +167,8 @@ fun IrRemoteDetailScreen(
                             ) {
                                 Icon(Icons.Default.SettingsRemote, contentDescription = null, modifier = Modifier.size(48.dp), tint = OnSurfaceVariantDark)
                                 Spacer(modifier = Modifier.height(16.dp))
-                                Text("No buttons found", style = MaterialTheme.typography.titleMedium, color = OnSurfaceDark)
-                                Text("Use 'Add Button' to capture signals", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
+                                Text(stringResource(R.string.msg_no_buttons_found), style = MaterialTheme.typography.titleMedium, color = OnSurfaceDark)
+                                Text(stringResource(R.string.msg_add_button_hint), style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
                             }
                         }
                     }
@@ -264,7 +266,7 @@ private fun IrLearnButtonDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isLearning) "Learning..." else "Add Button to $remoteName") },
+        title = { Text(if (isLearning) stringResource(R.string.status_connecting).replace("…", "") else stringResource(R.string.title_add_button_to, remoteName)) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -273,40 +275,40 @@ private fun IrLearnButtonDialog(
                 if (isLearning) {
                     CircularProgressIndicator(modifier = Modifier.size(64.dp), color = primaryColor(), strokeWidth = 4.dp)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Point your remote at GhostESP", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark)
-                    Text("Press a button to capture (10s timeout)", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
+                    Text(stringResource(R.string.msg_point_remote_hint), style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark)
+                    Text(stringResource(R.string.msg_press_to_capture_10s), style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
                 } else if (learnedSignal != null) {
                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = successColor(), modifier = Modifier.size(48.dp))
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Signal Captured!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = successColor())
+                    Text(stringResource(R.string.msg_signal_captured), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = successColor())
                     Spacer(modifier = Modifier.height(8.dp))
-                    learnedSignal.protocol?.let { Text("Protocol: $it", style = MaterialTheme.typography.bodySmall) }
-                    learnedSignal.address?.let { Text("Address: $it", style = MaterialTheme.typography.bodySmall) }
-                    learnedSignal.command?.let { Text("Command: $it", style = MaterialTheme.typography.bodySmall) }
-                    learnedSignal.rawSamples?.let { Text("Raw Samples: $it", style = MaterialTheme.typography.bodySmall) }
+                    learnedSignal.protocol?.let { Text("${stringResource(R.string.label_protocol)}: $it", style = MaterialTheme.typography.bodySmall) }
+                    learnedSignal.address?.let { Text("${stringResource(R.string.label_address)}: $it", style = MaterialTheme.typography.bodySmall) }
+                    learnedSignal.command?.let { Text("${stringResource(R.string.label_command)}: $it", style = MaterialTheme.typography.bodySmall) }
+                    learnedSignal.rawSamples?.let { Text("${stringResource(R.string.label_raw_samples)}: $it", style = MaterialTheme.typography.bodySmall) }
                 } else {
                     Icon(Icons.Default.SettingsRemote, contentDescription = null, tint = OnSurfaceVariantDark, modifier = Modifier.size(48.dp))
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Capture a new IR signal", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark)
-                    Text("The signal will be appended to this remote file", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
+                    Text(stringResource(R.string.msg_capture_new_signal), style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark)
+                    Text(stringResource(R.string.msg_append_to_file_hint), style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
                 }
             }
         },
         confirmButton = {
             if (isLearning) {
-                TextButton(onClick = onStopLearn) { Text("Cancel", color = errorColor()) }
+                TextButton(onClick = onStopLearn) { Text(stringResource(R.string.action_cancel), color = errorColor()) }
             } else {
                 Button(
                     onClick = onStartLearn,
                     colors = ButtonDefaults.buttonColors(containerColor = primaryColor(), contentColor = OnPrimary)
                 ) {
-                    Text(if (learnedSignal != null) "Capture Another" else "Start Learning")
+                    Text(if (learnedSignal != null) stringResource(R.string.action_capture_another) else stringResource(R.string.action_start_learning))
                 }
             }
         },
         dismissButton = {
             if (!isLearning) {
-                TextButton(onClick = onDismiss) { Text("Close") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_dismiss)) }
             }
         }
     )
@@ -368,9 +370,9 @@ private fun IrButtonCard(
             }
             
             if (isTransmitting) {
-                Text("TX", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = primaryColor())
+                Text(stringResource(R.string.msg_transmitting), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = primaryColor())
             } else {
-                Icon(Icons.Default.ChevronRight, contentDescription = "Transmit", tint = if (isEnabled) MaterialTheme.colorScheme.onSurfaceVariant else OnSurfaceVariantDark.copy(alpha = 0.3f))
+                Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.label_start), tint = if (isEnabled) MaterialTheme.colorScheme.onSurfaceVariant else OnSurfaceVariantDark.copy(alpha = 0.3f))
             }
         }
     }
@@ -446,13 +448,13 @@ private fun IrDetailConnectionBanner(
                 Icon(if (isConnected) Icons.Default.Usb else Icons.Default.UsbOff, contentDescription = null, tint = if (isConnected) successColor() else errorColor())
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) successColor() else errorColor()
                     )
                     if (isConnected) {
-                        Text("Tap buttons to transmit IR signals", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariantDark)
+                        Text(stringResource(R.string.msg_tap_to_transmit), style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariantDark)
                     }
                 }
             }
@@ -463,7 +465,7 @@ private fun IrDetailConnectionBanner(
                     colors = ButtonDefaults.buttonColors(containerColor = primaryColor(), contentColor = OnPrimary),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

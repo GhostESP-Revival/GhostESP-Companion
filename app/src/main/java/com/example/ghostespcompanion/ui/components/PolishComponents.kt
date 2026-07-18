@@ -45,6 +45,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlin.math.max
@@ -523,7 +525,7 @@ fun SkeletonDashboard(
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Quick Links",
+                text = stringResource(R.string.header_quick_links),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -550,7 +552,7 @@ fun SkeletonDashboard(
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Quick Actions",
+                text = stringResource(R.string.header_quick_actions),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -568,7 +570,7 @@ fun SkeletonDashboard(
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Channel Congestion",
+                text = stringResource(R.string.header_channel_congestion),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -586,7 +588,7 @@ fun SkeletonDashboard(
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Recent WiFi Networks",
+                text = stringResource(R.string.header_recent_wifi),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

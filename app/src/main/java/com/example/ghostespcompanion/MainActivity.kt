@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -342,7 +343,7 @@ private fun DeviceSelectionDialog(
                     .heightIn(max = 500.dp)
             ) {
                 Text(
-                    text = "Select Device",
+                    text = stringResource(R.string.title_select_device),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -355,7 +356,7 @@ private fun DeviceSelectionDialog(
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Text(
-                            text = if (showDebugLog) "Hide Debug Log" else "Show Debug Log",
+                            text = if (showDebugLog) stringResource(R.string.action_hide_debug_log) else stringResource(R.string.action_show_debug_log, usbDebugLog.size),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -395,7 +396,7 @@ private fun DeviceSelectionDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Baud Rate",
+                        text = stringResource(R.string.label_baud_rate),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -443,18 +444,18 @@ private fun DeviceSelectionDialog(
                 if (devices.isEmpty()) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "No serial devices found",
+                            text = stringResource(R.string.msg_no_serial_devices),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Check USB connection and tap Refresh",
+                            text = stringResource(R.string.msg_check_usb_refresh),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = onRefresh) { Text("Refresh") }
+                        TextButton(onClick = onRefresh) { Text(stringResource(R.string.action_refresh)) }
                     }
                 } else {
                     LazyColumn(
@@ -476,7 +477,7 @@ private fun DeviceSelectionDialog(
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
-                                        text = device.productName ?: device.deviceName.ifEmpty { "USB Device" },
+                                        text = device.productName ?: device.deviceName.ifEmpty { stringResource(R.string.label_usb_device) },
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurface
@@ -494,12 +495,12 @@ private fun DeviceSelectionDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "VID: 0x${device.vendorId.toString(16)}  PID: 0x${device.productId.toString(16)}",
+                                            text = stringResource(R.string.label_usb_ids, device.vendorId.toString(16), device.productId.toString(16)),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Text(
-                                            text = "${device.interfaceCount} if",
+                                            text = stringResource(R.string.label_usb_interfaces, device.interfaceCount),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -516,7 +517,7 @@ private fun DeviceSelectionDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -550,7 +551,7 @@ fun ModernNavigationBar(
                 
                 ModernNavItem(
                     icon = screen.icon.toImageVector(),
-                    label = screen.title,
+                    label = stringResource(screen.titleRes),
                     selected = selected,
                     onClick = { onItemClick(screen) }
                 )

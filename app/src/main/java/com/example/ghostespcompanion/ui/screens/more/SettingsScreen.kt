@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.components.*
@@ -32,7 +33,7 @@ fun SettingsScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "Settings"
+        title = stringResource(R.string.title_settings)
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -43,7 +44,7 @@ fun SettingsScreen(
         ) {
             item {
                 BrutalistSectionHeader(
-                    title = "App Settings",
+                    title = stringResource(R.string.header_app_settings),
                     accentColor = MaterialTheme.colorScheme.primary
                 )
             }
@@ -57,8 +58,8 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         SettingsToggle(
-                            title = "Dark Mode",
-                            subtitle = "Use dark theme",
+                            title = stringResource(R.string.setting_dark_mode),
+                            subtitle = stringResource(R.string.setting_dark_mode_sub),
                             icon = Icons.Default.DarkMode,
                             checked = appSettings.darkMode,
                             onCheckedChange = { enabled ->
@@ -70,8 +71,8 @@ fun SettingsScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         
                         SettingsToggle(
-                            title = "Haptic Feedback",
-                            subtitle = "Vibrate on actions",
+                            title = stringResource(R.string.setting_haptic),
+                            subtitle = stringResource(R.string.setting_haptic_sub),
                             icon = Icons.Default.Vibration,
                             checked = appSettings.hapticFeedback,
                             onCheckedChange = { enabled ->
@@ -82,8 +83,8 @@ fun SettingsScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         
                         SettingsToggle(
-                            title = "Auto Connect",
-                            subtitle = "Reconnect to last device on startup",
+                            title = stringResource(R.string.setting_auto_connect),
+                            subtitle = stringResource(R.string.setting_auto_connect_sub),
                             icon = Icons.Default.BluetoothConnected,
                             checked = appSettings.autoConnect,
                             onCheckedChange = { enabled ->
@@ -95,8 +96,8 @@ fun SettingsScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         
                         SettingsToggle(
-                            title = "Notifications",
-                            subtitle = "Show status notifications",
+                            title = stringResource(R.string.setting_notifications),
+                            subtitle = stringResource(R.string.setting_notifications_sub),
                             icon = Icons.Default.Notifications,
                             checked = appSettings.showNotifications,
                             onCheckedChange = { enabled ->
@@ -108,8 +109,8 @@ fun SettingsScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         
                         SettingsToggle(
-                            title = "Privacy Mode",
-                            subtitle = "Censor sensitive info (MACs, IPs, SSIDs)",
+                            title = stringResource(R.string.setting_privacy),
+                            subtitle = stringResource(R.string.setting_privacy_sub),
                             icon = Icons.Default.PrivacyTip,
                             checked = appSettings.privacyMode,
                             onCheckedChange = { enabled ->
@@ -165,7 +166,7 @@ fun SettingsScreen(
             
             item {
                 BrutalistSectionHeader(
-                    title = "About",
+                    title = stringResource(R.string.header_about),
                     accentColor = MaterialTheme.colorScheme.primary
                 )
             }
@@ -191,7 +192,7 @@ fun SettingsScreen(
                                 ) {
                                     Image(
                                         painter = iconPainter,
-                                        contentDescription = "GhostESP Companion Icon",
+                                        contentDescription = stringResource(R.string.desc_app_icon),
                                         modifier = Modifier.size(32.dp)
                                     )
                                 }
@@ -199,13 +200,13 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = "GhostESP Companion",
+                                    text = stringResource(R.string.app_name),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "v0.4.2 BETA",
+                                    text = stringResource(R.string.label_version_beta),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -215,7 +216,7 @@ fun SettingsScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         
                         Text(
-                            text = "A companion app for GhostESP devices. Control WiFi, BLE, NFC, IR, and more from your Android device.",
+                            text = stringResource(R.string.msg_app_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

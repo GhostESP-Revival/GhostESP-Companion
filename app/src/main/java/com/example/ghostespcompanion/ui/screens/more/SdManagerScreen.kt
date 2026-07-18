@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.repository.FileTransferProgress
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
@@ -69,12 +71,12 @@ fun SdManagerScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "SD Manager",
+        title = stringResource(R.string.title_sd_manager),
         actions = {
             IconButton(onClick = { viewModel.openDownloadsFolder(context) }) {
                 Icon(
                     Icons.Default.FolderOpen,
-                    contentDescription = "Open Downloads Folder",
+                    contentDescription = stringResource(R.string.action_open_downloads),
                     tint = primaryColor()
                 )
             }
@@ -86,7 +88,7 @@ fun SdManagerScreen(
             }) {
                 Icon(
                     Icons.Default.Refresh,
-                    contentDescription = "Refresh",
+                    contentDescription = stringResource(R.string.action_refresh),
                     tint = primaryColor()
                 )
             }
@@ -104,7 +106,7 @@ fun SdManagerScreen(
             SdConnectionBanner(
                 isConnected = isConnected,
                 connectionTransport = connectionTransport,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -151,7 +153,7 @@ fun SdManagerScreen(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Up")
+                            Text(stringResource(R.string.label_up))
                         }
                     }
                 }
@@ -177,7 +179,7 @@ fun SdManagerScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Downloading ${progress.fileName}",
+                                    text = stringResource(R.string.msg_downloading, progress.fileName),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
@@ -212,7 +214,7 @@ fun SdManagerScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Uploading ${progress.fileName}",
+                                    text = stringResource(R.string.msg_uploading, progress.fileName),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
@@ -249,7 +251,7 @@ fun SdManagerScreen(
                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = successColor())
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Downloaded ${progress.fileName}",
+                                    text = stringResource(R.string.msg_downloaded, progress.fileName),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = successColor(),
                                     modifier = Modifier.weight(1f)
@@ -257,10 +259,10 @@ fun SdManagerScreen(
                                 TextButton(onClick = {
                                     viewModel.openDownloadedFile(context, progress.fileName)
                                 }) {
-                                    Text("Open")
+                                    Text(stringResource(R.string.action_open))
                                 }
                                 TextButton(onClick = { viewModel.openDownloadsFolder(context) }) {
-                                    Text("Folder")
+                                    Text(stringResource(R.string.label_folder))
                                 }
                             }
                         }
@@ -280,7 +282,7 @@ fun SdManagerScreen(
                                 Icon(Icons.Default.Error, contentDescription = null, tint = errorColor())
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Transfer failed: ${progress.error ?: "Unknown error"}",
+                                    text = stringResource(R.string.msg_transfer_failed, progress.error ?: stringResource(R.string.label_unknown)),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = errorColor()
                                 )
@@ -298,7 +300,7 @@ fun SdManagerScreen(
                         )
                     ) {
                         Text(
-                            text = "Transfer cancelled",
+                            text = stringResource(R.string.msg_transfer_cancelled),
                             modifier = Modifier.padding(12.dp),
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -317,7 +319,7 @@ fun SdManagerScreen(
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Loading files...",
+                            text = stringResource(R.string.msg_loading_files),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -339,12 +341,12 @@ fun SdManagerScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "No files found",
+                            text = stringResource(R.string.msg_no_files_found),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "The SD card may be empty or not inserted",
+                            text = stringResource(R.string.msg_sd_empty_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -409,8 +411,8 @@ fun SdManagerScreen(
             FeatureNotSupportedOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },
-                featureName = "SD Card",
-                message = "This device does not have an SD card. File storage and management require a connected SD card."
+                featureName = stringResource(R.string.label_sd),
+                message = stringResource(R.string.msg_sd_unsupported)
             )
         }
         }
@@ -420,8 +422,8 @@ fun SdManagerScreen(
     if (showDeleteDialog && selectedEntry != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete ${if (selectedEntry!!.isDirectory) "Folder" else "File"}?") },
-            text = { Text("Are you sure you want to delete \"${selectedEntry!!.name}\"?") },
+            title = { Text(stringResource(R.string.title_delete_entry, if (selectedEntry!!.isDirectory) stringResource(R.string.label_folder) else stringResource(R.string.label_file))) },
+            text = { Text(stringResource(R.string.msg_delete_csv_confirm, selectedEntry!!.name)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -437,12 +439,12 @@ fun SdManagerScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = errorColor())
                 ) {
-                    Text("Delete")
+                    Text(stringResource(R.string.action_clear))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -453,12 +455,12 @@ fun SdManagerScreen(
         var folderName by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showNewFolderDialog = false },
-            title = { Text("New Folder") },
+            title = { Text(stringResource(R.string.label_folder)) },
             text = {
                 OutlinedTextField(
                     value = folderName,
                     onValueChange = { folderName = it },
-                    label = { Text("Folder name") },
+                    label = { Text(stringResource(R.string.label_folder_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -474,12 +476,12 @@ fun SdManagerScreen(
                         showNewFolderDialog = false
                     }
                 ) {
-                    Text("Create")
+                    Text(stringResource(R.string.action_create))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showNewFolderDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -553,7 +555,7 @@ private fun SdEntryItem(
                 IconButton(onClick = onDownload) {
                     Icon(
                         Icons.Default.Download,
-                        contentDescription = "Download",
+                        contentDescription = stringResource(R.string.action_proceed),
                         tint = primaryColor().copy(alpha = 0.7f)
                     )
                 }
@@ -562,7 +564,7 @@ private fun SdEntryItem(
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = stringResource(R.string.action_clear),
                     tint = errorColor().copy(alpha = 0.7f)
                 )
             }
@@ -570,7 +572,7 @@ private fun SdEntryItem(
             if (entry.isDirectory) {
                 Icon(
                     Icons.Default.ChevronRight,
-                    contentDescription = "Open",
+                    contentDescription = stringResource(R.string.action_dismiss),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -603,12 +605,13 @@ private fun getFileIcon(filename: String): ImageVector {
 /**
  * Format file size to human readable format
  */
+@Composable
 private fun formatFileSize(bytes: Long): String {
     return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024.0)
-        bytes < 1024 * 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024))
-        else -> String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024))
+        bytes < 1024 -> "$bytes ${stringResource(R.string.label_bytes_short)}"
+        bytes < 1024 * 1024 -> String.format("%.1f ${stringResource(R.string.label_kilobytes_short)}", bytes / 1024.0)
+        bytes < 1024 * 1024 * 1024 -> String.format("%.1f ${stringResource(R.string.label_megabytes_short)}", bytes / (1024.0 * 1024))
+        else -> String.format("%.1f ${stringResource(R.string.label_gigabytes_short)}", bytes / (1024.0 * 1024 * 1024))
     }
 }
 
@@ -647,22 +650,22 @@ private fun SdConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) successColor() else errorColor()
                     )
                     if (isConnected) {
                         Text(
-                            text = "SD card ready",
+                            text = stringResource(R.string.label_sd_ready),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = when (connectionTransport) {
-                                SerialManager.ConnectionTransport.USB -> "Connected over USB"
-                                SerialManager.ConnectionTransport.BLE -> "Connected over wireless bridge"
-                                SerialManager.ConnectionTransport.NONE -> "Connection active"
+                                SerialManager.ConnectionTransport.USB -> stringResource(R.string.terminal_connected_usb)
+                                SerialManager.ConnectionTransport.BLE -> stringResource(R.string.terminal_connected_wireless)
+                                SerialManager.ConnectionTransport.NONE -> stringResource(R.string.msg_connection_active)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -680,7 +683,7 @@ private fun SdConnectionBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

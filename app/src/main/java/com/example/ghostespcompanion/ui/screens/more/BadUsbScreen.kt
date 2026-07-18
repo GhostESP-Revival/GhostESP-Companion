@@ -48,6 +48,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.components.BrutalistButton
@@ -104,13 +106,13 @@ fun BadUsbScreen(
 
     MainScreen(
         onBack = onBack,
-        title = "BadUSB",
+        title = stringResource(R.string.title_bad_usb),
         actions = {
             IconButton(
                 onClick = { viewModel.listBadUsbScripts() },
                 enabled = isConnected
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh scripts", tint = primaryColor())
+                Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.action_refresh), tint = primaryColor())
             }
         }
     ) { paddingValues ->
@@ -127,7 +129,7 @@ fun BadUsbScreen(
                 item {
                     UsbConnectionBanner(
                         isConnected = isConnected,
-                        deviceName = "GhostESP",
+                        deviceName = stringResource(R.string.app_name_short),
                         onConnect = { viewModel.connectFirstAvailable() }
                     )
                 }
@@ -135,7 +137,7 @@ fun BadUsbScreen(
                 if (runningScript != null) {
                     item {
                         ActiveBadUsbCard(
-                            label = "Running: $runningScript",
+                            label = stringResource(R.string.msg_running_script, runningScript!!),
                             onStop = {
                                 viewModel.stopBadUsb()
                                 runningScript = null
@@ -147,7 +149,7 @@ fun BadUsbScreen(
 
                 item {
                     Text(
-                        text = "Scripts (${scripts.size})",
+                        text = stringResource(R.string.label_scripts_count, scripts.size),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = primaryColor()
@@ -156,11 +158,11 @@ fun BadUsbScreen(
 
                 if (!isConnected) {
                     item {
-                        EmptyBadUsbCard("Connect to a GhostESP device to list and run BadUSB scripts.")
+                        EmptyBadUsbCard(stringResource(R.string.msg_badusb_not_connected))
                     }
                 } else if (scripts.isEmpty()) {
                     item {
-                        EmptyBadUsbCard("No scripts reported by firmware. Put DuckyScript files in /mnt/ghostesp/badusb/ and refresh.")
+                        EmptyBadUsbCard(stringResource(R.string.msg_no_scripts_found))
                     }
                 } else {
                     items(scripts, key = { it }) { script ->
@@ -236,12 +238,13 @@ fun BadUsbScreen(
                 }
             }
 
+            // Feature Not Supported Overlay
             if (hasDeviceInfo && !isBadUsbSupported) {
                 FeatureNotSupportedOverlay(
                     show = showUnsupportedOverlay,
                     onProceed = { showUnsupportedOverlay = false },
-                    featureName = "BadUSB",
-                    message = "This firmware/device does not report BadUSB support. USB HID commands may fail."
+                    featureName = stringResource(R.string.title_bad_usb),
+                    message = stringResource(R.string.msg_badusb_unsupported)
                 )
             }
         }
@@ -272,7 +275,7 @@ private fun ActiveBadUsbCard(
         ) {
             Text(label, style = MaterialTheme.typography.titleSmall, color = warningColor())
             BrutalistButton(
-                text = "Stop",
+                text = stringResource(R.string.action_stop),
                 onClick = onStop,
                 enabled = enabled,
                 containerColor = errorColor(),
@@ -327,7 +330,7 @@ private fun BadUsbScriptCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (isRunning) "Running" else "Firmware script",
+                        text = if (isRunning) stringResource(R.string.status_connecting).replace("…", "") else stringResource(R.string.label_firmware_script),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -335,7 +338,7 @@ private fun BadUsbScriptCard(
             }
             Spacer(modifier = Modifier.width(12.dp))
             BrutalistButton(
-                text = if (isRunning) "Running" else "Run",
+                text = if (isRunning) stringResource(R.string.status_connecting).replace("…", "") else stringResource(R.string.label_start).lowercase().replaceFirstChar { it.uppercase() },
                 onClick = onRun,
                 enabled = enabled,
                 containerColor = if (isRunning) warningColor() else primaryColor(),
@@ -360,16 +363,16 @@ private fun DirectKeyboardCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Keyboard, contentDescription = null, tint = primaryColor())
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Direct Keyboard", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.label_direct_keyboard), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             }
             Text(
-                text = "Uses firmware commands: badusb keyboard_start, badusb type, badusb keyboard_stop.",
+                text = stringResource(R.string.msg_keyboard_commands_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BrutalistOutlinedButton(
-                    text = if (keyboardActive) "Stop Keyboard" else "Start Keyboard",
+                    text = if (keyboardActive) stringResource(R.string.action_stop_keyboard) else stringResource(R.string.action_start_keyboard),
                     onClick = onKeyboardToggle,
                     enabled = isConnected,
                     modifier = Modifier.weight(1f)
@@ -380,11 +383,11 @@ private fun DirectKeyboardCard(
                 onValueChange = onTextChange,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = isConnected,
-                label = { Text("Text to type") },
+                label = { Text(stringResource(R.string.label_text_to_type)) },
                 singleLine = true
             )
             BrutalistButton(
-                text = "Type Text",
+                text = stringResource(R.string.action_type_text),
                 onClick = onType,
                 enabled = isConnected && textToType.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
@@ -410,16 +413,16 @@ private fun MouseJigglerCard(
                 Icon(Icons.Default.Mouse, contentDescription = null, tint = if (jigglerActive) warningColor() else primaryColor())
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
-                    Text("Mouse Jiggler", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.label_mouse_jiggler), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text(
-                        text = if (jigglerActive) "Running" else "Uses badusb jiggle_start/stop",
+                        text = if (jigglerActive) stringResource(R.string.status_connecting).replace("…", "") else stringResource(R.string.msg_jiggler_commands_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
             BrutalistButton(
-                text = if (jigglerActive) "Stop" else "Start",
+                text = if (jigglerActive) stringResource(R.string.action_stop) else stringResource(R.string.label_start).lowercase().replaceFirstChar { it.uppercase() },
                 onClick = onToggle,
                 enabled = isConnected,
                 containerColor = if (jigglerActive) errorColor() else primaryColor(),
@@ -443,7 +446,7 @@ private fun WarningCard() {
             Icon(Icons.Default.Warning, contentDescription = null, tint = errorColor(), modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "Only run BadUSB payloads on systems you own or have explicit permission to test.",
+                text = stringResource(R.string.msg_badusb_warning),
                 style = MaterialTheme.typography.bodySmall,
                 color = errorColor()
             )
@@ -482,14 +485,14 @@ private fun UsbConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) successColor() else errorColor()
                     )
                     if (isConnected) {
                         Text(
-                            text = "Ready for BadUSB commands",
+                            text = stringResource(R.string.msg_ready_for_badusb),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -506,7 +509,7 @@ private fun UsbConnectionBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

@@ -1,32 +1,38 @@
 package com.example.ghostespcompanion.ui.screens.ble
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
-import android.content.pm.PackageManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.ui.res.painterResource
-import com.example.ghostespcompanion.R
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.content.ContextCompat
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
@@ -124,10 +130,15 @@ fun BleScreen(
     }
 
     val displayDevices = remember(bleDevices, flipperDevices, airTagDevices, gattDevices) {
+        val unknownStr = context.getString(R.string.label_unknown)
+        val flipperStr = context.getString(R.string.label_flipper_zero)
+        val airtagStr = context.getString(R.string.label_airtag)
+        val gattStr = context.getString(R.string.label_gatt)
+
         buildList {
             bleDevices.map {
                 BleDevicePreview(
-                    name = it.name ?: "Unknown",
+                    name = it.name ?: unknownStr,
                     mac = it.mac ?: it.getUniqueId(),
                     rssi = it.rssi,
                     deviceType = it.deviceType.name,
@@ -137,7 +148,7 @@ fun BleScreen(
 
             flipperDevices.map {
                 BleDevicePreview(
-                    name = it.name ?: "Flipper Zero",
+                    name = it.name ?: flipperStr,
                     mac = it.mac,
                     rssi = it.rssi,
                     deviceType = it.flipperType,
@@ -148,20 +159,20 @@ fun BleScreen(
 
             airTagDevices.map {
                 BleDevicePreview(
-                    name = "AirTag",
+                    name = airtagStr,
                     mac = it.mac,
                     rssi = it.rssi,
-                    deviceType = "AirTag",
+                    deviceType = airtagStr,
                     deviceCategory = BleDeviceCategory.AIRTAG
                 )
             }.also { addAll(it) }
 
             gattDevices.map {
                 BleDevicePreview(
-                    name = it.name ?: "Unknown",
+                    name = it.name ?: unknownStr,
                     mac = it.mac,
                     rssi = it.rssi,
-                    deviceType = it.type ?: "GATT",
+                    deviceType = it.type ?: gattStr,
                     deviceCategory = BleDeviceCategory.GATT,
                     index = it.index
                 )
@@ -170,12 +181,12 @@ fun BleScreen(
     }
     
     MainScreen(
-        title = "BLE",
+        title = stringResource(R.string.title_ble),
         actions = {
             IconButton(onClick = onNavigateToFlipper) {
                 Icon(
                     painter = painterResource(R.drawable.ic_dolphin),
-                    contentDescription = "Flipper Detect",
+                    contentDescription = stringResource(R.string.ble_scan_mode_flipper),
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -335,11 +346,11 @@ fun BleScreen(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Stop ${scanModeToString(selectedScanMode)} Scan")
+                        Text(stringResource(R.string.action_stop_scan_mode, scanModeToString(selectedScanMode)))
                     } else {
                         Icon(Icons.Default.BluetoothSearching, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Start ${scanModeToString(selectedScanMode)} Scan")
+                        Text(stringResource(R.string.action_start_scan_mode, scanModeToString(selectedScanMode)))
                     }
                 }
             }
@@ -356,7 +367,7 @@ fun BleScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "BLE Spam Attack",
+                    text = stringResource(R.string.label_ble_spam_attack),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
                     color = if (isSpamming) errorColor() else MaterialTheme.colorScheme.onSurface
@@ -441,7 +452,7 @@ fun BleScreen(
                         contentDescription = null
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isSpamming) "Stop Spam Attack" else "Start Spam Attack")
+                    Text(if (isSpamming) stringResource(R.string.action_stop_spam_attack) else stringResource(R.string.action_start_spam_attack))
                 }
             }
             
@@ -450,7 +461,7 @@ fun BleScreen(
 
             if (displayDevices.isNotEmpty()) {
                 Text(
-                    text = "Found ${displayDevices.size} devices",
+                    text = stringResource(R.string.msg_found_devices_count, displayDevices.size),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -504,13 +515,13 @@ fun BleScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "No devices found",
+                            text = stringResource(R.string.msg_no_ble_devices),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Select a scan mode and tap scan to discover BLE devices",
+                            text = stringResource(R.string.msg_ble_scan_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -555,24 +566,26 @@ fun BleScreen(
 /**
  * Convert scan mode to display string
  */
+@Composable
 private fun scanModeToString(mode: GhostCommand.BleScanMode): String = when (mode) {
-    GhostCommand.BleScanMode.FLIPPER -> "Flipper Detect"
-    GhostCommand.BleScanMode.SPAM_DETECTOR -> "Spam Detector"
-    GhostCommand.BleScanMode.AIR_TAG -> "AirTag Scan"
-    GhostCommand.BleScanMode.RAW -> "Raw Scan"
-    GhostCommand.BleScanMode.GATT -> "GATT Scan"
+    GhostCommand.BleScanMode.FLIPPER -> stringResource(R.string.ble_scan_mode_flipper)
+    GhostCommand.BleScanMode.SPAM_DETECTOR -> stringResource(R.string.ble_scan_mode_spam)
+    GhostCommand.BleScanMode.AIR_TAG -> stringResource(R.string.ble_scan_mode_airtag)
+    GhostCommand.BleScanMode.RAW -> stringResource(R.string.ble_scan_mode_raw)
+    GhostCommand.BleScanMode.GATT -> stringResource(R.string.ble_scan_mode_gatt)
 }
 
 /**
  * Convert spam mode to display string
  */
+@Composable
 private fun spamModeToString(mode: GhostCommand.BleSpamMode): String = when (mode) {
-    GhostCommand.BleSpamMode.APPLE -> "Apple (iOS Popup)"
-    GhostCommand.BleSpamMode.MICROSOFT -> "Microsoft (Swift Pair)"
-    GhostCommand.BleSpamMode.SAMSUNG -> "Samsung (Easy Setup)"
-    GhostCommand.BleSpamMode.GOOGLE -> "Google (Fast Pair)"
-    GhostCommand.BleSpamMode.RANDOM -> "Random (All Types)"
-    GhostCommand.BleSpamMode.STOP -> "Stop"
+    GhostCommand.BleSpamMode.APPLE -> stringResource(R.string.ble_spam_mode_apple)
+    GhostCommand.BleSpamMode.MICROSOFT -> stringResource(R.string.ble_spam_mode_microsoft)
+    GhostCommand.BleSpamMode.SAMSUNG -> stringResource(R.string.ble_spam_mode_samsung)
+    GhostCommand.BleSpamMode.GOOGLE -> stringResource(R.string.ble_spam_mode_google)
+    GhostCommand.BleSpamMode.RANDOM -> stringResource(R.string.ble_spam_mode_random)
+    GhostCommand.BleSpamMode.STOP -> stringResource(R.string.action_stop)
 }
 
 /**
@@ -607,21 +620,21 @@ private fun BleConnectionBanner(
     }
     
     val statusText = when (connectionState) {
-        SerialManager.ConnectionState.CONNECTED -> "Device Connected"
-        SerialManager.ConnectionState.CONNECTING -> "Connecting..."
-        SerialManager.ConnectionState.ERROR -> "Connection Error"
-        SerialManager.ConnectionState.DISCONNECTED -> "Not Connected"
+        SerialManager.ConnectionState.CONNECTED -> stringResource(R.string.ble_status_connected_device)
+        SerialManager.ConnectionState.CONNECTING -> stringResource(R.string.status_connecting)
+        SerialManager.ConnectionState.ERROR -> stringResource(R.string.status_error)
+        SerialManager.ConnectionState.DISCONNECTED -> stringResource(R.string.status_disconnected)
     }
     
     val subtitleText = when (connectionState) {
         SerialManager.ConnectionState.CONNECTED -> when (connectionTransport) {
-            SerialManager.ConnectionTransport.USB -> "Ready via USB"
-            SerialManager.ConnectionTransport.BLE -> "Ready via wireless bridge"
-            SerialManager.ConnectionTransport.NONE -> "Ready for BLE operations"
+            SerialManager.ConnectionTransport.USB -> stringResource(R.string.ble_ready_usb)
+            SerialManager.ConnectionTransport.BLE -> stringResource(R.string.ble_ready_wireless)
+            SerialManager.ConnectionTransport.NONE -> stringResource(R.string.ble_ready_operations)
         }
-        SerialManager.ConnectionState.CONNECTING -> "Please wait..."
-        SerialManager.ConnectionState.ERROR -> "Tap to retry connection"
-        SerialManager.ConnectionState.DISCONNECTED -> "Connect GhostESP to continue"
+        SerialManager.ConnectionState.CONNECTING -> stringResource(R.string.msg_please_wait)
+        SerialManager.ConnectionState.ERROR -> stringResource(R.string.msg_retry_connection)
+        SerialManager.ConnectionState.DISCONNECTED -> stringResource(R.string.msg_connect_to_continue)
     }
     
     Surface(
@@ -678,7 +691,7 @@ private fun BleConnectionBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -695,13 +708,13 @@ private fun BleBridgeDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select BLE Bridge") },
+        title = { Text(stringResource(R.string.title_select_ble_bridge)) },
         text = {
             if (devices.isEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(if (isScanning) "Scanning for GhostESP BLE bridges..." else "No BLE bridges found yet.")
+                    Text(if (isScanning) stringResource(R.string.msg_scanning_bridges) else stringResource(R.string.msg_no_bridges_found))
                     OutlinedButton(onClick = onRefresh) {
-                        Text(if (isScanning) "Scanning..." else "Scan Again")
+                        Text(if (isScanning) stringResource(R.string.status_connecting) else stringResource(R.string.action_scan))
                     }
                 }
             } else {
@@ -730,7 +743,7 @@ private fun BleBridgeDialog(
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    text = "${device.address} • RSSI ${device.rssi} dBm",
+                                    text = "${device.address} • ${stringResource(R.string.label_signal)} ${device.rssi} ${stringResource(R.string.label_dbm)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -742,7 +755,7 @@ private fun BleBridgeDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -826,8 +839,14 @@ private fun BleDeviceCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         device.deviceType?.let {
+                            val typeLabel = when (it) {
+                                "IPHONE" -> stringResource(R.string.label_iphone)
+                                "SAMSUNG" -> stringResource(R.string.label_samsung)
+                                "GOOGLE" -> stringResource(R.string.label_google)
+                                else -> it
+                            }
                             Text(
-                                text = " • $it",
+                                text = " • $typeLabel",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = when (device.deviceCategory) {
                                     BleDeviceCategory.FLIPPER -> primaryColor()
@@ -843,7 +862,7 @@ private fun BleDeviceCard(
                 // Signal strength
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${device.rssi} dBm",
+                        text = "${device.rssi} ${stringResource(R.string.label_dbm)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = when {
                             device.rssi >= -60 -> SignalExcellent
@@ -881,7 +900,7 @@ private fun BleDeviceCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         Icons.Default.ChevronRight,
-                        contentDescription = "View details",
+                        contentDescription = stringResource(R.string.action_view_details),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -922,9 +941,9 @@ private fun GattDeviceDetailSheet(
     }
     
     val signalText = when {
-        device.rssi >= -60 -> "Excellent"
-        device.rssi >= -80 -> "Good"
-        else -> "Weak"
+        device.rssi >= -60 -> stringResource(R.string.signal_excellent)
+        device.rssi >= -80 -> stringResource(R.string.signal_good)
+        else -> stringResource(R.string.signal_weak)
     }
     
     ModalBottomSheet(
@@ -961,7 +980,7 @@ private fun GattDeviceDetailSheet(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = (device.name ?: "Unknown").censorDevice(privacyMode),
+                        text = (device.name ?: stringResource(R.string.label_unknown)).censorDevice(privacyMode),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -982,12 +1001,12 @@ private fun GattDeviceDetailSheet(
             ) {
                 Column {
                     Text(
-                        text = "Signal",
+                        text = stringResource(R.string.label_signal),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${device.rssi} dBm ($signalText)",
+                        text = "${device.rssi} ${stringResource(R.string.label_dbm)} ($signalText)",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = signalColor
@@ -996,7 +1015,7 @@ private fun GattDeviceDetailSheet(
                 device.type?.let { type ->
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "Type",
+                            text = stringResource(R.string.label_type),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1022,7 +1041,7 @@ private fun GattDeviceDetailSheet(
                 ) {
                     Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("View Services")
+                    Text(stringResource(R.string.action_view_services))
                 }
                 Button(
                     onClick = onTrack,
@@ -1033,7 +1052,7 @@ private fun GattDeviceDetailSheet(
                 ) {
                     Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Track")
+                    Text(stringResource(R.string.action_track))
                 }
             }
             
@@ -1060,9 +1079,9 @@ private fun FlipperDeviceDetailSheet(
     }
 
     val signalText = when {
-        device.rssi >= -60 -> "Excellent"
-        device.rssi >= -80 -> "Good"
-        else -> "Weak"
+        device.rssi >= -60 -> stringResource(R.string.signal_excellent)
+        device.rssi >= -80 -> stringResource(R.string.signal_good)
+        else -> stringResource(R.string.signal_weak)
     }
 
     ModalBottomSheet(
@@ -1097,7 +1116,7 @@ private fun FlipperDeviceDetailSheet(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = (device.name ?: "Flipper Zero").censorDevice(privacyMode),
+                        text = (device.name ?: stringResource(R.string.label_flipper_zero)).censorDevice(privacyMode),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -1118,12 +1137,12 @@ private fun FlipperDeviceDetailSheet(
             ) {
                 Column {
                     Text(
-                        text = "Signal",
+                        text = stringResource(R.string.label_signal),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${device.rssi} dBm ($signalText)",
+                        text = "${device.rssi} ${stringResource(R.string.label_dbm)} ($signalText)",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = signalColor
@@ -1131,7 +1150,7 @@ private fun FlipperDeviceDetailSheet(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "Type",
+                        text = stringResource(R.string.label_type),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1153,7 +1172,7 @@ private fun FlipperDeviceDetailSheet(
             ) {
                 Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Track Flipper")
+                Text(stringResource(R.string.action_track_flipper))
             }
 
             Spacer(modifier = Modifier.height(32.dp))

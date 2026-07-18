@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.PhoneLocation
 import com.example.ghostespcompanion.data.repository.PhoneWardriveAp
 import com.example.ghostespcompanion.data.repository.SavedWardriveCsv
@@ -177,8 +179,8 @@ fun GpsScreen(
                     val phoneMarker = Marker(mapView).apply {
                         position = GeoPoint(phone.latitude, phone.longitude)
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                        title = "Phone GPS"
-                        snippet = "Your current location"
+                        title = context.getString(R.string.label_phone_gps)
+                        snippet = context.getString(R.string.label_current_location)
                         icon = phoneIcon
                     }
                     mapView.overlays.add(phoneMarker)
@@ -195,8 +197,8 @@ fun GpsScreen(
                         val ghostMarker = Marker(mapView).apply {
                             position = GeoPoint(gps.latitude, gps.longitude)
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                            title = "GhostESP GPS"
-                            snippet = "Device location"
+                            title = context.getString(R.string.label_ghostesp_gps)
+                            snippet = context.getString(R.string.label_device_location)
                             icon = deviceIcon
                         }
                         mapView.overlays.add(ghostMarker)
@@ -212,7 +214,7 @@ fun GpsScreen(
 
     MainScreen(
         onBack = onBack,
-        title = "GPS / Wardrive"
+        title = stringResource(R.string.title_gps_wardrive)
     ) { paddingValues ->
         // Single Box with the map view always in the composition tree.
         // Removing AndroidView from composition triggers MapView.onDetachedFromWindow()
@@ -249,18 +251,18 @@ fun GpsScreen(
                     ) {
                         Icon(
                             Icons.Default.Lock,
-                            contentDescription = "Privacy Mode",
+                            contentDescription = stringResource(R.string.label_privacy_mode),
                             tint = Color.White,
                             modifier = Modifier.size(48.dp)
                         )
                         Text(
-                            text = "Privacy Mode",
+                            text = stringResource(R.string.label_privacy_mode),
                             style = MaterialTheme.typography.titleMedium,
                             color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Map hidden to protect location",
+                            text = stringResource(R.string.msg_map_hidden),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.7f)
                         )
@@ -274,7 +276,7 @@ fun GpsScreen(
                     show = showOverlay,
                     onProceed = { showOverlay = false },
                     featureName = "GPS",
-                    message = "This device does not report GPS hardware support. Device GPS wardriving needs a GPS module, but Phone GPS Wardrive can use this phone's location."
+                    message = stringResource(R.string.msg_gps_not_supported)
                 )
             }
 
@@ -283,8 +285,8 @@ fun GpsScreen(
                 FeatureNotSupportedOverlay(
                     show = true,
                     onProceed = { showSdCardWarning = false },
-                    featureName = "SD Card Required",
-                    message = "Wardriving requires an SD card in the GhostESP device. CSV files are saved to ghostesp/gps on the device SD card."
+                    featureName = stringResource(R.string.title_sd_required),
+                    message = stringResource(R.string.msg_sd_required_wardrive)
                 )
             }
 
@@ -318,7 +320,7 @@ fun GpsScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = if (isConnected) "Connected" else "Disconnected",
+                                    text = if (isConnected) stringResource(R.string.status_connected) else stringResource(R.string.status_disconnected),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Medium,
                                     color = if (isConnected) Success else Error
@@ -349,13 +351,13 @@ fun GpsScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Phone GPS Mode",
+                                    text = stringResource(R.string.label_phone_gps_mode),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = if (usePhoneGps) primaryColor() else MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = if (usePhoneGps) "Wardrive buttons use phone GPS" else "Wardrive buttons use device GPS",
+                                    text = if (usePhoneGps) stringResource(R.string.msg_phone_gps_hint) else stringResource(R.string.msg_device_gps_hint),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -378,7 +380,7 @@ fun GpsScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             BrutalistButton(
-                                text = if (isWardriving || (isPhoneWardriving && !phoneWardriveIsBle)) "Stop Wardrive" else "Start Wardrive",
+                                text = if (isWardriving || (isPhoneWardriving && !phoneWardriveIsBle)) stringResource(R.string.action_stop_wardrive) else stringResource(R.string.action_start_wardrive),
                                 onClick = {
                                     if (isConnected) {
                                         if (isWardriving) {
@@ -407,7 +409,7 @@ fun GpsScreen(
                                 }
                             )
                             BrutalistButton(
-                                text = if (isBleWardriving || (isPhoneWardriving && phoneWardriveIsBle)) "Stop BLE WD" else "BLE Wardrive",
+                                text = if (isBleWardriving || (isPhoneWardriving && phoneWardriveIsBle)) stringResource(R.string.action_stop_ble_wd) else stringResource(R.string.action_start_ble_wd),
                                 onClick = {
                                     if (isConnected) {
                                         if (isBleWardriving) {
@@ -445,26 +447,26 @@ fun GpsScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = if (privacyMode) "**.**°" else if (phoneLocation != null) String.format("%.5f°", phoneLocation!!.latitude) else "--",
+                                    text = if (privacyMode) stringResource(R.string.label_unit_degrees, "**..**") else if (phoneLocation != null) stringResource(R.string.label_unit_degrees, String.format("%.5f", phoneLocation!!.latitude)) else "--",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = if (phoneLocation != null) Success else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "Lat",
+                                    text = stringResource(R.string.label_lat_short),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = if (privacyMode) "**.**°" else if (phoneLocation != null) String.format("%.5f°", phoneLocation!!.longitude) else "--",
+                                    text = if (privacyMode) stringResource(R.string.label_unit_degrees, "**..**") else if (phoneLocation != null) stringResource(R.string.label_unit_degrees, String.format("%.5f", phoneLocation!!.latitude)) else "--",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = if (phoneLocation != null) Success else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "Lon",
+                                    text = stringResource(R.string.label_lon_short),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -477,20 +479,20 @@ fun GpsScreen(
                                     color = if ((wardriveStats?.gpsSatellites ?: 0) > 0 || gpsPosition?.fix == true) primaryColor() else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "Sats",
+                                    text = stringResource(R.string.label_sats_short),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "${gpsPosition?.altitude?.toInt() ?: 0}m",
+                                    text = stringResource(R.string.label_unit_meters, (gpsPosition?.altitude?.toInt() ?: 0).toString()),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = if (gpsPosition?.fix == true) primaryColor() else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "Alt",
+                                    text = stringResource(R.string.label_alt_short),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -503,7 +505,7 @@ fun GpsScreen(
                                     color = if (isWardriving || isBleWardriving || isPhoneWardriving) successColor() else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = if (isBleWardriving) "BLE" else "APs",
+                                    text = if (isBleWardriving) "BLE" else stringResource(R.string.label_aps_short),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -513,7 +515,7 @@ fun GpsScreen(
                         if (isWardriving && (wardriveStats?.gpsRejected ?: 0) > 0) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "${wardriveStats?.gpsRejected} GPS rejected",
+                                text = stringResource(R.string.msg_gps_rejected, wardriveStats?.gpsRejected ?: 0),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Warning
                             )
@@ -522,7 +524,7 @@ fun GpsScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         BrutalistButton(
-                            text = "Saved CSVs (${savedWardriveCsvs.size})",
+                            text = stringResource(R.string.label_saved_csvs, savedWardriveCsvs.size),
                             onClick = {
                                 viewModel.refreshSavedWardriveCsvs(context)
                                 showCsvExplorer = true
@@ -559,7 +561,7 @@ fun GpsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Saved Wardrive CSVs",
+                                text = stringResource(R.string.title_saved_csvs),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -569,7 +571,7 @@ fun GpsScreen(
                             }) {
                                 Icon(
                                     Icons.Default.Refresh,
-                                    contentDescription = "Refresh",
+                                    contentDescription = stringResource(R.string.action_refresh),
                                     tint = primaryColor()
                                 )
                             }
@@ -593,18 +595,19 @@ fun GpsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Text(
-                                        text = "No saved CSVs yet",
+                                        text = stringResource(R.string.msg_no_saved_csvs),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        text = "Phone GPS Wardrive CSVs will appear here",
+                                        text = stringResource(R.string.msg_phone_csvs_hint),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
-                        } else {
+                        }
+else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -635,7 +638,7 @@ private fun CoordinateDisplay(label: String, value: Double, unit: String, privac
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = if (privacyMode) "**.****$unit" else String.format("%.6f$unit", value),
+            text = if (privacyMode) stringResource(R.string.label_unit_degrees, "**..**") + unit else stringResource(R.string.label_unit_degrees, String.format("%.6f", value)) + unit,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
@@ -712,14 +715,14 @@ private fun GpsConnectionBanner(
                 )
                 Column {
                     Text(
-                        text = if (isConnected) "$deviceName Connected" else "Not Connected",
+                        text = if (isConnected) stringResource(R.string.status_connected_device, deviceName) else stringResource(R.string.status_disconnected),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = if (isConnected) Success else Error
                     )
                     if (isConnected) {
                         Text(
-                            text = "GPS ready",
+                            text = stringResource(R.string.label_gps_ready),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -736,7 +739,7 @@ private fun GpsConnectionBanner(
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Connect", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.action_connect), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -789,7 +792,7 @@ private fun CsvItem(
             IconButton(onClick = onShare) {
                 Icon(
                     Icons.Default.Share,
-                    contentDescription = "Share",
+                    contentDescription = stringResource(R.string.action_proceed),
                     tint = primaryColor().copy(alpha = 0.7f),
                     modifier = Modifier.size(20.dp)
                 )
@@ -797,7 +800,7 @@ private fun CsvItem(
             IconButton(onClick = { showDeleteConfirm = true }) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = stringResource(R.string.action_clear),
                     tint = errorColor().copy(alpha = 0.7f),
                     modifier = Modifier.size(20.dp)
                 )
@@ -808,8 +811,8 @@ private fun CsvItem(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete CSV?") },
-            text = { Text("Are you sure you want to delete \"${csv.fileName}\"?") },
+            title = { Text(stringResource(R.string.title_delete_csv)) },
+            text = { Text(stringResource(R.string.msg_delete_csv_confirm, csv.fileName)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -818,23 +821,24 @@ private fun CsvItem(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = errorColor())
                 ) {
-                    Text("Delete")
+                    Text(stringResource(R.string.action_clear))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
     }
 }
 
+@Composable
 private fun formatFileSize(bytes: Long): String {
     return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024.0)
-        else -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+        bytes < 1024 -> "$bytes ${stringResource(R.string.label_bytes_short)}"
+        bytes < 1024 * 1024 -> String.format("%.1f ${stringResource(R.string.label_kilobytes_short)}", bytes / 1024.0)
+        else -> String.format("%.1f ${stringResource(R.string.label_megabytes_short)}", bytes / (1024.0 * 1024.0))
     }
 }
 

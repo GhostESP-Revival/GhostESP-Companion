@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.components.*
@@ -43,7 +45,7 @@ fun SavedTagsScreen(
     
     MainScreen(
         onBack = onBack,
-        title = "Saved Tags",
+        title = stringResource(R.string.title_saved_tags),
         actions = {
             IconButton(onClick = {
                 if (isConnected) {
@@ -52,7 +54,7 @@ fun SavedTagsScreen(
             }) {
                 Icon(
                     Icons.Default.Add,
-                    contentDescription = "Scan New Tag",
+                    contentDescription = stringResource(R.string.action_scan_new_tag),
                     tint = primaryColor()
                 )
             }
@@ -66,7 +68,7 @@ fun SavedTagsScreen(
             // Connection Status Banner
             NfcConnectionBanner(
                 isConnected = isConnected,
-                deviceName = "GhostESP",
+                deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
             
@@ -87,20 +89,20 @@ fun SavedTagsScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "No Saved Tags",
+                        text = stringResource(R.string.msg_no_saved_tags),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = OnSurfaceDark
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Scan NFC tags to save them here",
+                        text = stringResource(R.string.msg_saved_tags_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceVariantDark
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                     BrutalistButton(
-                        text = "Scan Tag",
+                        text = stringResource(R.string.title_scan_tag),
                         onClick = {
                             if (isConnected) {
                                 viewModel.scanNfc()
@@ -132,15 +134,15 @@ fun SavedTagsScreen(
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
                                 StatItem(
-                                    label = "Total Tags",
+                                    label = stringResource(R.string.label_total_tags),
                                     value = savedTags.size.toString()
                                 )
                                 StatItem(
-                                    label = "Writable",
+                                    label = stringResource(R.string.label_writable),
                                     value = savedTags.count { it.writable }.toString()
                                 )
                                 StatItem(
-                                    label = "Types",
+                                    label = stringResource(R.string.label_types),
                                     value = savedTags.map { it.tagType }.distinct().size.toString()
                                 )
                             }
@@ -179,7 +181,7 @@ fun SavedTagsScreen(
                     if (selectedTag != null) {
                         item {
                             Text(
-                                text = "Actions for ${selectedTag?.name}",
+                                text = stringResource(R.string.label_actions_for, selectedTag?.name ?: ""),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = primaryColor()
@@ -192,7 +194,7 @@ fun SavedTagsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 BrutalistButton(
-                                    text = "Write",
+                                    text = stringResource(R.string.action_write),
                                     onClick = {
                                         if (isConnected) {
                                             viewModel.sendRaw("nfc_write ${selectedTag?.id}")
@@ -205,7 +207,7 @@ fun SavedTagsScreen(
                                 )
                                 
                                 BrutalistButton(
-                                    text = "Emulate",
+                                    text = stringResource(R.string.action_emulate_short),
                                     onClick = {
                                         if (isConnected) {
                                             viewModel.sendRaw("nfc_emulate ${selectedTag?.id}")
@@ -225,7 +227,7 @@ fun SavedTagsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 BrutalistOutlinedButton(
-                                    text = "Export",
+                                    text = stringResource(R.string.action_export),
                                     onClick = {},
                                     modifier = Modifier.weight(1f),
                                     enabled = false,
@@ -233,7 +235,7 @@ fun SavedTagsScreen(
                                 )
                                 
                                 BrutalistOutlinedButton(
-                                    text = "Delete",
+                                    text = stringResource(R.string.action_clear),
                                     onClick = { showDeleteDialog = true },
                                     modifier = Modifier.weight(1f),
                                     borderColor = errorColor(),
@@ -265,7 +267,7 @@ fun SavedTagsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
-                                    text = "Saved tags can be written to blank cards or emulated. Select a tag to see available actions.",
+                                    text = stringResource(R.string.msg_saved_tags_usage_hint),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = OnSurfaceVariantDark
                                 )
@@ -281,8 +283,8 @@ fun SavedTagsScreen(
     if (showDeleteDialog && selectedTag != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Tag?") },
-            text = { Text("Are you sure you want to delete \"${selectedTag?.name}\"? This action cannot be undone.") },
+            title = { Text(stringResource(R.string.title_delete_tag)) },
+            text = { Text(stringResource(R.string.msg_delete_tag_confirm, selectedTag?.name ?: "")) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -292,12 +294,12 @@ fun SavedTagsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = errorColor())
                 ) {
-                    Text("Delete")
+                    Text(stringResource(R.string.action_clear))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -309,12 +311,12 @@ fun SavedTagsScreen(
         
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
-            title = { Text("Edit Tag") },
+            title = { Text(stringResource(R.string.title_edit_tag)) },
             text = {
                 OutlinedTextField(
                     value = editedName,
                     onValueChange = { editedName = it },
-                    label = { Text("Tag Name") },
+                    label = { Text(stringResource(R.string.label_tag_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -330,12 +332,12 @@ fun SavedTagsScreen(
                         showEditDialog = false
                     }
                 ) {
-                    Text("Save")
+                    Text(stringResource(R.string.action_save))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showEditDialog = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -411,14 +413,14 @@ private fun SavedTagCard(
                     IconButton(onClick = onEdit) {
                         Icon(
                             Icons.Default.Edit,
-                            contentDescription = "Edit",
+                            contentDescription = stringResource(R.string.action_edit),
                             tint = OnSurfaceVariantDark
                         )
                     }
                     IconButton(onClick = onDelete) {
                         Icon(
                             Icons.Default.Delete,
-                            contentDescription = "Delete",
+                            contentDescription = stringResource(R.string.action_clear),
                             tint = errorColor()
                         )
                     }
@@ -431,10 +433,10 @@ private fun SavedTagCard(
                 Column(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    TagInfoRow("UID", tag.uid.censorNfc(privacyMode))
-                    TagInfoRow("Size", "${tag.size} bytes")
-                    TagInfoRow("Writable", if (tag.writable) "Yes" else "No")
-                    TagInfoRow("Saved", formatTimestamp(tag.savedAt))
+                    TagInfoRow(stringResource(R.string.label_uid), tag.uid.censorNfc(privacyMode))
+                    TagInfoRow(stringResource(R.string.label_size), stringResource(R.string.label_bytes, tag.size.toString()))
+                    TagInfoRow(stringResource(R.string.label_writable), if (tag.writable) stringResource(R.string.label_yes) else stringResource(R.string.label_no))
+                    TagInfoRow(stringResource(R.string.label_saved_at), formatTimestamp(tag.savedAt))
                 }
             }
         }
@@ -483,14 +485,15 @@ private fun StatItem(
     }
 }
 
+@Composable
 private fun formatTimestamp(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp
     
     return when {
-        diff < 3600000 -> "${diff / 60000} minutes ago"
-        diff < 86400000 -> "${diff / 3600000} hours ago"
-        diff < 604800000 -> "${diff / 86400000} days ago"
-        else -> "${diff / 604800000} weeks ago"
+        diff < 3600000 -> stringResource(R.string.msg_minutes_ago, diff / 60000)
+        diff < 86400000 -> stringResource(R.string.msg_hours_ago, diff / 3600000)
+        diff < 604800000 -> stringResource(R.string.msg_days_ago, diff / 86400000)
+        else -> stringResource(R.string.msg_weeks_ago, diff / 604800000)
     }
 }
