@@ -70,6 +70,7 @@ fun BleScreen(
     var showSpamModeMenu by remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
     val availableUsbDevices by viewModel.availableUsbDevices.collectAsState()
+    val usbPortCounts by viewModel.usbPortCounts.collectAsState()
     val allUsbDevices by viewModel.allUsbDevices.collectAsState()
     val usbDebugLog by viewModel.usbDebugLog.collectAsState()
     val availableBridgeDevices by viewModel.availableBleDevices.collectAsState()
@@ -210,6 +211,7 @@ fun BleScreen(
             if (showDeviceDialog) {
                 ConnectionSelectionDialog(
                     usbDevices = availableUsbDevices,
+                    usbPortCounts = usbPortCounts,
                     bleDevices = availableBridgeDevices,
                     allUsbDevices = allUsbDevices,
                     usbDebugLog = usbDebugLog,
@@ -217,9 +219,9 @@ fun BleScreen(
                     bluetoothSupported = viewModel.isBluetoothSupported(),
                     isBleScanning = isBleScanning,
                     startOnWirelessTab = true,
-                    onUsbSelected = { device, baud ->
+                    onUsbSelected = { device, baud, portIndex ->
                         showDeviceDialog = false
-                        viewModel.connectWithBaud(device, baud)
+                        viewModel.connectWithBaud(device, baud, portIndex)
                     },
                     onBleSelected = { device ->
                         showDeviceDialog = false

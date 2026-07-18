@@ -1,11 +1,14 @@
 package com.example.ghostespcompanion
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.viewModels
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -30,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -37,6 +41,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.ghostespcompanion.data.repository.AppSettings
 import com.example.ghostespcompanion.data.repository.PreferencesRepository
+import com.example.ghostespcompanion.data.repository.SavedConnectionAttempt
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.ui.components.ConnectionSelectionDialog
 import com.example.ghostespcompanion.ui.navigation.GhostESPNavGraph
@@ -45,6 +50,7 @@ import com.example.ghostespcompanion.ui.navigation.bottomNavItems
 import com.example.ghostespcompanion.ui.theme.*
 import com.example.ghostespcompanion.ui.viewmodel.MainViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import javax.inject.Inject
 
 /**
@@ -55,6 +61,7 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private val mainViewModel: MainViewModel by viewModels()
     
     @Inject
     lateinit var preferencesRepository: PreferencesRepository
@@ -65,14 +72,32 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             // Collect settings to apply dark mode
-            val appSettings by preferencesRepository.appSettings.collectAsState(AppSettings())
+            val appSettings by preferencesRepository.appSettings.collectAsState(AppSettings(autoConnect = false))
             
             GhostESPTheme(darkTheme = appSettings.darkMode) {
                 GhostESPApp(
-                    autoConnect = appSettings.autoConnect
+                    autoConnect = appSettings.autoConnect,
+                    viewModel = mainViewModel
                 )
             }
         }
+        handleUsbIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleUsbIntent(intent)
+    }
+
+    private fun handleUsbIntent(intent: Intent?) {
+        if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
+        val device = IntentCompat.getParcelableExtra(
+            intent,
+            UsbManager.EXTRA_DEVICE,
+            UsbDevice::class.java
+        ) ?: return
+        mainViewModel.onUsbDeviceAttached(device)
     }
 }
 
@@ -87,10 +112,10 @@ fun GhostESPApp(
     val navController = rememberNavController()
     
     // Handle auto-connect on startup
-    val connectionState by viewModel.connectionState.collectAsState()
     val hasAutoConnected = remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
     val availableDevices by viewModel.availableUsbDevices.collectAsState()
+    val usbPortCounts by viewModel.usbPortCounts.collectAsState()
     val allUsbDevices by viewModel.allUsbDevices.collectAsState()
     val usbDebugLog by viewModel.usbDebugLog.collectAsState()
     val availableBleDevices by viewModel.availableBleDevices.collectAsState()
@@ -107,6 +132,12 @@ fun GhostESPApp(
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { _ -> }
+
+    LaunchedEffect(Unit) {
+        viewModel.connectionSelectionRequests.collect {
+            showDeviceDialog = true
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -136,20 +167,40 @@ fun GhostESPApp(
     }
 
     // Single auto-connect entry point: try saved device first, then fall back to USB scan
-    LaunchedEffect(autoConnect, connectionState) {
+    LaunchedEffect(autoConnect) {
         if (!autoConnect || hasAutoConnected.value) return@LaunchedEffect
-        if (connectionState != SerialManager.ConnectionState.DISCONNECTED) return@LaunchedEffect
+        if (viewModel.connectionState.value != SerialManager.ConnectionState.DISCONNECTED) return@LaunchedEffect
         hasAutoConnected.value = true
 
         // Try reconnecting to the last saved device (USB or BLE)
-        val savedConnected = viewModel.connectSavedDeviceSync()
-        if (savedConnected) return@LaunchedEffect
+        val savedAttempt = viewModel.connectSavedDeviceSync()
+        if (savedAttempt == SavedConnectionAttempt.STARTED) return@LaunchedEffect
 
         // No saved device or it wasn't found — fall back to USB scan
-        val devices = viewModel.fetchAvailableDevices()
+        var devices = viewModel.fetchAvailableDevices()
+        if (savedAttempt == SavedConnectionAttempt.FAILED) {
+            if (viewModel.connectionState.value == SerialManager.ConnectionState.CONNECTING ||
+                viewModel.connectionState.value == SerialManager.ConnectionState.CONNECTED
+            ) return@LaunchedEffect
+            if (devices.isNotEmpty()) showDeviceDialog = true
+            return@LaunchedEffect
+        }
+        repeat(3) {
+            if (devices.isEmpty()) {
+                delay(250)
+                devices = viewModel.fetchAvailableDevices()
+            }
+        }
         when (devices.size) {
             0 -> { /* no devices available */ }
-            1 -> viewModel.connectWithAutoBaud(devices.first())
+            1 -> {
+                val device = devices.first()
+                if (viewModel.getSerialPortCount(device) > 1) {
+                    showDeviceDialog = true
+                } else {
+                    viewModel.connectWithAutoBaud(device)
+                }
+            }
             else -> showDeviceDialog = true
         }
     }
@@ -231,16 +282,17 @@ fun GhostESPApp(
         if (showDeviceDialog) {
             ConnectionSelectionDialog(
                 usbDevices = availableDevices,
+                usbPortCounts = usbPortCounts,
                 bleDevices = availableBleDevices,
                 allUsbDevices = allUsbDevices,
                 usbDebugLog = usbDebugLog,
                 bluetoothEnabled = viewModel.isBluetoothEnabled(),
                 bluetoothSupported = viewModel.isBluetoothSupported(),
                 isBleScanning = isBleScanning,
-                onUsbSelected = { device, baud ->
+                onUsbSelected = { device, baud, portIndex ->
                     showDeviceDialog = false
                     viewModel.stopBleBridgeScan()
-                    viewModel.connectWithBaud(device, baud)
+                    viewModel.connectWithBaud(device, baud, portIndex)
                 },
                 onBleSelected = { device ->
                     showDeviceDialog = false

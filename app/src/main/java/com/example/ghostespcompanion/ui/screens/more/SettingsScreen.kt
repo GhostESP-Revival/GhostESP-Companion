@@ -121,6 +121,30 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            item {
+                BrutalistSectionHeader(
+                    title = "Wired Compatibility",
+                    accentColor = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            item {
+                BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        SettingsToggle(
+                            title = "Assert DTR",
+                            subtitle = "Enable only for USB CDC devices that stay silent",
+                            icon = Icons.Default.Cable,
+                            checked = appSettings.dtrCompatibilityMode,
+                            onCheckedChange = { enabled ->
+                                viewModel.setDtrCompatibilityMode(enabled)
+                                viewModel.performHapticFeedback()
+                            }
+                        )
+                    }
+                }
+            }
             
             if (statusMessage != null) {
                 item {

@@ -58,7 +58,7 @@ fun TerminalScreen(
         if (terminalLines.isNotEmpty()) {
             // Use scrollToItem for instant positioning instead of animateScrollToItem
             // which causes frame drops during rapid terminal output
-            listState.scrollToItem(terminalLines.size + 3) // +3 for welcome messages
+            listState.scrollToItem((terminalLines.size + 2).coerceAtLeast(0)) // +2 for welcome messages
         }
     }
     

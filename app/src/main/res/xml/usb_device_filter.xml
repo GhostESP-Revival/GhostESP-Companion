@@ -12,10 +12,10 @@
     <usb-device vendor-id="4292" />
     
     <!-- WCH CH340/CH341 (vendor: 0x1A86) -->
-    <!-- CH340: product-id 0x7523 (29939) -->
+    <!-- CH340: product-id 0x7523 (29987) -->
     <!-- CH341: product-id 0x5523 (21795) -->
     <usb-device vendor-id="6790" />
-    <usb-device vendor-id="6790" product-id="29939" />
+    <usb-device vendor-id="6790" product-id="29987" />
     <usb-device vendor-id="6790" product-id="21795" />
     
     <!-- WCH CH9102 (vendor: 0x1A86, product: 0x55D4) -->
@@ -25,8 +25,8 @@
     <usb-device vendor-id="17224" />
     
     <!-- CDC-ACM devices (includes some ESP32-S2/S3 in USB-CDC mode) -->
-    <usb-device class="2" />
+    <usb-device class="2" subclass="2" />
     
-    <!-- Espressif devices in download mode -->
-    <usb-device vendor-id="4292" product-id="60000" />
+    <!-- Espressif native USB devices (vendor: 0x303A) -->
+    <usb-device vendor-id="12346" />
 </resources>

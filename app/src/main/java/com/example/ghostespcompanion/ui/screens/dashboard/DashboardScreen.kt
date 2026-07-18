@@ -89,6 +89,7 @@ val connectionState by viewModel.connectionState.collectAsState()
     
     var showDeviceDialog by remember { mutableStateOf(false) }
     val availableDevices by viewModel.availableUsbDevices.collectAsState()
+    val usbPortCounts by viewModel.usbPortCounts.collectAsState()
     val availableBleDevices by viewModel.availableBleDevices.collectAsState()
     val isBleScanning by viewModel.isBleScanning.collectAsState()
     val allUsbDevices by viewModel.allUsbDevices.collectAsState()
@@ -266,15 +267,16 @@ val connectionState by viewModel.connectionState.collectAsState()
             if (showDeviceDialog) {
                 ConnectionSelectionDialog(
                     usbDevices = availableDevices,
+                    usbPortCounts = usbPortCounts,
                     bleDevices = availableBleDevices,
                     allUsbDevices = allUsbDevices,
                     usbDebugLog = usbDebugLog,
                     bluetoothEnabled = viewModel.isBluetoothEnabled(),
                     bluetoothSupported = viewModel.isBluetoothSupported(),
                     isBleScanning = isBleScanning,
-                    onUsbSelected = { device, baud ->
+                    onUsbSelected = { device, baud, portIndex ->
                         showDeviceDialog = false
-                        viewModel.connectWithBaud(device, baud)
+                        viewModel.connectWithBaud(device, baud, portIndex)
                     },
                     onBleSelected = { device ->
                         showDeviceDialog = false
@@ -579,9 +581,9 @@ private fun QuickActionsCard(
                 color = secondaryColor()
             )
             QuickActionButton(
-                icon = Icons.Default.Settings,
-                label = stringResource(R.string.label_settings),
-                enabled = true,
+                icon = Icons.Default.Nfc,
+                label = stringResource(R.string.action_scan_new_tag),
+                enabled = isConnected,
                 onClick = onScanNfc,
                 color = tertiaryColor()
             )

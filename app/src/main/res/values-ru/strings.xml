@@ -513,7 +513,7 @@
     <string name="action_refresh_wired">Обновить проводные</string>
     <string name="action_scan_wireless">Искать беспроводные</string>
     <string name="label_raw_usb_devices">Raw USB устройства: %1$d</string>
-    <string name="label_version_beta">v0.4.1 BETA</string>
+    <string name="label_version_beta">v0.4.2 BETA</string>
     <string name="desc_app_icon">Иконка GhostESP Companion</string>
 
     <!-- Device Selection -->

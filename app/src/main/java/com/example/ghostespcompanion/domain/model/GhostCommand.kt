@@ -887,8 +887,10 @@ sealed class GhostCommand {
     data class EthPorts(val ip: String, val startPort: Int? = null, val endPort: Int? = null) : GhostCommand() {
         override val commandString: String = buildString {
             append("ethports $ip")
-            startPort?.let { append(" $it") }
-            endPort?.let { append(" $it") }
+            if (startPort != null) {
+                append(" $startPort")
+                endPort?.let { append(" $it") }
+            }
         }
         override val timeoutMs: Long = 60000
     }
@@ -915,7 +917,7 @@ sealed class GhostCommand {
     data class EthConfig(val mode: EthConfigMode, val ip: String? = null, val netmask: String? = null, val gateway: String? = null) : GhostCommand() {
         override val commandString: String = when (mode) {
             EthConfigMode.DHCP -> "ethconfig dhcp"
-            EthConfigMode.STATIC -> "ethconfig static $ip $netmask $gateway"
+            EthConfigMode.STATIC -> if (ip != null && netmask != null && gateway != null) "ethconfig static $ip $netmask $gateway" else "ethconfig show"
             EthConfigMode.SHOW -> "ethconfig show"
         }
         override val timeoutMs: Long = 10000

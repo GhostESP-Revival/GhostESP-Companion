@@ -53,8 +53,9 @@ import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 @Composable
 fun ConnectionSelectionDialog(
     usbDevices: List<UsbDevice>,
+    usbPortCounts: Map<String, Int>,
     bleDevices: List<BleBridgeDevice>,
-    onUsbSelected: (UsbDevice, Int) -> Unit,
+    onUsbSelected: (UsbDevice, Int, Int) -> Unit,
     onBleSelected: (BleBridgeDevice) -> Unit,
     onRefreshUsb: () -> Unit,
     onRefreshBle: () -> Unit,
@@ -68,7 +69,13 @@ fun ConnectionSelectionDialog(
 ) {
     var selectedTab by remember { mutableIntStateOf(if (startOnWirelessTab) 1 else 0) }
     var showDebugLog by remember { mutableStateOf(false) }
-    val baudRates = remember { listOf(9600, 57600, 115200, 230400, 420600, 460800, 921600) }
+    val baudRates = remember { listOf(115200, 460800, 9600, 57600, 230400, 420000, 921600) }
+    val usbPorts = remember(usbDevices, usbPortCounts) {
+        usbDevices.flatMap { device ->
+            val count = (usbPortCounts[device.deviceName] ?: 1).coerceAtLeast(1)
+            (0 until count).map { portIndex -> device to portIndex }
+        }
+    }
     var selectedBaud by remember { mutableIntStateOf(115200) }
     var baudExpanded by remember { mutableStateOf(false) }
 
@@ -192,9 +199,9 @@ fun ConnectionSelectionDialog(
                             modifier = Modifier.heightIn(max = 240.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(usbDevices, key = { it.deviceName }) { device ->
+                            items(usbPorts, key = { (device, portIndex) -> "${device.deviceName}:$portIndex" }) { (device, portIndex) ->
                                 Card(
-                                    onClick = { onUsbSelected(device, selectedBaud) },
+                                    onClick = { onUsbSelected(device, selectedBaud, portIndex) },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                                 ) {
@@ -205,6 +212,13 @@ fun ConnectionSelectionDialog(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if ((usbPortCounts[device.deviceName] ?: 1) > 1) {
+                                            Text(
+                                                "Serial port ${portIndex + 1}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                         device.manufacturerName?.let {
                                             Text(
                                                 stringResource(R.string.label_manufacturer, it),

@@ -26,7 +26,8 @@ private suspend fun readSavedDevice(context: Context): SavedDevice? {
                 val pid = prefs[intPreferencesKey("pid")] ?: return null
                 val name = prefs[stringPreferencesKey("name")] ?: return null
                 val baud = prefs[intPreferencesKey("baud")] ?: 115200
-                SavedDevice.Usb(vid, pid, name, baud)
+                val portIndex = prefs[intPreferencesKey("port_index")] ?: 0
+                SavedDevice.Usb(vid, pid, name, baud, portIndex)
             }
             "ble" -> {
                 val addr = prefs[stringPreferencesKey("address")] ?: return null
@@ -52,6 +53,7 @@ private suspend fun writeSavedDevice(context: Context, device: SavedDevice?) {
                     prefs[intPreferencesKey("pid")] = device.productId
                     prefs[stringPreferencesKey("name")] = device.deviceName
                     prefs[intPreferencesKey("baud")] = device.baudRate
+                    prefs[intPreferencesKey("port_index")] = device.portIndex
                 }
                 is SavedDevice.Ble -> {
                     prefs[stringPreferencesKey("kind")] = "ble"
@@ -74,7 +76,8 @@ data class AppSettings(
     val hapticFeedback: Boolean = true,
     val autoConnect: Boolean = true,
     val showNotifications: Boolean = true,
-    val privacyMode: Boolean = false
+    val privacyMode: Boolean = false,
+    val dtrCompatibilityMode: Boolean = false
 )
 
 /**
@@ -90,6 +93,7 @@ class PreferencesRepository @Inject constructor(
         val AUTO_CONNECT = booleanPreferencesKey("auto_connect")
         val SHOW_NOTIFICATIONS = booleanPreferencesKey("show_notifications")
         val PRIVACY_MODE = booleanPreferencesKey("privacy_mode")
+        val DTR_COMPATIBILITY_MODE = booleanPreferencesKey("dtr_compatibility_mode")
     }
 
     /**
@@ -109,7 +113,8 @@ class PreferencesRepository @Inject constructor(
                 hapticFeedback = preferences[PreferencesKeys.HAPTIC_FEEDBACK] ?: true,
                 autoConnect = preferences[PreferencesKeys.AUTO_CONNECT] ?: true,
                 showNotifications = preferences[PreferencesKeys.SHOW_NOTIFICATIONS] ?: true,
-                privacyMode = preferences[PreferencesKeys.PRIVACY_MODE] ?: false
+                privacyMode = preferences[PreferencesKeys.PRIVACY_MODE] ?: false,
+                dtrCompatibilityMode = preferences[PreferencesKeys.DTR_COMPATIBILITY_MODE] ?: false
             )
         }
 
@@ -158,6 +163,12 @@ class PreferencesRepository @Inject constructor(
         }
     }
 
+    suspend fun setDtrCompatibilityMode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.DTR_COMPATIBILITY_MODE] = enabled
+        }
+    }
+
     /**
      * Update all settings at once
      */
@@ -168,6 +179,7 @@ class PreferencesRepository @Inject constructor(
             preferences[PreferencesKeys.AUTO_CONNECT] = settings.autoConnect
             preferences[PreferencesKeys.SHOW_NOTIFICATIONS] = settings.showNotifications
             preferences[PreferencesKeys.PRIVACY_MODE] = settings.privacyMode
+            preferences[PreferencesKeys.DTR_COMPATIBILITY_MODE] = settings.dtrCompatibilityMode
         }
     }
 
@@ -185,7 +197,8 @@ sealed class SavedDevice {
         val vendorId: Int,
         val productId: Int,
         val deviceName: String,
-        val baudRate: Int
+        val baudRate: Int,
+        val portIndex: Int = 0
     ) : SavedDevice()
 
     data class Ble(val address: String, val name: String) : SavedDevice()

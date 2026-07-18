@@ -204,7 +204,7 @@ fun BrutalistButton(
             shape = shape,
             colors = ButtonDefaults.buttonColors(
                 containerColor = containerColor,
-                disabledContainerColor = Color.White
+                disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.12f)
             ),
             border = BorderStroke(1.dp, if (enabled) borderColor else borderColor.copy(alpha = 0.5f)),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
@@ -231,7 +231,7 @@ fun BrutalistButton(
             Text(
                 text = text,
                 style = BrutalistButtonText,
-                color = if (enabled) textColor else Color.Black
+                color = if (enabled) textColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
             )
         }
     }
@@ -547,7 +547,7 @@ fun NfcConnectionBanner(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (isConnected) Icons.Default.Nfc else Icons.Default.Nfc,
+                    imageVector = Icons.Default.Nfc,
                     contentDescription = null,
                     tint = if (isConnected) success else error
                 )
@@ -596,7 +596,7 @@ fun EthernetConnectionBanner(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (isConnected) Icons.Default.SettingsEthernet else Icons.Default.SettingsEthernet,
+                    imageVector = if (isConnected) Icons.Default.SettingsEthernet else Icons.Default.LinkOff,
                     contentDescription = null,
                     tint = if (isConnected) success else error
                 )

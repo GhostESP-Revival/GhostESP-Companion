@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,7 +44,7 @@ fun NfcScreen(
     onBack: () -> Unit
 ) {
     var isScanning by remember { mutableStateOf(false) }
-    var showOverlay by remember { mutableStateOf(true) }
+    var showOverlay by rememberSaveable { mutableStateOf(true) }
     
     val connectionState by viewModel.connectionState.collectAsState()
     val nfcTags by viewModel.nfcTags.collectAsState()

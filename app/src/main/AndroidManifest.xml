@@ -38,6 +38,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:enableOnBackInvokedCallback="true"
+            android:launchMode="singleTop"
             android:label="@string/app_name_short"
             android:theme="@style/Theme.GhostESPCompanion"
             tools:targetApi="33">

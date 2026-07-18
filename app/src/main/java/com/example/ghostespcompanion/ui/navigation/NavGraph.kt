@@ -118,7 +118,7 @@ fun GhostESPNavGraph(
                 navController.navigate(Screen.Wifi.route)
             } }
             val onScanBleAndNavigate = remember { { navController.navigate(Screen.FlipperDetect.route) } }
-            val onScanNfcAndNavigate = remember { { navController.navigate(Screen.Settings.route) } }
+            val onScanNfcAndNavigate = remember { { navController.navigate(Screen.Nfc.route) } }
 
             DashboardScreen(
                 viewModel = sharedViewModel,

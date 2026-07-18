@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -36,7 +37,7 @@ fun EthernetScreen(
     var selectedTool by remember { mutableStateOf(EthernetTool.NETWORK_SCAN) }
     var targetIp by remember { mutableStateOf("") }
     var scanResults by remember { mutableStateOf<List<NetworkDevice>>(emptyList()) }
-    var showOverlay by remember { mutableStateOf(true) }
+    var showOverlay by rememberSaveable { mutableStateOf(true) }
     
 val connectionState by viewModel.connectionState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()

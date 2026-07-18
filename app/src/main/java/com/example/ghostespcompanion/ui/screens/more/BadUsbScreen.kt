@@ -41,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,7 +73,7 @@ fun BadUsbScreen(
     var keyboardActive by remember { mutableStateOf(false) }
     var jigglerActive by remember { mutableStateOf(false) }
     var textToType by remember { mutableStateOf("") }
-    var showUnsupportedOverlay by remember { mutableStateOf(true) }
+    var showUnsupportedOverlay by rememberSaveable { mutableStateOf(true) }
 
     val connectionState by viewModel.connectionState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
