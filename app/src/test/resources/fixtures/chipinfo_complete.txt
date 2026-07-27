@@ -1,0 +1,20 @@
+=== Chip Information ===
+Firmware: GhostESP Development 1.9.9
+Model: ESP32-C6
+Revision: v1.0
+CPU Cores: 1
+Features: WiFi/BT/BLE/802.15.4/Embedded Flash/Embedded PSRAM
+Free Heap: 234567 bytes
+Min Heap: 198765 bytes
+IDF Version: v5.5.1
+
+Enabled Features:
+  Display
+  Chameleon Ultra
+  OTA Updates
+  Camera
+  Microphone
+  GhostScript
+  NRF24
+  SubGHz
+[CHIPINFO_END]

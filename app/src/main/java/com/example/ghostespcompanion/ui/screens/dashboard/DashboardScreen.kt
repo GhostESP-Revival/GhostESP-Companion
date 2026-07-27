@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -86,7 +87,14 @@ val connectionState by viewModel.connectionState.collectAsState()
     
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val privacyMode = appSettings.privacyMode
-    
+    val bleCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.BLE)
+    val irCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.INFRARED_TX, GhostResponse.DeviceFeature.INFRARED_RX)
+    val sdCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.SD_CARD_SPI, GhostResponse.DeviceFeature.SD_CARD_MMC)
+    val nfcCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.NFC)
+    val quickLinksPref by viewModel.quickLinks.collectAsState()
+    val quickLinkIds = remember(quickLinksPref) { quickLinksPref.split(",").filter { it.isNotBlank() } }
+    var showQuickLinksDialog by remember { mutableStateOf(false) }
+
     var showDeviceDialog by remember { mutableStateOf(false) }
     val availableDevices by viewModel.availableUsbDevices.collectAsState()
     val usbPortCounts by viewModel.usbPortCounts.collectAsState()
@@ -155,20 +163,52 @@ val connectionState by viewModel.connectionState.collectAsState()
                 
                 // Quick Stats Section - Links to More menu items
             item {
-                BrutalistSectionHeader(
-                    title = stringResource(R.string.header_quick_links),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    accentColor = primaryColor()
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BrutalistSectionHeader(
+                        title = stringResource(R.string.header_quick_links),
+                        accentColor = primaryColor()
+                    )
+                    IconButton(onClick = { showQuickLinksDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = stringResource(R.string.action_edit_quick_links),
+                            tint = primaryColor()
+                        )
+                    }
+                }
             }
 
             // Quick Links Grid - Navigate to More menu items
             item {
                 QuickLinksGrid(
-                    onWifiClick = onNavigateToWifi,
-                    onBleClick = onNavigateToBle,
-                    onIrClick = onNavigateToIr,
-                    onSdClick = onNavigateToSd,
+                    selectedIds = quickLinkIds,
+                    capabilityFor = { id ->
+                        when (id) {
+                            "BLE" -> bleCapability
+                            "IR" -> irCapability
+                            "SD" -> sdCapability
+                            "NFC" -> nfcCapability
+                            else -> GhostResponse.CapabilityResolution.SUPPORTED
+                        }
+                    },
+                    onClickFor = { id ->
+                        when (id) {
+                            "WIFI" -> onNavigateToWifi
+                            "BLE" -> onNavigateToBle
+                            "IR" -> onNavigateToIr
+                            "NFC" -> onNavigateToNfc
+                            "GPS" -> onNavigateToGps
+                            "BADUSB" -> onNavigateToBadUsb
+                            "SD" -> onNavigateToSd
+                            else -> ({})
+                        }
+                    },
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
@@ -185,6 +225,8 @@ val connectionState by viewModel.connectionState.collectAsState()
             item {
                 QuickActionsCard(
                     isConnected = isConnected,
+                    bleCapability = bleCapability,
+                    nfcCapability = nfcCapability,
                     onScanWifi = onScanWifiAndNavigate,
                     onScanBle = onScanBleAndNavigate,
                     onScanNfc = onScanNfcAndNavigate,
@@ -291,6 +333,17 @@ val connectionState by viewModel.connectionState.collectAsState()
                     onDismiss = {
                         viewModel.stopBleBridgeScan()
                         showDeviceDialog = false
+                    }
+                )
+            }
+
+            if (showQuickLinksDialog) {
+                QuickLinksEditDialog(
+                    initialSelection = quickLinkIds,
+                    onDismiss = { showQuickLinksDialog = false },
+                    onConfirm = { newSelection ->
+                        viewModel.setQuickLinks(newSelection)
+                        showQuickLinksDialog = false
                     }
                 )
             }
@@ -455,49 +508,140 @@ private fun DeviceInfoItem(
 }
 
 /**
- * Quick Links Grid - Links to More menu items
+ * Catalog of destinations the user can pin to the Dashboard's Quick Links grid.
+ * Only covers destinations already reachable via a nav callback passed into DashboardScreen.
+ */
+private sealed class QuickLinkDestination(val id: String, val labelRes: Int, val icon: ImageVector) {
+    object Wifi : QuickLinkDestination("WIFI", R.string.title_wifi, Icons.Default.Wifi)
+    object Ble : QuickLinkDestination("BLE", R.string.title_ble, Icons.Default.Bluetooth)
+    object Ir : QuickLinkDestination("IR", R.string.title_ir, Icons.Default.SettingsRemote)
+    object Nfc : QuickLinkDestination("NFC", R.string.title_nfc, Icons.Default.Nfc)
+    object Gps : QuickLinkDestination("GPS", R.string.label_gps, Icons.Default.LocationOn)
+    object BadUsb : QuickLinkDestination("BADUSB", R.string.title_bad_usb, Icons.Default.Usb)
+    object Sd : QuickLinkDestination("SD", R.string.label_sd, Icons.Default.SdCard)
+
+    companion object {
+        val ALL = listOf(Wifi, Ble, Ir, Nfc, Gps, BadUsb, Sd)
+        fun byId(id: String): QuickLinkDestination? = ALL.find { it.id == id }
+    }
+}
+
+private const val QUICK_LINKS_MIN = 2
+private const val QUICK_LINKS_MAX = 6
+private const val QUICK_LINKS_PER_ROW = 4
+
+@Composable
+private fun quickLinkColor(id: String): Color = when (id) {
+    "WIFI" -> primaryColor()
+    "BLE" -> secondaryColor()
+    "IR" -> tertiaryColor()
+    "SD" -> errorColor()
+    "NFC" -> successColor()
+    "GPS" -> warningColor()
+    "BADUSB" -> tertiaryColor()
+    else -> primaryColor()
+}
+
+/**
+ * Quick Links Grid - user-configurable set of destinations, up to 4 per row.
  */
 @Composable
 private fun QuickLinksGrid(
-    onWifiClick: () -> Unit,
-    onBleClick: () -> Unit,
-    onIrClick: () -> Unit,
-    onSdClick: () -> Unit,
+    selectedIds: List<String>,
+    capabilityFor: (String) -> GhostResponse.CapabilityResolution,
+    onClickFor: (String) -> () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    Column(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        QuickLinkCard(
-            icon = Icons.Default.Wifi,
-            label = stringResource(R.string.title_wifi),
-            color = primaryColor(),
-            onClick = onWifiClick,
-            modifier = Modifier.weight(1f)
-        )
-        QuickLinkCard(
-            icon = Icons.Default.Bluetooth,
-            label = stringResource(R.string.title_ble),
-            color = secondaryColor(),
-            onClick = onBleClick,
-            modifier = Modifier.weight(1f)
-        )
-        QuickLinkCard(
-            icon = Icons.Default.SettingsRemote,
-            label = stringResource(R.string.title_ir),
-            color = tertiaryColor(),
-            onClick = onIrClick,
-            modifier = Modifier.weight(1f)
-        )
-        QuickLinkCard(
-            icon = Icons.Default.SdCard,
-            label = stringResource(R.string.label_sd),
-            color = errorColor(),
-            onClick = onSdClick,
-            modifier = Modifier.weight(1f)
-        )
+        selectedIds.chunked(QUICK_LINKS_PER_ROW).forEach { rowIds ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowIds.forEach { id ->
+                    val destination = QuickLinkDestination.byId(id) ?: return@forEach
+                    QuickLinkCard(
+                        icon = destination.icon,
+                        label = stringResource(destination.labelRes),
+                        color = quickLinkColor(id),
+                        onClick = onClickFor(id),
+                        resolution = capabilityFor(id),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun QuickLinksEditDialog(
+    initialSelection: List<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit
+) {
+    var selection by remember { mutableStateOf(initialSelection) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val boundsMessage = stringResource(R.string.msg_quick_links_selection_bounds, QUICK_LINKS_MIN, QUICK_LINKS_MAX)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.title_edit_quick_links)) },
+        text = {
+            Column {
+                QuickLinkDestination.ALL.forEach { destination ->
+                    val checked = selection.contains(destination.id)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                message = null
+                                selection = when {
+                                    checked && selection.size > QUICK_LINKS_MIN -> selection - destination.id
+                                    checked -> { message = boundsMessage; selection }
+                                    !checked && selection.size < QUICK_LINKS_MAX -> selection + destination.id
+                                    else -> { message = boundsMessage; selection }
+                                }
+                            }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = checked, onCheckedChange = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = destination.icon,
+                            contentDescription = null,
+                            tint = quickLinkColor(destination.id),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(destination.labelRes))
+                    }
+                }
+                message?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = it,
+                        color = errorColor(),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(selection) }) {
+                Text(stringResource(R.string.action_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -508,10 +652,11 @@ private fun QuickLinkCard(
     count: Int = 0,
     color: Color,
     onClick: () -> Unit,
+    resolution: GhostResponse.CapabilityResolution = GhostResponse.CapabilityResolution.SUPPORTED,
     modifier: Modifier = Modifier
 ) {
     BrutalistCard(
-        onClick = onClick,
+        onClick = if (resolution.isUsable) onClick else null,
         modifier = modifier,
         borderColor = color.copy(alpha = 0.5f),
         backgroundColor = MaterialTheme.colorScheme.surface
@@ -538,10 +683,10 @@ private fun QuickLinkCard(
                 )
             }
             Text(
-                text = label,
+                text = if (resolution == GhostResponse.CapabilityResolution.UNSUPPORTED) "$label\nUnavailable" else label,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
+                maxLines = 2
             )
         }
     }
@@ -550,6 +695,8 @@ private fun QuickLinkCard(
 @Composable
 private fun QuickActionsCard(
     isConnected: Boolean,
+    bleCapability: GhostResponse.CapabilityResolution,
+    nfcCapability: GhostResponse.CapabilityResolution,
     onScanWifi: () -> Unit,
     onScanBle: () -> Unit,
     onScanNfc: () -> Unit,
@@ -576,14 +723,14 @@ private fun QuickActionsCard(
             QuickActionButton(
                 painter = painterResource(R.drawable.ic_dolphin),
                 label = stringResource(R.string.label_scan_flippers),
-                enabled = isConnected,
+                enabled = isConnected && bleCapability.isUsable,
                 onClick = onScanBle,
                 color = secondaryColor()
             )
             QuickActionButton(
                 icon = Icons.Default.Nfc,
                 label = stringResource(R.string.action_scan_new_tag),
-                enabled = isConnected,
+                enabled = isConnected && nfcCapability.isUsable,
                 onClick = onScanNfc,
                 color = tertiaryColor()
             )

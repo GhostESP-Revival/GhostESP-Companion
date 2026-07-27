@@ -1,0 +1,8 @@
+[0] Name: Flipper-F7A1,
+     MAC: AA:BB:CC:DD:EE:FF,
+     RSSI: -67,
+     Type: UNKNOWN
+[1] Name: ,
+     MAC: 12:34:56:78:9A:BC,
+     RSSI: -90,
+     Type: Peripheral

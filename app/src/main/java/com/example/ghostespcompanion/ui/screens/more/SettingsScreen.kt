@@ -29,7 +29,7 @@ fun SettingsScreen(
     val statusMessage by viewModel.statusMessage.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
     
-    val iconPainter = painterResource(R.drawable.gesp)
+    val iconPainter = painterResource(R.mipmap.ic_launcher_foreground)
     
     MainScreen(
         onBack = onBack,

@@ -21,6 +21,7 @@ import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.theme.*
 import com.example.ghostespcompanion.ui.utils.rememberUrlOpener
 import com.example.ghostespcompanion.ui.utils.GhostESPUrls
+import com.example.ghostespcompanion.domain.model.GhostResponse
 
 /**
  * More Menu Screen - Minimalist Neo-Brutalist Design
@@ -40,6 +41,13 @@ fun MoreMenuScreen(
     onNavigateToTerminal: () -> Unit
 ) {
     val openUrl = rememberUrlOpener()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
+    val nfc = deviceInfo.resolve(GhostResponse.DeviceFeature.NFC)
+    val chameleon = deviceInfo.resolve(GhostResponse.DeviceFeature.CHAMELEON)
+    val badUsb = deviceInfo.resolve(GhostResponse.DeviceFeature.BADUSB)
+    val gps = deviceInfo.resolve(GhostResponse.DeviceFeature.GPS)
+    val ethernet = deviceInfo.resolve(GhostResponse.DeviceFeature.ETHERNET)
+    val sd = deviceInfo.resolve(GhostResponse.DeviceFeature.SD_CARD_SPI, GhostResponse.DeviceFeature.SD_CARD_MMC)
     
     MainScreen(title = stringResource(R.string.title_more)) { paddingValues ->
         LazyColumn(
@@ -62,8 +70,9 @@ fun MoreMenuScreen(
                 MenuItem(
                     icon = Icons.Default.Nfc,
                     title = stringResource(R.string.title_nfc),
-                    subtitle = stringResource(R.string.subtitle_nfc),
+                    subtitle = capabilitySubtitle(stringResource(R.string.subtitle_nfc), nfc, chameleon),
                     accentColor = tertiaryColor(),
+                    enabled = nfc.isUsable || chameleon.isUsable,
                     onClick = onNavigateToNfc
                 )
             }
@@ -72,8 +81,9 @@ fun MoreMenuScreen(
                 MenuItem(
                     icon = Icons.Default.Usb,
                     title = stringResource(R.string.title_bad_usb),
-                    subtitle = stringResource(R.string.subtitle_badusb),
+                    subtitle = capabilitySubtitle(stringResource(R.string.subtitle_badusb), badUsb),
                     accentColor = errorColor(),
+                    enabled = badUsb.isUsable,
                     onClick = onNavigateToBadUsb
                 )
             }
@@ -82,7 +92,7 @@ fun MoreMenuScreen(
                 MenuItem(
                     icon = Icons.Default.GpsFixed,
                     title = stringResource(R.string.title_gps_wardrive),
-                    subtitle = stringResource(R.string.subtitle_gps),
+                    subtitle = if (gps == GhostResponse.CapabilityResolution.UNSUPPORTED) "${stringResource(R.string.subtitle_gps)} (phone GPS only)" else capabilitySubtitle(stringResource(R.string.subtitle_gps), gps),
                     accentColor = secondaryColor(),
                     onClick = onNavigateToGps
                 )
@@ -92,8 +102,9 @@ fun MoreMenuScreen(
                 MenuItem(
                     icon = Icons.Default.SettingsEthernet,
                     title = stringResource(R.string.title_ethernet),
-                    subtitle = stringResource(R.string.subtitle_ethernet),
+                    subtitle = capabilitySubtitle(stringResource(R.string.subtitle_ethernet), ethernet),
                     accentColor = primaryColor(),
+                    enabled = ethernet.isUsable,
                     onClick = onNavigateToEthernet
                 )
             }
@@ -102,8 +113,9 @@ fun MoreMenuScreen(
                 MenuItem(
                     icon = Icons.Default.SdCard,
                     title = stringResource(R.string.title_sd_manager),
-                    subtitle = stringResource(R.string.subtitle_sd),
+                    subtitle = capabilitySubtitle(stringResource(R.string.subtitle_sd), sd),
                     accentColor = tertiaryColor(),
+                    enabled = sd.isUsable,
                     onClick = onNavigateToSd
                 )
             }
@@ -175,10 +187,11 @@ private fun MenuItem(
     title: String,
     subtitle: String,
     accentColor: Color = primaryColor(),
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     BrutalistCard(
-        onClick = onClick,
+        onClick = if (enabled) onClick else null,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -202,7 +215,7 @@ private fun MenuItem(
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = accentColor,
+                        tint = if (enabled) accentColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -215,7 +228,7 @@ private fun MenuItem(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                 )
                 Text(
                     text = subtitle,
@@ -233,6 +246,15 @@ private fun MenuItem(
     }
 }
 
+private fun capabilitySubtitle(
+    subtitle: String,
+    vararg resolutions: GhostResponse.CapabilityResolution
+): String = when {
+    resolutions.any { it == GhostResponse.CapabilityResolution.SUPPORTED } -> subtitle
+    resolutions.all { it == GhostResponse.CapabilityResolution.UNSUPPORTED } -> "$subtitle (unsupported)"
+    else -> "$subtitle (support unknown)"
+}
+
 /**
  * About card - Minimal style
  */
@@ -242,7 +264,7 @@ private fun AboutCard(
     onGitHubClick: () -> Unit
 ) {
     // Cache the painter to avoid reloading during scroll
-    val iconPainter = painterResource(id = R.drawable.gesp)
+    val iconPainter = painterResource(id = R.mipmap.ic_launcher_foreground)
     
     BrutalistCard(
         modifier = Modifier

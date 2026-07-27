@@ -184,6 +184,20 @@ sealed class GhostCommand {
         override val timeoutMs: Long = Long.MAX_VALUE
     }
 
+    /** Channel switch (CSA) attack - operates on the currently selected AP */
+    data object AttackChannelSwitch : GhostCommand() {
+        override val requiresStopFirst: Boolean = true
+        override val commandString: String = "attack -c"
+        override val timeoutMs: Long = Long.MAX_VALUE
+    }
+
+    /** GTK abuse attack - takes an explicit SSID/password rather than a selected AP */
+    data class AttackGtkAbuse(val ssid: String, val password: String) : GhostCommand() {
+        override val requiresStopFirst: Boolean = true
+        override val commandString: String = "attack -g $ssid $password"
+        override val timeoutMs: Long = Long.MAX_VALUE
+    }
+
     /** SAE flood with password */
     data class SaeFlood(val password: String) : GhostCommand() {
         override val requiresStopFirst: Boolean = true
@@ -332,6 +346,27 @@ sealed class GhostCommand {
     enum class BleScanMode {
         FLIPPER, SPAM_DETECTOR, AIR_TAG, RAW, GATT
     }
+
+    data class BleAdvertiserScan(val filter: BleAdvertiserFilter = BleAdvertiserFilter.All) : GhostCommand() {
+        override val requiresStopFirst: Boolean = true
+        override val commandString: String = when (filter) {
+            BleAdvertiserFilter.All -> "blescan -adv"
+            is BleAdvertiserFilter.Oui -> "blescan -oui ${filter.prefix}"
+            is BleAdvertiserFilter.Vendor -> "blescan -vendor ${quoteIfNeeded(filter.name)}"
+        }
+        override val timeoutMs: Long = Long.MAX_VALUE
+    }
+
+    sealed class BleAdvertiserFilter {
+        data object All : BleAdvertiserFilter()
+        data class Oui(val prefix: String) : BleAdvertiserFilter()
+        data class Vendor(val name: String) : BleAdvertiserFilter()
+    }
+
+    data object ListAdvertisers : GhostCommand() {
+        override val commandString: String = "listadv"
+        override val timeoutMs: Long = 5000
+    }
     
     /** Stop BLE scan */
     data object BleScanStop : GhostCommand() {
@@ -477,6 +512,133 @@ sealed class GhostCommand {
         }
     }
     
+    // ==================== NFC Commands ====================
+
+    /** NFC commands - firmware: backend, scan, once, save/dump, hardnested, picopass, status, stop, emulate */
+    data class Nfc(val subcommand: NfcSubcommand) : GhostCommand() {
+        override val requiresStopFirst: Boolean get() = subcommand.requiresStopFirst
+        override val commandString: String = subcommand.commandString
+        override val timeoutMs: Long = subcommand.timeoutMs
+    }
+
+    sealed class NfcSubcommand {
+        abstract val commandString: String
+        abstract val timeoutMs: Long
+        open val requiresStopFirst: Boolean = false
+
+        /** Get current backend, or set it if [backend] is provided */
+        data class Backend(val backend: NfcBackendType? = null) : NfcSubcommand() {
+            override val commandString: String = if (backend != null) "nfc backend ${backend.value}" else "nfc backend"
+            override val timeoutMs: Long = 5000
+        }
+
+        /** Continuous scan */
+        data class Scan(val parse: Boolean = false) : NfcSubcommand() {
+            override val requiresStopFirst: Boolean = true
+            override val commandString: String = if (parse) "nfc scan parse" else "nfc scan"
+            override val timeoutMs: Long = Long.MAX_VALUE
+        }
+
+        /** Scan until one tag found or 10s timeout */
+        data class Once(val parse: Boolean = false) : NfcSubcommand() {
+            override val requiresStopFirst: Boolean = true
+            override val commandString: String = if (parse) "nfc once parse" else "nfc once"
+            override val timeoutMs: Long = 15000
+        }
+
+        /** Scan one tag and save as Flipper .nfc file */
+        data object Save : NfcSubcommand() {
+            override val requiresStopFirst: Boolean = true
+            override val commandString: String = "nfc save"
+            override val timeoutMs: Long = 15000
+        }
+
+        /** MIFARE Classic hardnested key-recovery attack */
+        data class Hardnested(
+            val knownBlock: Int,
+            val knownKeyType: NfcKeyType,
+            val knownKeyHex: String,
+            val targetBlock: Int,
+            val targetKeyType: NfcKeyType,
+            val samples: Int? = null
+        ) : NfcSubcommand() {
+            override val requiresStopFirst: Boolean = true
+            override val commandString: String = buildString {
+                append("nfc hardnested known $knownBlock ${knownKeyType.value} $knownKeyHex target $targetBlock ${targetKeyType.value}")
+                samples?.let { append(" samples $it") }
+            }
+            override val timeoutMs: Long = Long.MAX_VALUE
+        }
+
+        /** PicoPass/iCLASS scan - ST25R only */
+        data class Picopass(val save: Boolean = false) : NfcSubcommand() {
+            override val requiresStopFirst: Boolean = true
+            override val commandString: String = if (save) "nfc picopass save" else "nfc picopass"
+            override val timeoutMs: Long = 15000
+        }
+
+        /** Get current task status */
+        data object Status : NfcSubcommand() {
+            override val commandString: String = "nfc status"
+            override val timeoutMs: Long = 5000
+        }
+
+        /** Stop current task */
+        data object Stop : NfcSubcommand() {
+            override val commandString: String = "nfc stop"
+            override val timeoutMs: Long = 5000
+        }
+
+        /** Emulate raw UID - ST25R only */
+        data class EmulateUid(val uid: String, val atqa: String? = null, val sak: String? = null) : NfcSubcommand() {
+            override val requiresStopFirst: Boolean = true
+            override val commandString: String = buildString {
+                append("nfc emulate uid $uid")
+                atqa?.let { append(" atqa $it") }
+                sak?.let { append(" sak $it") }
+            }
+            override val timeoutMs: Long = Long.MAX_VALUE
+        }
+
+        /** Emulate writable NTAG213 with NDEF URL or text record */
+        data class EmulateNdef(val url: String? = null, val text: String? = null) : NfcSubcommand() {
+            override val requiresStopFirst: Boolean = true
+            override val commandString: String = when {
+                text != null -> "nfc emulate ndef text \"$text\""
+                url != null -> "nfc emulate ndef url $url"
+                else -> "nfc emulate ndef"
+            }
+            override val timeoutMs: Long = Long.MAX_VALUE
+        }
+
+        /** Emulate a Flipper .nfc Type2/NTAG dump file from SD card */
+        data class EmulateFile(val path: String) : NfcSubcommand() {
+            override val requiresStopFirst: Boolean = true
+            override val commandString: String = "nfc emulate file $path"
+            override val timeoutMs: Long = Long.MAX_VALUE
+        }
+
+        /** Stop emulation */
+        data object EmulateStop : NfcSubcommand() {
+            override val commandString: String = "nfc emulate stop"
+            override val timeoutMs: Long = 5000
+        }
+
+        /** Get emulation status */
+        data object EmulateStatus : NfcSubcommand() {
+            override val commandString: String = "nfc emulate status"
+            override val timeoutMs: Long = 5000
+        }
+    }
+
+    enum class NfcBackendType(val value: String) {
+        AUTO("auto"), PN532("pn532"), ST25R("st25r")
+    }
+
+    enum class NfcKeyType(val value: String) {
+        A("A"), B("B")
+    }
+
     // ==================== IR Commands ====================
     
     /** IR commands - firmware: list, send, learn, rx, dazzler, universals */
@@ -582,6 +744,10 @@ sealed class GhostCommand {
         override val requiresStopFirst: Boolean = true
         override val commandString: String = "badusb run $filename"
         override val timeoutMs: Long = Long.MAX_VALUE
+
+        companion object {
+            fun builtin() = BadUsbRun("builtin")
+        }
     }
     
     /** Stop BadUSB script */
@@ -608,6 +774,12 @@ sealed class GhostCommand {
         override val timeoutMs: Long = 5000
     }
 
+    /** Type a single character (as ASCII code) through BadUSB keyboard mode */
+    data class BadUsbTypeChar(val charCode: Int) : GhostCommand() {
+        override val commandString: String = "badusb type_char $charCode"
+        override val timeoutMs: Long = 5000
+    }
+
     /** Start mouse jiggler */
     data object BadUsbJiggleStart : GhostCommand() {
         override val commandString: String = "badusb jiggle_start"
@@ -617,6 +789,61 @@ sealed class GhostCommand {
     /** Stop mouse jiggler */
     data object BadUsbJiggleStop : GhostCommand() {
         override val commandString: String = "badusb jiggle_stop"
+        override val timeoutMs: Long = 5000
+    }
+
+    data class BadUsbConfig(val setting: BadUsbSetting) : GhostCommand() {
+        override val commandString: String = when (setting) {
+            is BadUsbSetting.VendorId -> "badusb set_vid ${setting.hex}"
+            is BadUsbSetting.ProductId -> "badusb set_pid ${setting.hex}"
+            is BadUsbSetting.Manufacturer -> "badusb set_mfr \"${setting.text}\""
+            is BadUsbSetting.Product -> "badusb set_prod \"${setting.text}\""
+            is BadUsbSetting.Randomize -> "badusb set_rand ${if (setting.enabled) 1 else 0}"
+            is BadUsbSetting.Layout -> "badusb set_layout ${setting.index}"
+        }
+        override val timeoutMs: Long = 5000
+    }
+
+    sealed class BadUsbSetting {
+        data class VendorId(val hex: String) : BadUsbSetting()
+        data class ProductId(val hex: String) : BadUsbSetting()
+        data class Manufacturer(val text: String) : BadUsbSetting()
+        data class Product(val text: String) : BadUsbSetting()
+        data class Randomize(val enabled: Boolean) : BadUsbSetting()
+        data class Layout(val index: Int) : BadUsbSetting()
+    }
+
+    data class BadUsbKey(val modifier: Int, val keyCode: Int) : GhostCommand() {
+        override val commandString: String = "badusb keysend $modifier $keyCode"
+        override val timeoutMs: Long = 5000
+    }
+
+    data class BadUsbTrackpad(val action: BadUsbTrackpadAction) : GhostCommand() {
+        override val commandString: String = when (action) {
+            BadUsbTrackpadAction.Start -> "badusb trackpad_start"
+            BadUsbTrackpadAction.Stop -> "badusb trackpad_stop"
+            is BadUsbTrackpadAction.Move -> "badusb trackpad_move ${action.dx} ${action.dy}"
+            is BadUsbTrackpadAction.Button -> "badusb trackpad_button ${action.mask}"
+            is BadUsbTrackpadAction.Wheel -> "badusb trackpad_wheel ${action.delta}"
+        }
+        override val timeoutMs: Long = 5000
+    }
+
+    sealed class BadUsbTrackpadAction {
+        data object Start : BadUsbTrackpadAction()
+        data object Stop : BadUsbTrackpadAction()
+        data class Move(val dx: Int, val dy: Int) : BadUsbTrackpadAction()
+        data class Button(val mask: Int) : BadUsbTrackpadAction()
+        data class Wheel(val delta: Int) : BadUsbTrackpadAction()
+    }
+
+    data class BadUsbExec(val size: Int) : GhostCommand() {
+        override val commandString: String = "badusb exec $size"
+        override val timeoutMs: Long = 5000
+    }
+
+    data class BadUsbStatus(val status: String) : GhostCommand() {
+        override val commandString: String = "badusb status $status"
         override val timeoutMs: Long = 5000
     }
 
@@ -630,9 +857,22 @@ sealed class GhostCommand {
     }
 
     /** Start wardriving */
-    data class StartWardrive(val stop: Boolean = false) : GhostCommand() {
+    data class StartWardrive(
+        val stop: Boolean = false,
+        val helper: Boolean = false,
+        val channels: String? = null,
+        val hopMs: Int? = null,
+        val weighted: Boolean = false
+    ) : GhostCommand() {
         override val requiresStopFirst: Boolean get() = !stop
-        override val commandString: String = if (stop) "startwd -s" else "startwd"
+        override val commandString: String = buildString {
+            append("startwd")
+            if (stop) append(" -s")
+            if (helper) append(" --helper")
+            channels?.let { append(" --channels $it") }
+            hopMs?.let { append(" --hop $it") }
+            if (weighted) append(" --weighted")
+        }
         override val timeoutMs: Long = if (stop) 5000 else Long.MAX_VALUE
     }
 
@@ -648,7 +888,7 @@ sealed class GhostCommand {
             stop -> "wdstream stop"
             status -> "wdstream status"
             else -> {
-                val flags = if (includeBle) "-wifi -ble" else "-wifi"
+                val flags = if (includeBle) "-ble" else "-wifi"
                 "wdstream start $flags -i $intervalMs -ch auto"
             }
         }
@@ -797,6 +1037,28 @@ sealed class GhostCommand {
         override val commandString: String = "capture -stop"
         override val timeoutMs: Long = 5000
     }
+
+    data object CaptureList : GhostCommand() {
+        override val commandString: String = "capture -list"
+        override val timeoutMs: Long = 10000
+    }
+
+    data class CaptureExport(val pcapFile: String) : GhostCommand() {
+        override val commandString: String = "capture -export $pcapFile"
+        override val timeoutMs: Long = 30000
+    }
+
+    data class CaptureWireshark(val channel: Int? = null) : GhostCommand() {
+        override val requiresStopFirst: Boolean = true
+        override val commandString: String = "capture -wireshark" + (channel?.let { " -channel $it" } ?: "")
+        override val timeoutMs: Long = Long.MAX_VALUE
+    }
+
+    data object CaptureWiresharkBle : GhostCommand() {
+        override val requiresStopFirst: Boolean = true
+        override val commandString: String = "capture -wiresharkble"
+        override val timeoutMs: Long = Long.MAX_VALUE
+    }
     
     enum class CaptureMode(val value: String) {
         PROBE("-probe"),
@@ -871,9 +1133,9 @@ sealed class GhostCommand {
         override val timeoutMs: Long = 5000
     }
     
-    /** Ethernet fingerprint scan */
-    data class EthFingerprint(val ip: String) : GhostCommand() {
-        override val commandString: String = "ethfp $ip"
+    /** Ethernet fingerprint scan (always targets the local subnet/gateway, no IP argument) */
+    data object EthFingerprint : GhostCommand() {
+        override val commandString: String = "ethfp"
         override val timeoutMs: Long = 30000
     }
     
@@ -888,11 +1150,25 @@ sealed class GhostCommand {
         override val commandString: String = buildString {
             append("ethports $ip")
             if (startPort != null) {
-                append(" $startPort")
-                endPort?.let { append(" $it") }
+                append(" $startPort-${endPort ?: startPort}")
             }
         }
         override val timeoutMs: Long = 60000
+    }
+
+    data object EthStats : GhostCommand() {
+        override val commandString: String = "ethstats"
+        override val timeoutMs: Long = 5000
+    }
+
+    data class EthPoison(val action: EthPoisonAction) : GhostCommand() {
+        override val requiresStopFirst: Boolean get() = action == EthPoisonAction.START
+        override val commandString: String = "ethpoison ${action.value}"
+        override val timeoutMs: Long = if (action == EthPoisonAction.START) Long.MAX_VALUE else 5000
+    }
+
+    enum class EthPoisonAction(val value: String) {
+        START("start"), STOP("stop"), LIST("list"), COOKIES("cookies"), CREDS("creds"), STATUS("status")
     }
     
     /** Ethernet DNS lookup */
@@ -960,10 +1236,18 @@ sealed class GhostCommand {
     // ==================== Misc Commands ====================
     
     /** DHCP starvation */
-    data class DhcpStarve(val stop: Boolean = false) : GhostCommand() {
+    data class DhcpStarve(
+        val stop: Boolean = false,
+        val display: Boolean = false,
+        val threads: Int? = null
+    ) : GhostCommand() {
         override val requiresStopFirst: Boolean get() = !stop
-        override val commandString: String = if (stop) "dhcpstarve -s" else "dhcpstarve"
-        override val timeoutMs: Long = if (stop) 5000 else Long.MAX_VALUE
+        override val commandString: String = when {
+            stop -> "dhcpstarve stop"
+            display -> "dhcpstarve display"
+            else -> "dhcpstarve start" + (threads?.let { " $it" } ?: "")
+        }
+        override val timeoutMs: Long = if (stop || display) 5000 else Long.MAX_VALUE
     }
     
     /** SAE flood help */
@@ -990,9 +1274,23 @@ sealed class GhostCommand {
     }
     
     /** PineAP detection */
-    data object PineAp : GhostCommand() {
-        override val commandString: String = "pineap"
-        override val timeoutMs: Long = 30000
+    data class PineAp(val stop: Boolean = false) : GhostCommand() {
+        override val requiresStopFirst: Boolean get() = !stop
+        override val commandString: String = if (stop) "pineap -s" else "pineap"
+        override val timeoutMs: Long = if (stop) 5000 else Long.MAX_VALUE
+    }
+
+    /** Flock (drone/tag) detection */
+    data class FlockScan(val stop: Boolean = false) : GhostCommand() {
+        override val requiresStopFirst: Boolean get() = !stop
+        override val commandString: String = if (stop) "flockstop" else "flockscan"
+        override val timeoutMs: Long = if (stop) 5000 else Long.MAX_VALUE
+    }
+
+    /** WPA3 compliance check - requires a prior scanap + select -a <index> */
+    data object Wpa3Check : GhostCommand() {
+        override val commandString: String = "wpa3check"
+        override val timeoutMs: Long = 15000
     }
     
     /** Enable AP */
@@ -1001,22 +1299,44 @@ sealed class GhostCommand {
         override val timeoutMs: Long = 5000
     }
     
-    /** RGB mode */
+    /** Run an immediate RGB effect. Persistent modes use [SetRgbMode]. */
     data class RgbMode(val mode: RgbModeType) : GhostCommand() {
-        override val commandString: String = "rgbmode ${mode.value}"
+        override val commandString: String = when (mode) {
+            RgbModeType.NORMAL, RgbModeType.STEALTH -> "setrgbmode ${mode.value}"
+            else -> "rgbmode ${mode.value}"
+        }
         override val timeoutMs: Long = 5000
     }
     
     enum class RgbModeType(val value: String) {
         NORMAL("normal"),
         RAINBOW("rainbow"),
+        POLICE("police"),
+        STROBE("strobe"),
+        KNIGHT("knight"),
+        OFF("off"),
         STEALTH("stealth")
+    }
+
+    data class RgbColor(val color: RgbColorType) : GhostCommand() {
+        override val commandString: String = "rgbmode ${color.value}"
+        override val timeoutMs: Long = 5000
+    }
+
+    enum class RgbColorType(val value: String) {
+        RED("red"), GREEN("green"), BLUE("blue"), YELLOW("yellow"), TWH_PURPLE("twh-purple"),
+        CYAN("cyan"), ORANGE("orange"), WHITE("white"), PINK("pink")
     }
     
     /** Set RGB mode */
     data class SetRgbMode(val mode: String) : GhostCommand() {
+        constructor(mode: PersistentRgbMode) : this(mode.value)
         override val commandString: String = "setrgbmode $mode"
         override val timeoutMs: Long = 5000
+    }
+
+    enum class PersistentRgbMode(val value: String) {
+        NORMAL("normal"), RAINBOW("rainbow"), STEALTH("stealth")
     }
     
     /** Set RGB pins */
@@ -1159,9 +1479,18 @@ sealed class GhostCommand {
     }
     
     /** Power printer */
-    data class PowerPrinter(val ip: String, val text: String) : GhostCommand() {
-        override val commandString: String = "powerprinter $ip \"$text\""
+    data class PowerPrinter(
+        val ip: String,
+        val text: String,
+        val fontSize: Int,
+        val alignment: PrinterAlignment
+    ) : GhostCommand() {
+        override val commandString: String = "powerprinter $ip \"$text\" $fontSize ${alignment.value}"
         override val timeoutMs: Long = 10000
+    }
+
+    enum class PrinterAlignment(val value: String) {
+        CENTER_MIDDLE("CM"), TOP_LEFT("TL"), TOP_RIGHT("TR"), BOTTOM_RIGHT("BR"), BOTTOM_LEFT("BL")
     }
     
     /** Screen mirror */
@@ -1227,14 +1556,14 @@ sealed class GhostCommand {
     /** Sweep channels */
     data class Sweep(val stop: Boolean = false) : GhostCommand() {
         override val requiresStopFirst: Boolean get() = !stop
-        override val commandString: String = if (stop) "sweep -s" else "sweep"
+        override val commandString: String = if (stop) "stop" else "sweep"
         override val timeoutMs: Long = if (stop) 5000 else Long.MAX_VALUE
     }
 
     /** Listen probes */
     data class ListenProbes(val stop: Boolean = false) : GhostCommand() {
         override val requiresStopFirst: Boolean get() = !stop
-        override val commandString: String = if (stop) "listenprobes -s" else "listenprobes"
+        override val commandString: String = if (stop) "listenprobes stop" else "listenprobes"
         override val timeoutMs: Long = if (stop) 5000 else Long.MAX_VALUE
     }
     
@@ -1248,8 +1577,7 @@ sealed class GhostCommand {
     data class ScanPorts(val target: String, val startPort: Int? = null, val endPort: Int? = null) : GhostCommand() {
         override val commandString: String = buildString {
             append("scanports $target")
-            startPort?.let { append(" $it") }
-            endPort?.let { append(" $it") }
+            startPort?.let { append(" $it-${endPort ?: it}") }
         }
         override val timeoutMs: Long = 60000
     }
@@ -1265,6 +1593,34 @@ sealed class GhostCommand {
         override val commandString: String = "scanssh $target"
         override val timeoutMs: Long = 30000
     }
+
+    /** Scan for NetBIOS hosts - blank target scans the local subnet */
+    data class NetBiosScan(val target: String = "") : GhostCommand() {
+        override val commandString: String = if (target.isBlank()) "netbiosscan" else "netbiosscan $target"
+        override val timeoutMs: Long = 30000
+    }
+
+    /** Grab HTTP banners - blank target scans the local subnet */
+    data class HttpBannerScan(val target: String = "") : GhostCommand() {
+        override val commandString: String = if (target.isBlank()) "httpbannerscan" else "httpbannerscan $target"
+        override val timeoutMs: Long = 30000
+    }
+
+    /** SNMP probe, or full SNMP walk of a host - blank target scans the local subnet */
+    data class SnmpProbe(val target: String = "", val walk: Boolean = false) : GhostCommand() {
+        override val commandString: String = buildString {
+            append("snmpprobe")
+            if (walk) append(" walk")
+            if (target.isNotBlank()) append(" $target")
+        }
+        override val timeoutMs: Long = 30000
+    }
+
+    /** SMB/RPC enumeration scan - blank target scans the local subnet */
+    data class EnumScan(val target: String = "") : GhostCommand() {
+        override val commandString: String = if (target.isBlank()) "enumscan" else "enumscan $target"
+        override val timeoutMs: Long = 30000
+    }
     
     // ==================== Raw Command ====================
     
@@ -1272,5 +1628,10 @@ sealed class GhostCommand {
     data class Raw(val command: String) : GhostCommand() {
         override val commandString: String = command
         override val timeoutMs: Long = 10000
+    }
+
+    companion object {
+        private fun quoteIfNeeded(value: String): String =
+            if (value.any(Char::isWhitespace)) "\"$value\"" else value
     }
 }

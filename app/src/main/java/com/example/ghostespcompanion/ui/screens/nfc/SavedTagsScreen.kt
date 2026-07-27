@@ -16,6 +16,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.serial.SerialManager
+import com.example.ghostespcompanion.domain.model.GhostResponse
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.components.*
 import com.example.ghostespcompanion.ui.theme.*
@@ -38,7 +39,10 @@ fun SavedTagsScreen(
     val connectionState by viewModel.connectionState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val nfcCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.NFC)
+    val commandsEnabled = isConnected && nfcCapability.isUsable
     val privacyMode = appSettings.privacyMode
     
     val savedTags = remember { mutableStateListOf<SavedNfcTag>() }
@@ -48,10 +52,10 @@ fun SavedTagsScreen(
         title = stringResource(R.string.title_saved_tags),
         actions = {
             IconButton(onClick = {
-                if (isConnected) {
-                    viewModel.scanNfc()
+                if (commandsEnabled) {
+                    viewModel.chameleonScan()
                 }
-            }) {
+            }, enabled = commandsEnabled) {
                 Icon(
                     Icons.Default.Add,
                     contentDescription = stringResource(R.string.action_scan_new_tag),
@@ -65,6 +69,7 @@ fun SavedTagsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            CapabilityNotice(nfcCapability, stringResource(R.string.title_nfc), Modifier.padding(16.dp))
             // Connection Status Banner
             NfcConnectionBanner(
                 isConnected = isConnected,
@@ -104,11 +109,11 @@ fun SavedTagsScreen(
                     BrutalistButton(
                         text = stringResource(R.string.title_scan_tag),
                         onClick = {
-                            if (isConnected) {
-                                viewModel.scanNfc()
+                            if (commandsEnabled) {
+                                viewModel.chameleonScan()
                             }
                         },
-                        enabled = isConnected,
+                        enabled = commandsEnabled,
                         leadingIcon = { Icon(Icons.Default.Nfc, contentDescription = null) }
                     )
                 }
@@ -165,12 +170,12 @@ fun SavedTagsScreen(
                                 showDeleteDialog = true
                             },
                             onWrite = {
-                                if (isConnected) {
+                                if (commandsEnabled) {
                                     viewModel.sendRaw("nfc_write ${tag.id}")
                                 }
                             },
                             onEmulate = {
-                                if (isConnected) {
+                                if (commandsEnabled) {
                                     viewModel.sendRaw("nfc_emulate ${tag.id}")
                                 }
                             }
@@ -196,26 +201,26 @@ fun SavedTagsScreen(
                                 BrutalistButton(
                                     text = stringResource(R.string.action_write),
                                     onClick = {
-                                        if (isConnected) {
+                                        if (commandsEnabled) {
                                             viewModel.sendRaw("nfc_write ${selectedTag?.id}")
                                         }
                                     },
                                     modifier = Modifier.weight(1f),
                                     containerColor = primaryColor(),
-                                    enabled = isConnected,
+                                    enabled = commandsEnabled,
                                     leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
                                 )
                                 
                                 BrutalistButton(
                                     text = stringResource(R.string.action_emulate_short),
                                     onClick = {
-                                        if (isConnected) {
+                                        if (commandsEnabled) {
                                             viewModel.sendRaw("nfc_emulate ${selectedTag?.id}")
                                         }
                                     },
                                     modifier = Modifier.weight(1f),
                                     containerColor = successColor(),
-                                    enabled = isConnected,
+                                    enabled = commandsEnabled,
                                     leadingIcon = { Icon(Icons.Default.CreditCard, contentDescription = null) }
                                 )
                             }

@@ -1,0 +1,6 @@
+Handshake found!
+AP=24:2F:D0:90:DD:70
+Pair=M1/M2
+Handshake found!
+AP=AA:BB:CC:DD:EE:FF
+Pair=M2/M3

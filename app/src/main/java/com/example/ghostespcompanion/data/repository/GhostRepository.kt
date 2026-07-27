@@ -20,6 +20,7 @@ import androidx.core.content.FileProvider
 import com.example.ghostespcompanion.R
 import com.example.ghostespcompanion.data.PhoneLocation
 import com.example.ghostespcompanion.data.ble.BleBridgeDevice
+import com.example.ghostespcompanion.data.serial.BleConnectionFailure
 import com.example.ghostespcompanion.data.serial.GhostSerialResponse
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
@@ -40,7 +41,9 @@ import kotlin.coroutines.cancellation.CancellationException
 enum class SavedConnectionAttempt {
     NOT_FOUND,
     STARTED,
-    FAILED
+    FAILED,
+    BLUETOOTH_PERMISSION_REQUIRED,
+    BLUETOOTH_DISABLED
 }
 
 /**
@@ -62,6 +65,7 @@ class GhostRepository @Inject constructor(
     // Connection state
     val connectionState: StateFlow<SerialManager.ConnectionState> = serialManager.connectionState
     val connectionTransport: StateFlow<SerialManager.ConnectionTransport> = serialManager.connectionTransport
+    val lastBleConnectionFailure: StateFlow<BleConnectionFailure> = serialManager.lastBleConnectionFailure
 
     // Raw serial output for terminal
     val rawOutput: SharedFlow<String> = serialManager.rawOutput
@@ -84,12 +88,120 @@ class GhostRepository @Inject constructor(
     
     private val _gattDevices = MutableStateFlow<List<GhostResponse.GattDevice>>(emptyList())
     val gattDevices: StateFlow<List<GhostResponse.GattDevice>> = _gattDevices.asStateFlow()
+
+    private val _advertiserDevices = MutableStateFlow<List<GhostResponse.AdvertiserDevice>>(emptyList())
+    val advertiserDevices: StateFlow<List<GhostResponse.AdvertiserDevice>> = _advertiserDevices.asStateFlow()
     
     private val _gattServices = MutableStateFlow<List<GhostResponse.GattService>>(emptyList())
     val gattServices: StateFlow<List<GhostResponse.GattService>> = _gattServices.asStateFlow()
 
+    private val _ethernetInfo = MutableStateFlow<GhostResponse.EthernetInfo?>(null)
+    val ethernetInfo: StateFlow<GhostResponse.EthernetInfo?> = _ethernetInfo.asStateFlow()
+
+    private val _ethernetStats = MutableStateFlow<GhostResponse.EthernetStats?>(null)
+    val ethernetStats: StateFlow<GhostResponse.EthernetStats?> = _ethernetStats.asStateFlow()
+
+    private val _arpScanResults = MutableStateFlow<List<GhostResponse.ArpScanResult>>(emptyList())
+    val arpScanResults: StateFlow<List<GhostResponse.ArpScanResult>> = _arpScanResults.asStateFlow()
+
+    private val _portScanResults = MutableStateFlow<List<GhostResponse.PortScanResult>>(emptyList())
+    val portScanResults: StateFlow<List<GhostResponse.PortScanResult>> = _portScanResults.asStateFlow()
+
+    private val _pingScanResults = MutableStateFlow<List<GhostResponse.PingScanResult>>(emptyList())
+    val pingScanResults: StateFlow<List<GhostResponse.PingScanResult>> = _pingScanResults.asStateFlow()
+
+    private val _traceHops = MutableStateFlow<List<GhostResponse.TraceHop>>(emptyList())
+    val traceHops: StateFlow<List<GhostResponse.TraceHop>> = _traceHops.asStateFlow()
+
+    private val _pineapDetections = MutableStateFlow<List<GhostResponse.PineapDetection>>(emptyList())
+    val pineapDetections: StateFlow<List<GhostResponse.PineapDetection>> = _pineapDetections.asStateFlow()
+
+    private val _flockDetections = MutableStateFlow<List<GhostResponse.FlockDetection>>(emptyList())
+    val flockDetections: StateFlow<List<GhostResponse.FlockDetection>> = _flockDetections.asStateFlow()
+
+    private val _flockScanComplete = MutableStateFlow<GhostResponse.FlockScanComplete?>(null)
+    val flockScanComplete: StateFlow<GhostResponse.FlockScanComplete?> = _flockScanComplete.asStateFlow()
+
+    private val _netBiosResults = MutableStateFlow<List<GhostResponse.NetBiosResult>>(emptyList())
+    val netBiosResults: StateFlow<List<GhostResponse.NetBiosResult>> = _netBiosResults.asStateFlow()
+
+    private val _httpBannerHits = MutableStateFlow<List<GhostResponse.HttpBannerHit>>(emptyList())
+    val httpBannerHits: StateFlow<List<GhostResponse.HttpBannerHit>> = _httpBannerHits.asStateFlow()
+
+    private val _httpBannerSummary = MutableStateFlow<GhostResponse.HttpBannerSummary?>(null)
+    val httpBannerSummary: StateFlow<GhostResponse.HttpBannerSummary?> = _httpBannerSummary.asStateFlow()
+
+    private val _snmpHits = MutableStateFlow<List<GhostResponse.SnmpHit>>(emptyList())
+    val snmpHits: StateFlow<List<GhostResponse.SnmpHit>> = _snmpHits.asStateFlow()
+
+    private val _snmpSummary = MutableStateFlow<GhostResponse.SnmpSummary?>(null)
+    val snmpSummary: StateFlow<GhostResponse.SnmpSummary?> = _snmpSummary.asStateFlow()
+
+    private val _enumHits = MutableStateFlow<List<GhostResponse.EnumHit>>(emptyList())
+    val enumHits: StateFlow<List<GhostResponse.EnumHit>> = _enumHits.asStateFlow()
+
+    private val _enumSummary = MutableStateFlow<GhostResponse.EnumSummary?>(null)
+    val enumSummary: StateFlow<GhostResponse.EnumSummary?> = _enumSummary.asStateFlow()
+
+    private val _wpa3Compliance = MutableStateFlow<GhostResponse.Wpa3Compliance?>(null)
+    val wpa3Compliance: StateFlow<GhostResponse.Wpa3Compliance?> = _wpa3Compliance.asStateFlow()
+
+    private val _wpa3ReportSummary = MutableStateFlow<GhostResponse.Wpa3ReportSummary?>(null)
+    val wpa3ReportSummary: StateFlow<GhostResponse.Wpa3ReportSummary?> = _wpa3ReportSummary.asStateFlow()
+
+    private var pendingWpa3ReportApCount: Int = 0
+
+    private val _csaAttackStatus = MutableStateFlow(GhostResponse.CsaAttackStatus(targetCount = 0))
+    val csaAttackStatus: StateFlow<GhostResponse.CsaAttackStatus> = _csaAttackStatus.asStateFlow()
+
+    private val _gtkAbuseLog = MutableStateFlow<List<GhostResponse.GtkAbuseStatus>>(emptyList())
+    val gtkAbuseLog: StateFlow<List<GhostResponse.GtkAbuseStatus>> = _gtkAbuseLog.asStateFlow()
+
+    fun clearPineapDetections() { _pineapDetections.value = emptyList() }
+    fun clearFlockScan() {
+        _flockDetections.value = emptyList()
+        _flockScanComplete.value = null
+    }
+    fun clearNetBiosResults() { _netBiosResults.value = emptyList() }
+    fun clearHttpBannerResults() {
+        _httpBannerHits.value = emptyList()
+        _httpBannerSummary.value = null
+    }
+    fun clearSnmpResults() {
+        _snmpHits.value = emptyList()
+        _snmpSummary.value = null
+    }
+    fun clearEnumResults() {
+        _enumHits.value = emptyList()
+        _enumSummary.value = null
+    }
+    fun clearWpa3Results() {
+        _wpa3Compliance.value = null
+        _wpa3ReportSummary.value = null
+    }
+    fun clearCsaAttackStatus() { _csaAttackStatus.value = GhostResponse.CsaAttackStatus(targetCount = 0) }
+    fun clearGtkAbuseLog() { _gtkAbuseLog.value = emptyList() }
+
     private val _nfcTags = MutableStateFlow<List<GhostResponse.NfcTag>>(emptyList())
     val nfcTags: StateFlow<List<GhostResponse.NfcTag>> = _nfcTags.asStateFlow()
+
+    private val _nfcBackend = MutableStateFlow<GhostResponse.NfcBackend?>(null)
+    val nfcBackend: StateFlow<GhostResponse.NfcBackend?> = _nfcBackend.asStateFlow()
+
+    private val _nfcTaskRunning = MutableStateFlow(false)
+    val nfcTaskRunning: StateFlow<Boolean> = _nfcTaskRunning.asStateFlow()
+
+    private val _nfcEmulateStatus = MutableStateFlow<GhostResponse.NfcEmulateStatus?>(null)
+    val nfcEmulateStatus: StateFlow<GhostResponse.NfcEmulateStatus?> = _nfcEmulateStatus.asStateFlow()
+
+    private val _nfcSaveResult = MutableStateFlow<GhostResponse.NfcSaveResult?>(null)
+    val nfcSaveResult: StateFlow<GhostResponse.NfcSaveResult?> = _nfcSaveResult.asStateFlow()
+
+    private val _nfcHardnestedResult = MutableStateFlow<GhostResponse.NfcHardnestedResult?>(null)
+    val nfcHardnestedResult: StateFlow<GhostResponse.NfcHardnestedResult?> = _nfcHardnestedResult.asStateFlow()
+
+    private val _nfcPicopassResult = MutableStateFlow<GhostResponse.NfcPicopassResult?>(null)
+    val nfcPicopassResult: StateFlow<GhostResponse.NfcPicopassResult?> = _nfcPicopassResult.asStateFlow()
 
     private val _sdEntries = MutableStateFlow<List<GhostResponse.SdEntry>>(emptyList())
     val sdEntries: StateFlow<List<GhostResponse.SdEntry>> = _sdEntries.asStateFlow()
@@ -220,6 +332,7 @@ class GhostRepository @Inject constructor(
     private val flipperCache = ConcurrentHashMap<String, GhostResponse.FlipperDevice>()
     private val airTagCache = ConcurrentHashMap<String, GhostResponse.AirTagDevice>()
     private val gattCache = ConcurrentHashMap<String, GhostResponse.GattDevice>()
+    private val advertiserCache = ConcurrentHashMap<String, GhostResponse.AdvertiserDevice>()
     private val aerialCache = ConcurrentHashMap<String, GhostResponse.AerialDevice>()
 
     private var scanJob: Job? = null
@@ -229,6 +342,7 @@ class GhostRepository @Inject constructor(
 
     // Response collection job
     private var responseJob: Job? = null
+    @Volatile private var chipInfoRequestedForConnection = false
 
     init {
         // Listen to serial responses and parse them
@@ -250,9 +364,18 @@ class GhostRepository @Inject constructor(
             var wasConnected = false
             serialManager.connectionState.collect { state ->
                 when (state) {
-                    SerialManager.ConnectionState.CONNECTED -> wasConnected = true
+                    SerialManager.ConnectionState.CONNECTED -> {
+                        wasConnected = true
+                        if (!chipInfoRequestedForConnection) {
+                            _deviceInfo.value = null
+                            getChipInfo()
+                        }
+                    }
                     SerialManager.ConnectionState.DISCONNECTED,
                     SerialManager.ConnectionState.ERROR -> {
+                        synchronized(this@GhostRepository) {
+                            chipInfoRequestedForConnection = false
+                        }
                         if (wasConnected) {
                             wasConnected = false
                             clearAllData()
@@ -331,7 +454,7 @@ class GhostRepository @Inject constructor(
                         d.vendorId == saved.vendorId && d.productId == saved.productId
                 } ?: devices.firstOrNull { d ->
                     d.vendorId == saved.vendorId && d.productId == saved.productId
-                } ?: return SavedConnectionAttempt.NOT_FOUND
+                } ?: return SavedConnectionAttempt.FAILED
                 val assertDtr = preferencesRepository.appSettings.first().dtrCompatibilityMode
                 if (serialManager.connect(device, saved.baudRate, saved.portIndex, assertDtr)) {
                     SavedConnectionAttempt.STARTED
@@ -348,7 +471,11 @@ class GhostRepository @Inject constructor(
                 if (serialManager.connectBle(device)) {
                     SavedConnectionAttempt.STARTED
                 } else {
-                    SavedConnectionAttempt.FAILED
+                    when (serialManager.lastBleConnectionFailure.value) {
+                        BleConnectionFailure.PERMISSION_REQUIRED -> SavedConnectionAttempt.BLUETOOTH_PERMISSION_REQUIRED
+                        BleConnectionFailure.BLUETOOTH_DISABLED -> SavedConnectionAttempt.BLUETOOTH_DISABLED
+                        else -> SavedConnectionAttempt.FAILED
+                    }
                 }
             }
         }
@@ -565,6 +692,22 @@ class GhostRepository @Inject constructor(
         sendCommand(GhostCommand.CaptureStop)
     }
 
+    suspend fun captureList() {
+        sendCommand(GhostCommand.CaptureList)
+    }
+
+    suspend fun captureExport(pcapFile: String) {
+        sendCommand(GhostCommand.CaptureExport(pcapFile))
+    }
+
+    suspend fun startWiresharkCapture(channel: Int? = null) {
+        sendCommand(GhostCommand.CaptureWireshark(channel))
+    }
+
+    suspend fun startWiresharkBleCapture() {
+        sendCommand(GhostCommand.CaptureWiresharkBle)
+    }
+
     // ==================== BLE Commands ====================
 
     /**
@@ -635,6 +778,22 @@ class GhostRepository @Inject constructor(
     }
 
     /**
+     * Scan for BLE advertisers with optional OUI/vendor filter.
+     */
+    suspend fun scanBleAdvertisers(filter: GhostCommand.BleAdvertiserFilter = GhostCommand.BleAdvertiserFilter.All) {
+        clearAdvertiserDevices()
+        sendCommand(GhostCommand.BleAdvertiserScan(filter))
+    }
+
+    /**
+     * List discovered BLE advertisers.
+     */
+    suspend fun listAdvertisers() {
+        clearAdvertiserDevices()
+        sendCommand(GhostCommand.ListAdvertisers)
+    }
+
+    /**
      * Enumerate GATT services
      */
     suspend fun enumGatt() {
@@ -669,19 +828,78 @@ class GhostRepository @Inject constructor(
 
     // ==================== NFC Commands ====================
 
-    /**
-     * Scan for NFC tags using Chameleon
-     */
-    suspend fun scanNfc(timeout: Int = 60) {
-        clearNfcTags()
-        sendCommand(GhostCommand.Chameleon(GhostCommand.ChameleonSubcommand.Scan(timeout)))
+    suspend fun nfcGetBackend() {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.Backend()))
     }
 
-    /**
-     * Stop NFC Scan
-     */
-    suspend fun stopNfcScan() {
-        sendCommand(GhostCommand.Chameleon(GhostCommand.ChameleonSubcommand.ScanStop))
+    suspend fun nfcSetBackend(backend: GhostCommand.NfcBackendType) {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.Backend(backend)))
+    }
+
+    suspend fun nfcScan(parse: Boolean = false) {
+        clearNfcTags()
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.Scan(parse)))
+    }
+
+    suspend fun nfcOnce(parse: Boolean = false) {
+        clearNfcTags()
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.Once(parse)))
+    }
+
+    suspend fun nfcSave() {
+        _nfcSaveResult.value = null
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.Save))
+    }
+
+    suspend fun nfcHardnested(
+        knownBlock: Int,
+        knownKeyType: GhostCommand.NfcKeyType,
+        knownKeyHex: String,
+        targetBlock: Int,
+        targetKeyType: GhostCommand.NfcKeyType,
+        samples: Int? = null
+    ) {
+        _nfcHardnestedResult.value = null
+        sendCommand(
+            GhostCommand.Nfc(
+                GhostCommand.NfcSubcommand.Hardnested(
+                    knownBlock, knownKeyType, knownKeyHex, targetBlock, targetKeyType, samples
+                )
+            )
+        )
+    }
+
+    suspend fun nfcPicopass(save: Boolean = false) {
+        _nfcPicopassResult.value = null
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.Picopass(save)))
+    }
+
+    suspend fun nfcStatus() {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.Status))
+    }
+
+    suspend fun nfcStop() {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.Stop))
+    }
+
+    suspend fun nfcEmulateUid(uid: String, atqa: String? = null, sak: String? = null) {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.EmulateUid(uid, atqa, sak)))
+    }
+
+    suspend fun nfcEmulateNdef(url: String? = null, text: String? = null) {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.EmulateNdef(url, text)))
+    }
+
+    suspend fun nfcEmulateFile(path: String) {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.EmulateFile(path)))
+    }
+
+    suspend fun nfcEmulateStop() {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.EmulateStop))
+    }
+
+    suspend fun nfcEmulateStatus() {
+        sendCommand(GhostCommand.Nfc(GhostCommand.NfcSubcommand.EmulateStatus))
     }
 
     // ==================== IR Commands ====================
@@ -791,12 +1009,36 @@ class GhostRepository @Inject constructor(
         sendCommand(GhostCommand.BadUsbType(text))
     }
 
+    suspend fun typeBadUsbChar(charCode: Int) {
+        sendCommand(GhostCommand.BadUsbTypeChar(charCode))
+    }
+
     suspend fun startBadUsbJiggler() {
         sendCommand(GhostCommand.BadUsbJiggleStart)
     }
 
     suspend fun stopBadUsbJiggler() {
         sendCommand(GhostCommand.BadUsbJiggleStop)
+    }
+
+    suspend fun badUsbConfig(setting: GhostCommand.BadUsbSetting) {
+        sendCommand(GhostCommand.BadUsbConfig(setting))
+    }
+
+    suspend fun badUsbKey(modifier: Int, keyCode: Int) {
+        sendCommand(GhostCommand.BadUsbKey(modifier, keyCode))
+    }
+
+    suspend fun badUsbTrackpad(action: GhostCommand.BadUsbTrackpadAction) {
+        sendCommand(GhostCommand.BadUsbTrackpad(action))
+    }
+
+    suspend fun badUsbExec(size: Int) {
+        sendCommand(GhostCommand.BadUsbExec(size))
+    }
+
+    suspend fun badUsbStatus(status: String) {
+        sendCommand(GhostCommand.BadUsbStatus(status))
     }
 
     // ==================== GPS Commands ====================
@@ -824,6 +1066,20 @@ class GhostRepository @Inject constructor(
         _isWardriving.value = true
         _wardriveStats.value = null
         sendCommand(GhostCommand.StartWardrive(false))
+    }
+
+    /**
+     * Start wardriving with advanced firmware flags.
+     */
+    suspend fun startWardrive(
+        helper: Boolean = false,
+        channels: String? = null,
+        hopMs: Int? = null,
+        weighted: Boolean = false
+    ) {
+        _isWardriving.value = true
+        _wardriveStats.value = null
+        sendCommand(GhostCommand.StartWardrive(false, helper, channels, hopMs, weighted))
     }
 
     /**
@@ -1071,6 +1327,187 @@ class GhostRepository @Inject constructor(
         return path.removePrefix("/mnt/ghostesp/").ifEmpty { path }
     }
 
+    /**
+     * Upload [bytes] to the SD card at [path], chunked to match the firmware's CLI argument
+     * limits (mirrors the 768-byte raw chunk size used by downloadSdFile/sd read). The first
+     * chunk is sent via `sd write` (create/truncate) and the rest via `sd append`. Each chunk's
+     * reported byte count is verified before the next is sent, and the final file size is
+     * checked against [bytes].size once the transfer completes.
+     */
+    suspend fun uploadSdFile(
+        path: String,
+        bytes: ByteArray,
+        fileName: String = path.substringAfterLast('/'),
+        onProgress: (uploaded: Long, total: Long, pct: Int) -> Unit = { _, _, _ -> }
+    ) {
+        _transferProgress.value = FileTransferProgress.Uploading(fileName, 0, bytes.size.toLong(), 0)
+        try {
+            val chunkSize = 768
+            val writePath = compactSdPathForCommand(path)
+            val total = bytes.size.toLong()
+            var offset = 0
+            var chunkIndex = 0
+
+            do {
+                val end = minOf(offset + chunkSize, bytes.size)
+                val chunk = bytes.copyOfRange(offset, end)
+                val encoded = Base64.encodeToString(chunk, Base64.NO_WRAP)
+                val command = if (chunkIndex == 0) {
+                    GhostCommand.SdWrite(writePath, encoded)
+                } else {
+                    GhostCommand.SdAppend(writePath, encoded)
+                }
+
+                val result = awaitSdWriteChunk(command, timeoutMs = 30_000)
+                    ?: throw Exception("Timeout writing chunk at offset $offset")
+                if (result.errorMessage != null) {
+                    throw Exception(result.errorMessage)
+                }
+                if (result.reportedBytes != chunk.size) {
+                    throw Exception("SD write size mismatch at offset $offset: sent=${chunk.size} reported=${result.reportedBytes}")
+                }
+
+                offset = end
+                chunkIndex++
+                val pct = if (total > 0) ((offset * 100) / total).coerceAtMost(100).toInt() else 100
+                _transferProgress.value = FileTransferProgress.Uploading(fileName, offset.toLong(), total, pct)
+                onProgress(offset.toLong(), total, pct)
+            } while (offset < bytes.size)
+
+            val finalSize = awaitSdSize(writePath, timeoutMs = 10_000)
+            if (finalSize != total) {
+                throw Exception("Upload verification failed: expected $total bytes, SD reports $finalSize")
+            }
+
+            _transferProgress.value = FileTransferProgress.Complete(fileName, true)
+            scope.launch {
+                delay(2000)
+                if (_transferProgress.value is FileTransferProgress.Complete) {
+                    _transferProgress.value = FileTransferProgress.Idle
+                }
+            }
+        } catch (e: CancellationException) {
+            _transferProgress.value = FileTransferProgress.Cancelled
+            throw e
+        } catch (e: Exception) {
+            _transferProgress.value = FileTransferProgress.Complete(fileName, false, e.message)
+        }
+    }
+
+    private class SdWriteParser {
+        private val lock = Any()
+        private val lineBuffer = StringBuilder()
+
+        @Volatile
+        var lastDataAtMs: Long = 0
+            private set
+
+        var reportedBytes: Int? = null
+            private set
+
+        var errorMessage: String? = null
+            private set
+
+        var done = false
+            private set
+
+        fun onBytes(bytes: ByteArray) = synchronized(lock) {
+            lastDataAtMs = System.currentTimeMillis()
+            lineBuffer.append(bytes.toString(Charsets.UTF_8))
+
+            while (true) {
+                val newline = lineBuffer.indexOf("\n")
+                if (newline < 0) return@synchronized
+
+                val line = lineBuffer.substring(0, newline).trimEnd('\r')
+                lineBuffer.delete(0, newline + 1)
+                handleLine(line)
+            }
+        }
+
+        fun onLine(line: String) = synchronized(lock) {
+            handleLine(line)
+        }
+
+        private fun handleLine(line: String) {
+            val trimmed = line.trimEnd('\r')
+            when {
+                trimmed.startsWith("SD:WRITE:bytes=") -> {
+                    reportedBytes = trimmed.removePrefix("SD:WRITE:bytes=").toIntOrNull()
+                }
+                trimmed.startsWith("SD:APPEND:bytes=") -> {
+                    reportedBytes = trimmed.removePrefix("SD:APPEND:bytes=").toIntOrNull()
+                }
+                trimmed.startsWith("SD:ERR:") -> {
+                    errorMessage = trimmed
+                    done = true
+                }
+                trimmed.startsWith("SD:OK") -> {
+                    done = true
+                }
+            }
+        }
+    }
+
+    private suspend fun awaitSdWriteChunk(
+        command: GhostCommand,
+        timeoutMs: Long
+    ): SdWriteParser? = withTimeoutOrNull(timeoutMs) {
+        val parser = SdWriteParser()
+        val completed = CompletableDeferred<SdWriteParser>()
+        val useBlePayloads = serialManager.connectionTransport.value == SerialManager.ConnectionTransport.BLE
+        val job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            if (useBlePayloads) {
+                serialManager.bleBridgeDataPayloads.collect { bytes ->
+                    parser.onBytes(bytes)
+                    if (parser.done && !completed.isCompleted) {
+                        completed.complete(parser)
+                    }
+                }
+            } else {
+                serialManager.rawOutput.collect { line ->
+                    parser.onLine(line)
+                    if (parser.done && !completed.isCompleted) {
+                        completed.complete(parser)
+                    }
+                }
+            }
+        }
+        try {
+            if (!sendCommand(command)) {
+                throw IllegalStateException("Failed to send ${command.commandString}")
+            }
+            completed.await()
+        } finally {
+            job.cancel()
+        }
+    }
+
+    private suspend fun awaitSdSize(
+        path: String,
+        timeoutMs: Long
+    ): Long? = withTimeoutOrNull(timeoutMs) {
+        val completed = CompletableDeferred<Long?>()
+        val job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            serialManager.rawOutput.collect { line ->
+                val trimmed = line.trim()
+                if (trimmed.startsWith("SD:SIZE:")) {
+                    if (!completed.isCompleted) completed.complete(trimmed.removePrefix("SD:SIZE:").toLongOrNull())
+                } else if (trimmed.startsWith("SD:ERR:")) {
+                    if (!completed.isCompleted) completed.complete(null)
+                }
+            }
+        }
+        try {
+            if (!sendCommand(GhostCommand.SdSize(path))) {
+                throw IllegalStateException("Failed to send sd size $path")
+            }
+            completed.await()
+        } finally {
+            job.cancel()
+        }
+    }
+
     private class SdReadParser {
         private val lock = Any()
         private val lineBuffer = StringBuilder()
@@ -1170,6 +1607,28 @@ class GhostRepository @Inject constructor(
     suspend fun checkSdCard() {
         clearSdEntries()
         sendCommand(GhostCommand.SdList("/mnt/ghostesp"))
+    }
+
+    /**
+     * Recursive directory tree listing.
+     */
+    suspend fun sdTree(path: String? = null, depth: Int? = null) {
+        clearSdEntries()
+        sendCommand(GhostCommand.SdTree(path, depth))
+    }
+
+    /**
+     * Get info for a file or directory.
+     */
+    suspend fun sdInfo(path: String) {
+        sendCommand(GhostCommand.SdInfo(path))
+    }
+
+    /**
+     * Show current SD configuration.
+     */
+    suspend fun sdConfig() {
+        sendCommand(GhostCommand.SdConfig)
     }
 
     /**
@@ -1593,12 +2052,71 @@ class GhostRepository @Inject constructor(
         sendCommand(GhostCommand.ListPortals)
     }
 
+    // ==================== Ethernet Diagnostics Commands ====================
+
+    suspend fun ethStats() {
+        sendCommand(GhostCommand.EthStats)
+    }
+
+    suspend fun ethInfo() {
+        sendCommand(GhostCommand.EthInfo)
+    }
+
+    suspend fun ethFingerprint() {
+        sendCommand(GhostCommand.EthFingerprint)
+    }
+
+    suspend fun ethArp() {
+        _arpScanResults.value = emptyList()
+        sendCommand(GhostCommand.EthArp)
+    }
+
+    suspend fun ethPorts(ip: String, startPort: Int? = null, endPort: Int? = null) {
+        _portScanResults.value = emptyList()
+        sendCommand(GhostCommand.EthPorts(ip, startPort, endPort))
+    }
+
+    suspend fun ethPing() {
+        _pingScanResults.value = emptyList()
+        sendCommand(GhostCommand.EthPing)
+    }
+
+    suspend fun ethTrace(hostname: String, maxHops: Int? = null) {
+        _traceHops.value = emptyList()
+        sendCommand(GhostCommand.EthTrace(hostname, maxHops))
+    }
+
+    suspend fun ethPoison(action: GhostCommand.EthPoisonAction) {
+        sendCommand(GhostCommand.EthPoison(action))
+    }
+
+    // ==================== RGB Commands ====================
+
+    suspend fun setRgbColor(color: GhostCommand.RgbColorType) {
+        sendCommand(GhostCommand.RgbColor(color))
+    }
+
+    suspend fun setRgbMode(mode: GhostCommand.RgbModeType) {
+        sendCommand(GhostCommand.RgbMode(mode))
+    }
+
+    suspend fun setPersistentRgbMode(mode: GhostCommand.PersistentRgbMode) {
+        sendCommand(GhostCommand.SetRgbMode(mode))
+    }
+
     // ==================== Settings Commands ====================
 
     /**
      * Get chip info
      */
     suspend fun getChipInfo() {
+        val shouldRequest = synchronized(this) {
+            if (chipInfoRequestedForConnection) false else {
+                chipInfoRequestedForConnection = true
+                true
+            }
+        }
+        if (!shouldRequest) return
         sendCommand(GhostCommand.ChipInfo)
     }
 
@@ -1951,12 +2469,127 @@ class GhostRepository @Inject constructor(
                     _statusMessage.value = "GATT device found: ${gattDevice.name ?: gattDevice.mac}"
                 }
             }
+            GhostSerialResponse.ResponseType.ADVERTISER_DEVICE -> {
+                GhostResponse.AdvertiserDevice.parseLive(response.raw)?.let { device ->
+                    advertiserCache[device.mac] = device
+                    _advertiserDevices.value = advertiserCache.values.sortedByDescending { it.rssi }
+                }
+            }
+            GhostSerialResponse.ResponseType.ADVERTISER_DEVICE_DETAIL -> {
+                GhostResponse.AdvertiserDevice.parseDetail(response.raw)?.let { device ->
+                    advertiserCache[device.mac] = device
+                    _advertiserDevices.value = advertiserCache.values.sortedByDescending { it.rssi }
+                }
+            }
             GhostSerialResponse.ResponseType.GATT_SERVICE -> {
                 GhostResponse.GattService.parse(response.raw)?.let { service ->
                     _gattServices.update { current ->
                         if (current.any { it.uuid == service.uuid && it.startHandle == service.startHandle }) current
                         else current + service
                     }
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_INFO -> {
+                GhostResponse.EthernetInfo.parse(response.raw)?.let { info ->
+                    _ethernetInfo.value = info
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_STATS -> {
+                GhostResponse.EthernetStats.parse(response.raw)?.let { stats ->
+                    _ethernetStats.value = stats
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_ARP_RESULT -> {
+                GhostResponse.ArpScanResult.parse(response.raw)?.let { entry ->
+                    _arpScanResults.update { it + entry }
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_PORT_RESULT -> {
+                GhostResponse.PortScanResult.parse(response.raw)?.let { entry ->
+                    _portScanResults.update { it + entry }
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_PING_RESULT -> {
+                GhostResponse.PingScanResult.parse(response.raw)?.let { entry ->
+                    _pingScanResults.update { it + entry }
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_TRACE_HOP -> {
+                GhostResponse.TraceHop.parse(response.raw)?.let { hop ->
+                    _traceHops.update { it + hop }
+                }
+            }
+            GhostSerialResponse.ResponseType.PINEAP_DETECTION -> {
+                GhostResponse.PineapDetection.parse(response.raw)?.let { detection ->
+                    _pineapDetections.update { it + detection }
+                }
+            }
+            GhostSerialResponse.ResponseType.FLOCK_DETECTION -> {
+                GhostResponse.FlockDetection.parse(response.raw)?.let { detection ->
+                    _flockDetections.update { it + detection }
+                }
+            }
+            GhostSerialResponse.ResponseType.FLOCK_SCAN_COMPLETE -> {
+                GhostResponse.FlockScanComplete.parse(response.raw)?.let { _flockScanComplete.value = it }
+            }
+            GhostSerialResponse.ResponseType.NETBIOS_RESULT -> {
+                GhostResponse.NetBiosResult.parse(response.raw)?.let { result ->
+                    _netBiosResults.update { it + result }
+                }
+            }
+            GhostSerialResponse.ResponseType.HTTP_BANNER_HIT -> {
+                GhostResponse.HttpBannerHit.parse(response.raw)?.let { hit ->
+                    _httpBannerHits.update { it + hit }
+                }
+            }
+            GhostSerialResponse.ResponseType.HTTP_BANNER_SUMMARY -> {
+                GhostResponse.HttpBannerSummary.parse(response.raw)?.let { _httpBannerSummary.value = it }
+            }
+            GhostSerialResponse.ResponseType.SNMP_HIT -> {
+                GhostResponse.SnmpHit.parse(response.raw)?.let { hit ->
+                    _snmpHits.update { it + hit }
+                }
+            }
+            GhostSerialResponse.ResponseType.SNMP_SUMMARY -> {
+                GhostResponse.SnmpSummary.parse(response.raw)?.let { _snmpSummary.value = it }
+            }
+            GhostSerialResponse.ResponseType.ENUM_HIT -> {
+                GhostResponse.EnumHit.parse(response.raw)?.let { hit ->
+                    _enumHits.update { it + hit }
+                }
+            }
+            GhostSerialResponse.ResponseType.ENUM_SUMMARY -> {
+                GhostResponse.EnumSummary.parse(response.raw)?.let { _enumSummary.value = it }
+            }
+            GhostSerialResponse.ResponseType.WPA3_COMPLIANCE -> {
+                GhostResponse.Wpa3Compliance.parse(response.raw)?.let { _wpa3Compliance.value = it }
+            }
+            GhostSerialResponse.ResponseType.WPA3_REPORT_HEADER -> {
+                GhostResponse.Wpa3ReportSummary.parseHeader(response.raw)?.let { pendingWpa3ReportApCount = it }
+            }
+            GhostSerialResponse.ResponseType.WPA3_REPORT_SUMMARY -> {
+                GhostResponse.Wpa3ReportSummary.parseSummary(response.raw, pendingWpa3ReportApCount)?.let {
+                    _wpa3ReportSummary.value = it
+                }
+            }
+            GhostSerialResponse.ResponseType.CSA_TARGETING -> {
+                GhostResponse.CsaAttackStatus.parseTargeting(response.raw)?.let { count ->
+                    _csaAttackStatus.value = GhostResponse.CsaAttackStatus(targetCount = count)
+                }
+            }
+            GhostSerialResponse.ResponseType.CSA_TARGET -> {
+                GhostResponse.CsaAttackStatus.parseTarget(response.raw)?.let { target ->
+                    _csaAttackStatus.update { it.copy(targets = it.targets + target) }
+                }
+            }
+            GhostSerialResponse.ResponseType.CSA_RATE -> {
+                GhostResponse.CsaAttackStatus.parseRate(response.raw)?.let { rate ->
+                    _csaAttackStatus.update { it.copy(packetsPerSecond = rate) }
+                }
+            }
+            GhostSerialResponse.ResponseType.GTK_ABUSE_STATUS -> {
+                GhostResponse.GtkAbuseStatus.parse(response.raw)?.let { status ->
+                    _gtkAbuseLog.update { it + status }
                 }
             }
             GhostSerialResponse.ResponseType.STATION -> {
@@ -1972,8 +2605,10 @@ class GhostRepository @Inject constructor(
                     _nfcTags.update { current ->
                         if (current.any { it.uid == tag.uid }) current else current + tag
                     }
+                    _statusMessage.value = "NFC tag found: ${tag.type.name} ${tag.uid}"
                 }
             }
+            GhostSerialResponse.ResponseType.NFC_MESSAGE -> handleNfcMessage(response.raw)
             GhostSerialResponse.ResponseType.SD_ENTRY -> {
                 // Check for listing completion: SD:OK:listed N entries
                 if (response.raw.startsWith("SD:OK:listed") || response.raw.startsWith("SD:OK:tree")) {
@@ -2180,6 +2815,78 @@ class GhostRepository @Inject constructor(
         }
     }
 
+    /** Dispatches non-tag "nfc" CLI response lines (backend/status/save/hardnested/picopass/emulate). */
+    private fun handleNfcMessage(raw: String) {
+        val trimmed = raw.trim()
+
+        GhostResponse.NfcBackend.parse(trimmed)?.let {
+            _nfcBackend.value = it
+            _statusMessage.value = "NFC backend: ${it.name}"
+            return
+        }
+
+        GhostResponse.NfcEmulateStatus.parse(trimmed)?.let {
+            _nfcEmulateStatus.value = it
+            _statusMessage.value = if (it.running) "NFC emulating uid=${it.uid}" else "NFC emulation stopped"
+            return
+        }
+
+        GhostResponse.NfcSaveResult.parse(trimmed)?.let {
+            _nfcSaveResult.value = it
+            _statusMessage.value = if (it.success) "NFC dump saved: ${it.path}" else "NFC save failed"
+            return
+        }
+
+        GhostResponse.NfcHardnestedResult.parse(trimmed)?.let {
+            _nfcHardnestedResult.value = it
+            _statusMessage.value = if (it.success) "Hardnested capture saved: ${it.path}" else "Hardnested capture failed"
+            return
+        }
+
+        when {
+            trimmed.contains("PicoPass/iCLASS requires ST25R3916") -> {
+                _nfcPicopassResult.value = GhostResponse.NfcPicopassResult(found = false, unsupported = true)
+            }
+            trimmed.contains("no PicoPass/iCLASS tag found") -> {
+                _nfcPicopassResult.value = GhostResponse.NfcPicopassResult(found = false)
+            }
+            trimmed.startsWith("NFC:") && trimmed.contains("PicoPass/iCLASS CSN=") -> {
+                GhostResponse.NfcPicopassResult.parseCsn(trimmed)?.let { csn ->
+                    _nfcPicopassResult.value = GhostResponse.NfcPicopassResult(found = true, csn = csn)
+                }
+            }
+            trimmed.startsWith("Auth failed") -> {
+                _nfcPicopassResult.update { (it ?: GhostResponse.NfcPicopassResult(found = true)).copy(authFailed = true) }
+            }
+            trimmed.startsWith("PACS:") -> {
+                GhostResponse.NfcPicopassResult.parsePacs(trimmed)?.let { pacs ->
+                    _nfcPicopassResult.update {
+                        (it ?: GhostResponse.NfcPicopassResult(found = true)).copy(fc = pacs.fc, cn = pacs.cn, bits = pacs.bits)
+                    }
+                }
+            }
+            trimmed.startsWith("Encryption:") -> {
+                GhostResponse.NfcPicopassResult.parseEncryption(trimmed)?.let { enc ->
+                    _nfcPicopassResult.update {
+                        (it ?: GhostResponse.NfcPicopassResult(found = true)).copy(
+                            encryption = enc.value,
+                            biometrics = enc.biometrics,
+                            pinLen = enc.pinLen,
+                            sio = enc.sio
+                        )
+                    }
+                }
+            }
+            trimmed.contains("NFC: task running") -> _nfcTaskRunning.value = true
+            trimmed.contains("NFC: task idle") -> _nfcTaskRunning.value = false
+            trimmed.contains("NFC: stopping") -> _nfcTaskRunning.value = false
+            trimmed.contains("NFC: not running") -> _nfcTaskRunning.value = false
+            trimmed.contains("NFC: no tag found") -> _statusMessage.value = "No NFC tag found"
+            trimmed.contains("emulation requires ST25R3916") -> _statusMessage.value = trimmed.removePrefix("NFC:").trim()
+            else -> Unit
+        }
+    }
+
     // ==================== Clear Functions ====================
 
     /**
@@ -2199,6 +2906,11 @@ class GhostRepository @Inject constructor(
     fun clearBleDevices() {
         bleCache.clear()
         _bleDevices.value = emptyList()
+    }
+
+    fun clearAdvertiserDevices() {
+        advertiserCache.clear()
+        _advertiserDevices.value = emptyList()
     }
 
     fun clearFlipperDevices() {

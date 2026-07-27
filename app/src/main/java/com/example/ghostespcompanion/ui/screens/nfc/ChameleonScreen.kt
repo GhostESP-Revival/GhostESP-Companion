@@ -20,6 +20,7 @@ import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.components.*
 import com.example.ghostespcompanion.ui.theme.*
 import com.example.ghostespcompanion.ui.viewmodel.MainViewModel
+import com.example.ghostespcompanion.domain.model.GhostResponse
 
 /**
  * Chameleon Ultra Screen - Emulate NFC tags with Chameleon Ultra device
@@ -36,7 +37,10 @@ fun ChameleonScreen(
     
     val connectionState by viewModel.connectionState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val capability = deviceInfo.resolve(GhostResponse.DeviceFeature.CHAMELEON)
+    val commandsEnabled = isConnected && capability.isUsable
     
     val emptyStr = stringResource(R.string.label_empty)
     // Available slots (Chameleon Ultra has 8 slots)
@@ -57,7 +61,7 @@ fun ChameleonScreen(
         onBack = onBack,
         title = stringResource(R.string.title_chameleon_ultra),
         actions = {
-            IconButton(onClick = { showSlotDialog = true }) {
+            IconButton(onClick = { showSlotDialog = true }, enabled = commandsEnabled) {
                 Icon(
                     Icons.Default.Add,
                     contentDescription = stringResource(R.string.action_add_tag),
@@ -71,6 +75,7 @@ fun ChameleonScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            CapabilityNotice(capability, stringResource(R.string.title_chameleon_ultra), Modifier.padding(12.dp))
             // Connection Status Banner
             ChameleonConnectionBanner(
                 isConnected = isConnected,
@@ -128,7 +133,7 @@ fun ChameleonScreen(
                                 BrutalistButton(
                                     text = stringResource(R.string.action_stop),
                                     onClick = {
-                                        if (isConnected) {
+                                        if (commandsEnabled) {
                                             viewModel.sendRaw("chameleon_stop")
                                             isEmulating = false
                                         }
@@ -156,9 +161,10 @@ fun ChameleonScreen(
                         slot = slot,
                         isSelected = selectedSlot == slot.index,
                         isEmulating = isEmulating && selectedSlot == slot.index,
+                        enabled = commandsEnabled,
                         onSelect = { selectedSlot = slot.index },
                         onEmulate = {
-                            if (isConnected) {
+                            if (commandsEnabled) {
                                 if (isEmulating && selectedSlot == slot.index) {
                                     viewModel.sendRaw("chameleon_stop")
                                     isEmulating = false
@@ -190,24 +196,26 @@ fun ChameleonScreen(
                         BrutalistOutlinedButton(
                             text = stringResource(R.string.action_scan_to_slot),
                             onClick = {
-                                if (isConnected) {
-                                    viewModel.scanNfc()
+                                if (commandsEnabled) {
+                                    viewModel.chameleonScan()
                                 }
                             },
                             modifier = Modifier.weight(1f),
+                            enabled = commandsEnabled,
                             leadingIcon = { Icon(Icons.Default.Nfc, contentDescription = null) }
                         )
                         
                         BrutalistOutlinedButton(
                             text = stringResource(R.string.action_clear_slot),
                             onClick = {
-                                if (isConnected) {
+                                if (commandsEnabled) {
                                     viewModel.sendRaw("chameleon_clear $selectedSlot")
                                 }
                             },
                             modifier = Modifier.weight(1f),
                             borderColor = warningColor(),
                             textColor = warningColor(),
+                            enabled = commandsEnabled,
                             leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
                         )
                     }
@@ -221,22 +229,24 @@ fun ChameleonScreen(
                         BrutalistOutlinedButton(
                             text = stringResource(R.string.action_save_all),
                             onClick = {
-                                if (isConnected) {
+                                if (commandsEnabled) {
                                     viewModel.sendRaw("chameleon_save")
                                 }
                             },
                             modifier = Modifier.weight(1f),
+                            enabled = commandsEnabled,
                             leadingIcon = { Icon(Icons.Default.Save, contentDescription = null) }
                         )
                         
                         BrutalistOutlinedButton(
                             text = stringResource(R.string.action_load_all),
                             onClick = {
-                                if (isConnected) {
+                                if (commandsEnabled) {
                                     viewModel.sendRaw("chameleon_load")
                                 }
                             },
                             modifier = Modifier.weight(1f),
+                            enabled = commandsEnabled,
                             leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) }
                         )
                     }
@@ -313,6 +323,7 @@ private fun ChameleonSlotCard(
     slot: ChameleonSlot,
     isSelected: Boolean,
     isEmulating: Boolean,
+    enabled: Boolean,
     onSelect: () -> Unit,
     onEmulate: () -> Unit
 ) {
@@ -323,7 +334,7 @@ private fun ChameleonSlotCard(
             isSelected -> primaryColor()
             else -> OutlineDark
         },
-        onClick = onSelect
+        onClick = if (enabled) onSelect else null
     ) {
         Row(
             modifier = Modifier
@@ -382,6 +393,7 @@ private fun ChameleonSlotCard(
             BrutalistButton(
                 text = if (isEmulating) stringResource(R.string.action_stop) else stringResource(R.string.action_emulate),
                 onClick = onEmulate,
+                enabled = enabled,
                 containerColor = if (isEmulating) errorColor() else if (slot.hasData) primaryColor() else SurfaceVariantDark,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             )

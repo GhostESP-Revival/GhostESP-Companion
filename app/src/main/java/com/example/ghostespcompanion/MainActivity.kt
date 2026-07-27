@@ -176,13 +176,21 @@ fun GhostESPApp(
         val savedAttempt = viewModel.connectSavedDeviceSync()
         if (savedAttempt == SavedConnectionAttempt.STARTED) return@LaunchedEffect
 
-        // No saved device or it wasn't found — fall back to USB scan
+        // A failed saved reconnect must always expose USB and service-filter BLE discovery.
         var devices = viewModel.fetchAvailableDevices()
-        if (savedAttempt == SavedConnectionAttempt.FAILED) {
-            if (viewModel.connectionState.value == SerialManager.ConnectionState.CONNECTING ||
-                viewModel.connectionState.value == SerialManager.ConnectionState.CONNECTED
-            ) return@LaunchedEffect
-            if (devices.isNotEmpty()) showDeviceDialog = true
+        if (savedAttempt == SavedConnectionAttempt.FAILED ||
+            savedAttempt == SavedConnectionAttempt.BLUETOOTH_PERMISSION_REQUIRED ||
+            savedAttempt == SavedConnectionAttempt.BLUETOOTH_DISABLED
+        ) {
+            showDeviceDialog = true
+            if (savedAttempt == SavedConnectionAttempt.BLUETOOTH_PERMISSION_REQUIRED) {
+                val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+                } else {
+                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+                }
+                blePermissionLauncher.launch(permissions)
+            }
             return@LaunchedEffect
         }
         repeat(3) {

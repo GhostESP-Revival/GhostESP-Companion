@@ -1,0 +1,9 @@
+=== WIFI STATUS ===
+connected=true
+has_saved_network=true
+connected_ssid=HomeNetwork
+connected_rssi=-45
+connected_bssid=AA:BB:CC:DD:EE:FF
+connected_channel=6
+saved_ssid=HomeNetwork
+=== END STATUS ===

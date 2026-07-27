@@ -186,7 +186,93 @@ class PreferencesRepository @Inject constructor(
     suspend fun getSavedDevice(): SavedDevice? = readSavedDevice(context)
     suspend fun setSavedDevice(device: SavedDevice?) = writeSavedDevice(context, device)
     suspend fun clearSavedDevice() = writeSavedDevice(context, null)
+
+    private object BadUsbConfigKeys {
+        val VID = stringPreferencesKey("badusb_vid")
+        val PID = stringPreferencesKey("badusb_pid")
+        val MFR = stringPreferencesKey("badusb_mfr")
+        val PROD = stringPreferencesKey("badusb_prod")
+        val LAYOUT = intPreferencesKey("badusb_layout")
+    }
+
+    /**
+     * Flow of the last-used BadUSB config, so the screen can default to it instead of hardcoded values.
+     */
+    val lastBadUsbConfig: Flow<BadUsbConfig> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { preferences ->
+            BadUsbConfig(
+                vid = preferences[BadUsbConfigKeys.VID] ?: BadUsbConfig().vid,
+                pid = preferences[BadUsbConfigKeys.PID] ?: BadUsbConfig().pid,
+                mfr = preferences[BadUsbConfigKeys.MFR] ?: "",
+                prod = preferences[BadUsbConfigKeys.PROD] ?: "",
+                layout = preferences[BadUsbConfigKeys.LAYOUT] ?: 0
+            )
+        }
+
+    suspend fun setLastBadUsbConfig(config: BadUsbConfig) {
+        context.dataStore.edit { preferences ->
+            preferences[BadUsbConfigKeys.VID] = config.vid
+            preferences[BadUsbConfigKeys.PID] = config.pid
+            preferences[BadUsbConfigKeys.MFR] = config.mfr
+            preferences[BadUsbConfigKeys.PROD] = config.prod
+            preferences[BadUsbConfigKeys.LAYOUT] = config.layout
+        }
+    }
+
+    private val LAST_NFC_BACKEND = stringPreferencesKey("last_nfc_backend")
+
+    /**
+     * Flow of the last-selected NFC backend, so the NFC screen can default to it instead of resetting to AUTO.
+     */
+    val lastNfcBackend: Flow<String?> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { preferences -> preferences[LAST_NFC_BACKEND] }
+
+    suspend fun setLastNfcBackend(backend: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LAST_NFC_BACKEND] = backend
+        }
+    }
+
+    private val QUICK_LINKS = stringPreferencesKey("quick_links")
+
+    /**
+     * Flow of the user-selected Quick Links destination IDs, ordered, comma-separated.
+     * Falls back to the original fixed grid (WIFI, BLE, IR, SD) when nothing is persisted yet.
+     */
+    val quickLinks: Flow<String> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { preferences -> preferences[QUICK_LINKS] ?: DEFAULT_QUICK_LINKS }
+
+    suspend fun setQuickLinks(destinationIds: List<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[QUICK_LINKS] = destinationIds.joinToString(",")
+        }
+    }
+
+    companion object {
+        const val DEFAULT_QUICK_LINKS = "WIFI,BLE,IR,SD"
+    }
 }
+
+/**
+ * Last-used BadUSB identity fields, persisted so the Config tab doesn't reset to Apple-mouse defaults every visit.
+ */
+@Immutable
+data class BadUsbConfig(
+    val vid: String = "0x05AC",
+    val pid: String = "0x0210",
+    val mfr: String = "",
+    val prod: String = "",
+    val layout: Int = 0
+)
 
 /**
  * Persisted description of the last device we successfully connected to.

@@ -17,11 +17,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -61,6 +65,7 @@ fun WifiScreen(
     onNavigateToTrack: (Int) -> Unit,
     viewModel: MainViewModel
 ) {
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var isScanningStations by remember { mutableStateOf(false) }
     var showApDetailSheet by remember { mutableStateOf(false) }
     var showAttackOptionsSheet by remember { mutableStateOf(false) }
@@ -78,10 +83,36 @@ fun WifiScreen(
     var showPacketCaptureDialog by remember { mutableStateOf(false) }
     var activePacketCaptureMode by remember { mutableStateOf<GhostCommand.CaptureMode?>(null) }
     var showNotConnectedSnackbar by remember { mutableStateOf(false) }
+
+    // Attacks tab row states (row-based attack launcher list)
+    // Shared target AP for every attack that operates on the firmware's `select -a` selection
+    var targetApIndex by remember { mutableStateOf<Int?>(null) }
+    var beaconSpamRickroll by remember { mutableStateOf(false) }
+    var saePassword by remember { mutableStateOf("") }
+    var isSaeFloodRunning by remember { mutableStateOf(false) }
+    var dhcpThreads by remember { mutableStateOf("") }
+    var isDhcpStarveRunning by remember { mutableStateOf(false) }
+    var isListenProbesRunning by remember { mutableStateOf(false) }
+    var isPineApRunning by remember { mutableStateOf(false) }
+    var isFlockScanRunning by remember { mutableStateOf(false) }
+    var openPortsTarget by remember { mutableStateOf("") }
+    var sshScanTarget by remember { mutableStateOf("") }
+    var netBiosScanTarget by remember { mutableStateOf("") }
+    var httpBannerScanTarget by remember { mutableStateOf("") }
+    var snmpTarget by remember { mutableStateOf("") }
+    var snmpWalkMode by remember { mutableStateOf(false) }
+    var enumScanTarget by remember { mutableStateOf("") }
+    var isChannelSwitchRunning by remember { mutableStateOf(false) }
+    var gtkAbusePassword by remember { mutableStateOf("") }
+    var isGtkAbuseRunning by remember { mutableStateOf(false) }
     
     // Station detail sheet states
     var selectedStation by remember { mutableStateOf<GhostResponse.Station?>(null) }
     var showStationDetailSheet by remember { mutableStateOf(false) }
+
+    // AP multi-select mode - firmware's `select -a i,j,k` genuinely deauths every selected AP at once
+    var apMultiSelectMode by remember { mutableStateOf(false) }
+    var selectedApIndices by remember { mutableStateOf(setOf<Int>()) }
     
     // Collect state from ViewModel
     val connectionState by viewModel.connectionState.collectAsState()
@@ -98,6 +129,20 @@ fun WifiScreen(
     val appSettings by viewModel.appSettings.collectAsState()
     val isScanning by viewModel.isWifiScanning.collectAsState()
     val wifiConnection by viewModel.wifiConnection.collectAsState()
+    val pineapDetections by viewModel.pineapDetections.collectAsState()
+    val flockDetections by viewModel.flockDetections.collectAsState()
+    val flockScanComplete by viewModel.flockScanComplete.collectAsState()
+    val netBiosResults by viewModel.netBiosResults.collectAsState()
+    val httpBannerHits by viewModel.httpBannerHits.collectAsState()
+    val httpBannerSummary by viewModel.httpBannerSummary.collectAsState()
+    val snmpHits by viewModel.snmpHits.collectAsState()
+    val snmpSummary by viewModel.snmpSummary.collectAsState()
+    val enumHits by viewModel.enumHits.collectAsState()
+    val enumSummary by viewModel.enumSummary.collectAsState()
+    val wpa3Compliance by viewModel.wpa3Compliance.collectAsState()
+    val wpa3ReportSummary by viewModel.wpa3ReportSummary.collectAsState()
+    val csaAttackStatus by viewModel.csaAttackStatus.collectAsState()
+    val gtkAbuseLog by viewModel.gtkAbuseLog.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val privacyMode = appSettings.privacyMode
     val context = LocalContext.current
@@ -113,7 +158,10 @@ fun WifiScreen(
     DisposableEffect(Unit) {
         onDispose {
             viewModel.stopWifiScanAndReset()
-            if (activeDeauthIndex != null || isBeaconSpamming || isRickRolling || isKarmaRunning) {
+            if (activeDeauthIndex != null || isBeaconSpamming || isRickRolling || isKarmaRunning ||
+                isSaeFloodRunning || isDhcpStarveRunning || isListenProbesRunning ||
+                isPineApRunning || isFlockScanRunning || isChannelSwitchRunning || isGtkAbuseRunning
+            ) {
                 viewModel.stopAll()
             }
             if (activePacketCaptureMode != null) {
@@ -170,7 +218,21 @@ fun WifiScreen(
             viewModel.getChipInfo()
         }
     }
+
+    // Pre-fill recon scan targets with the connected network's IP once known, without clobbering user edits
+    LaunchedEffect(wifiConnection?.ip) {
+        val ip = wifiConnection?.ip ?: return@LaunchedEffect
+        if (netBiosScanTarget.isBlank()) netBiosScanTarget = ip
+        if (httpBannerScanTarget.isBlank()) httpBannerScanTarget = ip
+        if (snmpTarget.isBlank()) snmpTarget = ip
+        if (enumScanTarget.isBlank()) enumScanTarget = ip
+    }
     
+    val tabTitles = listOf(
+        stringResource(R.string.tab_wifi_access_points),
+        stringResource(R.string.tab_wifi_attacks)
+    )
+
     MainScreen(
         title = stringResource(R.string.title_wifi),
         actions = {
@@ -252,133 +314,16 @@ fun WifiScreen(
                 )
             }
             
-            // Scan Buttons Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Scan Networks Button
-                BrutalistButton(
-                    text = if (isScanning) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_scan_networks),
-                    onClick = { 
-                        if (isConnected) {
-                            if (isScanning) {
-                                viewModel.stopWifiScanAndReset()
-                            } else {
-                                viewModel.scanWifi()
-                            }
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    containerColor = if (isScanning) warningColor() else MaterialTheme.colorScheme.primary,
-                    textColor = MaterialTheme.colorScheme.onPrimary,
-                    enabled = isConnected,
-                    isLoading = false,
-                    leadingIcon = {
-                        Icon(
-                            if (isScanning) Icons.Default.Stop else Icons.Default.Search, 
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                )
-                
-                // Scan Stations Button
-                BrutalistButton(
-                    text = if (isScanningStations) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_scan_stations),
-                    onClick = { 
-                        if (isConnected) {
-                            if (isScanningStations) {
-                                viewModel.stopAll()
-                                isScanningStations = false
-                            } else {
-                                viewModel.clearStations()
-                                viewModel.scanSta()
-                                isScanningStations = true
-                            }
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    containerColor = if (isScanningStations) warningColor() else MaterialTheme.colorScheme.secondary,
-                    textColor = MaterialTheme.colorScheme.onSecondary,
-                    enabled = isConnected,
-                    isLoading = false,
-                    leadingIcon = {
-                        Icon(
-                            if (isScanningStations) Icons.Default.Stop else Icons.Default.Devices, 
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                )
-            }
-            
-            // Quick action buttons row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (isConnected) {
-                    // Stop All button
-                    QuickActionChip(
-                        text = stringResource(R.string.action_stop_all),
-                        onClick = {
-                            viewModel.stopAll()
-                            viewModel.stopWifiScanAndReset()
-                            isScanningStations = false
-                            activeDeauthIndex = null
-                            isBeaconSpamming = false
-                            isRickRolling = false
-                            isKarmaRunning = false
-                            activePacketCaptureMode = null
-                        },
-                        isSelected = false,
-                        selectedColor = errorColor()
+            TabRow(selectedTabIndex = selectedTab) {
+                tabTitles.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = { Text(title) }
                     )
-                    QuickActionChip(
-                        text = stringResource(R.string.label_packet_capture),
-                        onClick = { showPacketCaptureDialog = true },
-                        isSelected = activePacketCaptureMode != null,
-                        selectedColor = primaryColor()
-                    )
-                    if (activePacketCaptureMode != null) {
-                        QuickActionChip(
-                            text = stringResource(R.string.action_stop_capture),
-                            onClick = {
-                                viewModel.stopPacketCapture()
-                                activePacketCaptureMode = null
-                            },
-                            isSelected = true,
-                            selectedColor = errorColor()
-                        )
-                    }
                 }
             }
-            
-            // Active attack indicator
-            if (activeDeauthIndex != null || isBeaconSpamming || isRickRolling || isKarmaRunning || isScanningStations) {
-                ActiveAttackBanner(
-                    deauthIndex = activeDeauthIndex,
-                    isBeaconSpamming = isBeaconSpamming,
-                    isRickRolling = isRickRolling,
-                    isKarmaRunning = isKarmaRunning,
-                    isScanningStations = isScanningStations,
-                    onStopAll = {
-                        viewModel.stopAll()
-                        activeDeauthIndex = null
-                        isBeaconSpamming = false
-                        isRickRolling = false
-                        isKarmaRunning = false
-                        activePacketCaptureMode = null
-                        isScanningStations = false
-                    }
-                )
-            }
-            
+
             // Status message
             statusMessage?.let { message ->
                 if (message.isNotEmpty()) {
@@ -390,122 +335,878 @@ fun WifiScreen(
                     )
                 }
             }
-            
-            // Results count
-            if (displayAccessPoints.isNotEmpty()) {
-                BrutalistSectionHeader(
-                    title = stringResource(R.string.msg_found_networks_count, displayAccessPoints.size),
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    accentColor = primaryColor()
-                )
-            } else if (isConnected && !isScanning) {
-                BrutalistSectionHeader(
-                    title = stringResource(R.string.msg_no_networks_found_hint),
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    accentColor = OnSurfaceVariantDark
-                )
+
+            // Group stations by their associated AP BSSID
+            val stationsByApBssid = remember(stations) {
+                stations.groupBy { it.apBssid }
             }
-            
-            // Show skeleton loading while scanning
-            if (isScanning && displayAccessPoints.isEmpty()) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    items(5) {
-                        SkeletonWifiApCard()
-                    }
+
+            // Pre-compute unassociated stations with memoization to avoid O(n*m) filter on every recomposition
+            val unassociatedStations = remember(stations, displayAccessPoints) {
+                val apBssids = displayAccessPoints.map { it.bssid }.toSet()
+                stations.filter { station ->
+                    station.apBssid == null || station.apBssid !in apBssids
                 }
-            } else {
-                // Group stations by their associated AP BSSID
-                val stationsByApBssid = remember(stations) {
-                    stations.groupBy { it.apBssid }
-                }
-                
-                // Pre-compute unassociated stations with memoization to avoid O(n*m) filter on every recomposition
-                val unassociatedStations = remember(stations, displayAccessPoints) {
-                    val apBssids = displayAccessPoints.map { it.bssid }.toSet()
-                    stations.filter { station ->
-                        station.apBssid == null || station.apBssid !in apBssids
-                    }
-                }
-                
-                // Combined scrollable list for APs with their associated stations
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // AP List with stations as sub-items
-                    itemsIndexed(
-                        items = displayAccessPoints,
-                        key = { _, ap -> ap.index },
-                        contentType = { _, _ -> "access_point" }
-                    ) { index, ap ->
-                        // Only stagger first few items for initial load, rest appear instantly
-                        StaggeredAnimatedItem(
-                            index = index,
-                            staggerDelayMs = 20
-                        ) {
-                            val associatedStations = stationsByApBssid[ap.bssid] ?: emptyList()
-                            val hasStations = associatedStations.isNotEmpty()
-                            
-                            WifiApCardWithStations(
-                                accessPoint = ap,
-                                isAttacking = activeDeauthIndex == ap.index,
-                                privacyMode = privacyMode,
-                                hasStations = hasStations,
-                                associatedStationsCount = associatedStations.size,
-                                associatedStations = associatedStations,
-                                isCurrentConnection = connectedSsid != null && ap.ssid == connectedSsid,
-                                connectedIp = if (connectedSsid != null && ap.ssid == connectedSsid) wifiConnection?.ip else null,
-                                onClick = {
-                                    selectedAp = ap
-                                    viewModel.selectAp(ap.index.toString())
-                                    showApDetailSheet = true
-                                },
-                                onStationClick = { station ->
-                                    selectedStation = station
-                                    viewModel.selectStation(station.index.toString())
-                                    showStationDetailSheet = true
-                                }
-                            )
-                        }
-                    }
-                    
-                    // Show unassociated stations (stations without a matching AP in the list)
-                    
-                    if (unassociatedStations.isNotEmpty()) {
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                when (selectedTab) {
+                    0 -> {
+                        // Access Points + Stations tab
                         item {
-                            BrutalistSectionHeader(
-                                title = stringResource(R.string.label_unassociated_stations, unassociatedStations.size),
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                accentColor = warningColor()
-                            )
-                        }
-                        
-                        itemsIndexed(
-                            items = unassociatedStations,
-                            key = { _, station -> "unassoc_${station.index}" },
-                            contentType = { _, _ -> "station" }
-                        ) { index, station ->
-                            StaggeredAnimatedItem(
-                                index = index + displayAccessPoints.size,
-                                staggerDelayMs = 20
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                StationResultCard(
-                                    station = station,
-                                    privacyMode = privacyMode,
+                                BrutalistButton(
+                                    text = if (isScanning) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_scan_networks),
                                     onClick = {
-                                        selectedStation = station
-                                        viewModel.selectStation(station.index.toString())
-                                        showStationDetailSheet = true
+                                        if (isConnected) {
+                                            if (isScanning) {
+                                                viewModel.stopWifiScanAndReset()
+                                            } else {
+                                                viewModel.scanWifi()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = if (isScanning) warningColor() else MaterialTheme.colorScheme.primary,
+                                    textColor = MaterialTheme.colorScheme.onPrimary,
+                                    enabled = isConnected,
+                                    isLoading = false,
+                                    leadingIcon = {
+                                        Icon(
+                                            if (isScanning) Icons.Default.Stop else Icons.Default.Search,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                )
+
+                                BrutalistButton(
+                                    text = if (isScanningStations) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_scan_stations),
+                                    onClick = {
+                                        if (isConnected) {
+                                            if (isScanningStations) {
+                                                viewModel.stopAll()
+                                                isScanningStations = false
+                                            } else {
+                                                viewModel.clearStations()
+                                                viewModel.scanSta()
+                                                isScanningStations = true
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = if (isScanningStations) warningColor() else MaterialTheme.colorScheme.secondary,
+                                    textColor = MaterialTheme.colorScheme.onSecondary,
+                                    enabled = isConnected,
+                                    isLoading = false,
+                                    leadingIcon = {
+                                        Icon(
+                                            if (isScanningStations) Icons.Default.Stop else Icons.Default.Devices,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 )
                             }
+                        }
+
+                        item {
+                            if (displayAccessPoints.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    BrutalistSectionHeader(
+                                        title = stringResource(R.string.msg_found_networks_count, displayAccessPoints.size),
+                                        accentColor = primaryColor()
+                                    )
+                                    TextButton(onClick = {
+                                        apMultiSelectMode = !apMultiSelectMode
+                                        selectedApIndices = emptySet()
+                                    }) {
+                                        Text(
+                                            text = if (apMultiSelectMode) stringResource(R.string.action_cancel) else stringResource(R.string.action_select),
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
+                                    }
+                                }
+                            } else if (isConnected && !isScanning) {
+                                BrutalistSectionHeader(
+                                    title = stringResource(R.string.msg_no_networks_found_hint),
+                                    accentColor = OnSurfaceVariantDark
+                                )
+                            }
+                        }
+
+                        if (apMultiSelectMode && selectedApIndices.isNotEmpty()) {
+                            item {
+                                ApBulkActionBar(
+                                    selectedCount = selectedApIndices.size,
+                                    enabled = isConnected,
+                                    onDeauthSelected = {
+                                        viewModel.selectAp(selectedApIndices.sorted().joinToString(","))
+                                        viewModel.startDeauth()
+                                        activeDeauthIndex = selectedApIndices.first()
+                                        apMultiSelectMode = false
+                                        selectedApIndices = emptySet()
+                                    },
+                                    onClear = { selectedApIndices = emptySet() }
+                                )
+                            }
+                        }
+
+                        if (isScanning && displayAccessPoints.isEmpty()) {
+                            items(5) {
+                                SkeletonWifiApCard()
+                            }
+                        } else {
+                            itemsIndexed(
+                                items = displayAccessPoints,
+                                key = { _, ap -> ap.index },
+                                contentType = { _, _ -> "access_point" }
+                            ) { index, ap ->
+                                // Only stagger first few items for initial load, rest appear instantly
+                                StaggeredAnimatedItem(
+                                    index = index,
+                                    staggerDelayMs = 20
+                                ) {
+                                    val associatedStations = stationsByApBssid[ap.bssid] ?: emptyList()
+                                    val hasStations = associatedStations.isNotEmpty()
+
+                                    WifiApCardWithStations(
+                                        accessPoint = ap,
+                                        isAttacking = activeDeauthIndex == ap.index,
+                                        privacyMode = privacyMode,
+                                        hasStations = hasStations,
+                                        associatedStationsCount = associatedStations.size,
+                                        associatedStations = associatedStations,
+                                        isCurrentConnection = connectedSsid != null && ap.ssid == connectedSsid,
+                                        connectedIp = if (connectedSsid != null && ap.ssid == connectedSsid) wifiConnection?.ip else null,
+                                        multiSelectMode = apMultiSelectMode,
+                                        isSelected = ap.index in selectedApIndices,
+                                        onClick = {
+                                            if (apMultiSelectMode) {
+                                                selectedApIndices = if (ap.index in selectedApIndices) {
+                                                    selectedApIndices - ap.index
+                                                } else {
+                                                    selectedApIndices + ap.index
+                                                }
+                                            } else {
+                                                selectedAp = ap
+                                                viewModel.selectAp(ap.index.toString())
+                                                showApDetailSheet = true
+                                            }
+                                        },
+                                        onStationClick = { station ->
+                                            selectedStation = station
+                                            viewModel.selectStation(station.index.toString())
+                                            showStationDetailSheet = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (unassociatedStations.isNotEmpty()) {
+                            item {
+                                BrutalistSectionHeader(
+                                    title = stringResource(R.string.label_unassociated_stations, unassociatedStations.size),
+                                    accentColor = warningColor()
+                                )
+                            }
+
+                            itemsIndexed(
+                                items = unassociatedStations,
+                                key = { _, station -> "unassoc_${station.index}" },
+                                contentType = { _, _ -> "station" }
+                            ) { index, station ->
+                                StaggeredAnimatedItem(
+                                    index = index,
+                                    staggerDelayMs = 20
+                                ) {
+                                    StationResultCard(
+                                        station = station,
+                                        privacyMode = privacyMode,
+                                        onClick = {
+                                            selectedStation = station
+                                            viewModel.selectStation(station.index.toString())
+                                            showStationDetailSheet = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    1 -> {
+                        // Attacks tab - row-based attack launcher list
+                        val gtkAbuseTargetSsid = displayAccessPoints.find { it.index == targetApIndex }?.ssid
+                        val anyAttackRunning = activeDeauthIndex != null || isBeaconSpamming || isRickRolling ||
+                            isKarmaRunning || activePacketCaptureMode != null || isSaeFloodRunning ||
+                            isDhcpStarveRunning || isListenProbesRunning || isScanningStations ||
+                            isPineApRunning || isFlockScanRunning || isChannelSwitchRunning || isGtkAbuseRunning
+
+                        val stopAllRowState: () -> Unit = {
+                            viewModel.stopAll()
+                            viewModel.stopWifiScanAndReset()
+                            isScanningStations = false
+                            activeDeauthIndex = null
+                            isBeaconSpamming = false
+                            isRickRolling = false
+                            isKarmaRunning = false
+                            activePacketCaptureMode = null
+                            isSaeFloodRunning = false
+                            isDhcpStarveRunning = false
+                            isListenProbesRunning = false
+                            isPineApRunning = false
+                            isFlockScanRunning = false
+                            isChannelSwitchRunning = false
+                            isGtkAbuseRunning = false
+                        }
+
+                        item {
+                            BrutalistButton(
+                                text = stringResource(R.string.action_stop_all),
+                                onClick = stopAllRowState,
+                                modifier = Modifier.fillMaxWidth(),
+                                containerColor = errorColor(),
+                                borderColor = errorColor(),
+                                enabled = isConnected && anyAttackRunning,
+                                leadingIcon = { Icon(Icons.Default.Stop, contentDescription = null) }
+                            )
+                        }
+
+                        item {
+                            TargetApSelectorCard(
+                                accessPoints = displayAccessPoints,
+                                privacyMode = privacyMode,
+                                selectedIndex = targetApIndex,
+                                enabled = isConnected,
+                                onSelect = { targetApIndex = it }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_deauth_attack),
+                                description = stringResource(R.string.desc_deauth_attack),
+                                isRunning = activeDeauthIndex != null,
+                                startEnabled = isConnected && targetApIndex != null,
+                                icon = Icons.Default.WifiOff,
+                                onStart = {
+                                    val index = targetApIndex ?: return@AttackLauncherRow
+                                    viewModel.selectAp(index.toString())
+                                    viewModel.startDeauth()
+                                    activeDeauthIndex = index
+                                },
+                                onStop = {
+                                    viewModel.stopDeauth()
+                                    activeDeauthIndex = null
+                                },
+                                expandedContent = if (targetApIndex == null) {
+                                    { TargetApHint() }
+                                } else null
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_eapol_capture),
+                                description = stringResource(R.string.desc_eapol_capture),
+                                isRunning = activePacketCaptureMode == GhostCommand.CaptureMode.EAPOL,
+                                startEnabled = isConnected && targetApIndex != null,
+                                icon = Icons.Default.Key,
+                                onStart = {
+                                    val index = targetApIndex ?: return@AttackLauncherRow
+                                    viewModel.selectAp(index.toString())
+                                    viewModel.startEapolCapture()
+                                    activePacketCaptureMode = GhostCommand.CaptureMode.EAPOL
+                                },
+                                onStop = {
+                                    viewModel.stopPacketCapture()
+                                    activePacketCaptureMode = null
+                                },
+                                expandedContent = if (targetApIndex == null) {
+                                    { TargetApHint() }
+                                } else null
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_beacon_spam),
+                                description = if (beaconSpamRickroll) stringResource(R.string.desc_rick_roll) else stringResource(R.string.desc_beacon_spam),
+                                isRunning = isBeaconSpamming || isRickRolling,
+                                startEnabled = isConnected,
+                                icon = Icons.Default.Router,
+                                onStart = {
+                                    if (beaconSpamRickroll) {
+                                        viewModel.startBeaconSpam(GhostCommand.BeaconSpamMode.RICKROLL)
+                                        isRickRolling = true
+                                    } else {
+                                        viewModel.startBeaconSpam()
+                                        isBeaconSpamming = true
+                                    }
+                                },
+                                onStop = {
+                                    viewModel.stopBeaconSpam()
+                                    isBeaconSpamming = false
+                                    isRickRolling = false
+                                },
+                                expandedContent = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = beaconSpamRickroll,
+                                            onCheckedChange = { beaconSpamRickroll = it },
+                                            enabled = isConnected && !isBeaconSpamming && !isRickRolling
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.label_rick_roll),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_karma),
+                                description = stringResource(R.string.desc_karma_attack),
+                                isRunning = isKarmaRunning,
+                                startEnabled = isConnected,
+                                icon = Icons.Default.Phishing,
+                                onStart = {
+                                    viewModel.startKarma()
+                                    isKarmaRunning = true
+                                },
+                                onStop = {
+                                    viewModel.stopKarma()
+                                    isKarmaRunning = false
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_sae_flood),
+                                description = stringResource(R.string.desc_sae_flood),
+                                isRunning = isSaeFloodRunning,
+                                startEnabled = isConnected && targetApIndex != null && saePassword.isNotBlank(),
+                                icon = Icons.Default.Lock,
+                                onStart = {
+                                    val index = targetApIndex ?: return@AttackLauncherRow
+                                    viewModel.selectAp(index.toString())
+                                    viewModel.startSaeFlood(saePassword)
+                                    isSaeFloodRunning = true
+                                },
+                                onStop = {
+                                    viewModel.stopSaeFlood()
+                                    isSaeFloodRunning = false
+                                },
+                                expandedContent = {
+                                    if (targetApIndex == null) {
+                                        TargetApHint()
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                    }
+                                    OutlinedTextField(
+                                        value = saePassword,
+                                        onValueChange = { saePassword = it },
+                                        label = { Text(stringResource(R.string.label_sae_password)) },
+                                        singleLine = true,
+                                        enabled = isConnected && !isSaeFloodRunning,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_dhcp_starvation),
+                                description = stringResource(R.string.desc_dhcp_starvation),
+                                isRunning = isDhcpStarveRunning,
+                                startEnabled = isConnected,
+                                icon = Icons.Default.SettingsEthernet,
+                                onStart = {
+                                    viewModel.startDhcpStarve(dhcpThreads.toIntOrNull())
+                                    isDhcpStarveRunning = true
+                                },
+                                onStop = {
+                                    viewModel.stopDhcpStarve()
+                                    isDhcpStarveRunning = false
+                                },
+                                expandedContent = {
+                                    OutlinedTextField(
+                                        value = dhcpThreads,
+                                        onValueChange = { dhcpThreads = it.filter(Char::isDigit).take(3) },
+                                        label = { Text(stringResource(R.string.label_dhcp_threads)) },
+                                        singleLine = true,
+                                        enabled = isConnected && !isDhcpStarveRunning,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_congestion_scan),
+                                description = stringResource(R.string.desc_congestion_scan),
+                                isRunning = false,
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_run_scan),
+                                icon = Icons.Default.Radar,
+                                onStart = { viewModel.runCongestionScan() },
+                                onStop = { }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_listen_probes),
+                                description = stringResource(R.string.desc_listen_probes),
+                                isRunning = isListenProbesRunning,
+                                startEnabled = isConnected,
+                                icon = Icons.Default.Hearing,
+                                onStart = {
+                                    viewModel.startListenProbes()
+                                    isListenProbesRunning = true
+                                },
+                                onStop = {
+                                    viewModel.stopListenProbes()
+                                    isListenProbesRunning = false
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_pineap_detection),
+                                description = stringResource(R.string.desc_pineap_detection),
+                                isRunning = isPineApRunning,
+                                startEnabled = isConnected,
+                                icon = Icons.Default.Radar,
+                                onStart = {
+                                    viewModel.startPineApDetection()
+                                    isPineApRunning = true
+                                },
+                                onStop = {
+                                    viewModel.stopPineApDetection()
+                                    isPineApRunning = false
+                                },
+                                resultsContent = {
+                                    ScanFindingsList(
+                                        count = pineapDetections.size,
+                                        lines = pineapDetections.map { d ->
+                                            "${d.heading} ${d.bssid} Ch:${d.channel} ${d.rssi}dBm SSIDs(${d.ssidCount}): ${d.ssids}"
+                                        }
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_flock_detection),
+                                description = stringResource(R.string.desc_flock_detection),
+                                isRunning = isFlockScanRunning,
+                                startEnabled = isConnected,
+                                icon = Icons.Default.TravelExplore,
+                                onStart = {
+                                    viewModel.startFlockScan()
+                                    isFlockScanRunning = true
+                                },
+                                onStop = {
+                                    viewModel.stopFlockScan()
+                                    isFlockScanRunning = false
+                                },
+                                resultsContent = {
+                                    ScanFindingsList(
+                                        count = flockScanComplete?.count ?: flockDetections.size,
+                                        lines = flockDetections.map { d ->
+                                            "${d.method} ${d.mac} ${d.signalLabel}(${d.rssi}dBm) Ch:${d.channel}${d.ssid?.let { " SSID:$it" } ?: ""} Hits:${d.hits}"
+                                        }
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_open_ports_scan),
+                                description = stringResource(R.string.desc_open_ports_scan),
+                                isRunning = false,
+                                startEnabled = isConnected && openPortsTarget.isNotBlank(),
+                                startLabel = stringResource(R.string.action_run_scan),
+                                icon = Icons.Default.Radar,
+                                onStart = { viewModel.runScanPorts(openPortsTarget) },
+                                onStop = { },
+                                expandedContent = {
+                                    OutlinedTextField(
+                                        value = openPortsTarget,
+                                        onValueChange = { openPortsTarget = it },
+                                        label = { Text(stringResource(R.string.label_scan_target)) },
+                                        singleLine = true,
+                                        enabled = isConnected,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_ssh_scan),
+                                description = stringResource(R.string.desc_ssh_scan),
+                                isRunning = false,
+                                startEnabled = isConnected && sshScanTarget.isNotBlank(),
+                                startLabel = stringResource(R.string.action_run_scan),
+                                icon = Icons.Default.Radar,
+                                onStart = { viewModel.runScanSsh(sshScanTarget) },
+                                onStop = { },
+                                expandedContent = {
+                                    OutlinedTextField(
+                                        value = sshScanTarget,
+                                        onValueChange = { sshScanTarget = it },
+                                        label = { Text(stringResource(R.string.label_scan_target)) },
+                                        singleLine = true,
+                                        enabled = isConnected,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_netbios_scan),
+                                description = stringResource(R.string.desc_netbios_scan),
+                                isRunning = false,
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_run_scan),
+                                icon = Icons.Default.Radar,
+                                onStart = { viewModel.runNetBiosScan(netBiosScanTarget) },
+                                onStop = { },
+                                expandedContent = {
+                                    OutlinedTextField(
+                                        value = netBiosScanTarget,
+                                        onValueChange = { netBiosScanTarget = it },
+                                        label = { Text(stringResource(R.string.label_scan_target_optional)) },
+                                        singleLine = true,
+                                        enabled = isConnected,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
+                                resultsContent = {
+                                    ScanFindingsList(
+                                        count = netBiosResults.size,
+                                        lines = netBiosResults.map { r ->
+                                            if (r.remoteIp != null) "${r.host}  IP: ${r.remoteIp}  Flags: 0x${r.flags?.toString(16) ?: "?"}"
+                                            else "${r.host}  Names: ${r.names ?: "none"}"
+                                        }
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_http_banner_scan),
+                                description = stringResource(R.string.desc_http_banner_scan),
+                                isRunning = false,
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_run_scan),
+                                icon = Icons.Default.Radar,
+                                onStart = { viewModel.runHttpBannerScan(httpBannerScanTarget) },
+                                onStop = { },
+                                expandedContent = {
+                                    OutlinedTextField(
+                                        value = httpBannerScanTarget,
+                                        onValueChange = { httpBannerScanTarget = it },
+                                        label = { Text(stringResource(R.string.label_scan_target_optional)) },
+                                        singleLine = true,
+                                        enabled = isConnected,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
+                                resultsContent = {
+                                    ScanFindingsList(
+                                        count = httpBannerSummary?.hostsFound ?: httpBannerHits.size,
+                                        lines = httpBannerHits.map { h ->
+                                            "${h.ip}:${h.port} (${h.scheme}) ${h.server?.let { "Server: $it" } ?: "OPEN, no banner"}"
+                                        }
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_snmp_probe),
+                                description = if (snmpWalkMode) stringResource(R.string.desc_snmp_walk) else stringResource(R.string.desc_snmp_probe),
+                                isRunning = false,
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_run_scan),
+                                icon = Icons.Default.Radar,
+                                onStart = { viewModel.runSnmpProbe(snmpTarget, snmpWalkMode) },
+                                onStop = { },
+                                expandedContent = {
+                                    OutlinedTextField(
+                                        value = snmpTarget,
+                                        onValueChange = { snmpTarget = it },
+                                        label = { Text(stringResource(R.string.label_scan_target_optional)) },
+                                        singleLine = true,
+                                        enabled = isConnected,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = snmpWalkMode,
+                                            onCheckedChange = { snmpWalkMode = it },
+                                            enabled = isConnected
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.label_snmp_walk_mode),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                resultsContent = {
+                                    ScanFindingsList(
+                                        count = snmpSummary?.hostsFound ?: snmpHits.size,
+                                        lines = snmpHits.map { h ->
+                                            if (h.oid != null) "${h.oid} = ${h.value} (${h.type})"
+                                            else "${h.ip} (community: ${h.community}) sysDescr: ${h.sysDescr}"
+                                        }
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_enum_scan),
+                                description = stringResource(R.string.desc_enum_scan),
+                                isRunning = false,
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_run_scan),
+                                icon = Icons.Default.Radar,
+                                onStart = { viewModel.runEnumScan(enumScanTarget) },
+                                onStop = { },
+                                expandedContent = {
+                                    OutlinedTextField(
+                                        value = enumScanTarget,
+                                        onValueChange = { enumScanTarget = it },
+                                        label = { Text(stringResource(R.string.label_scan_target_optional)) },
+                                        singleLine = true,
+                                        enabled = isConnected,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
+                                resultsContent = {
+                                    ScanFindingsList(
+                                        count = enumSummary?.hostsFound ?: enumHits.size,
+                                        lines = enumHits.map { it.raw }
+                                    )
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_wpa3_check),
+                                description = stringResource(R.string.desc_wpa3_check),
+                                isRunning = false,
+                                startEnabled = isConnected && targetApIndex != null,
+                                startLabel = stringResource(R.string.action_run_scan),
+                                icon = Icons.Default.VerifiedUser,
+                                onStart = {
+                                    val index = targetApIndex ?: return@AttackLauncherRow
+                                    viewModel.selectAp(index.toString())
+                                    viewModel.runWpa3Check()
+                                },
+                                onStop = { },
+                                expandedContent = if (targetApIndex == null) {
+                                    { TargetApHint() }
+                                } else null,
+                                resultsContent = {
+                                    val compliance = wpa3Compliance
+                                    val report = wpa3ReportSummary
+                                    if (compliance != null) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            DetailRow(label = stringResource(R.string.label_scan_target), value = compliance.ssid)
+                                            DetailRow(label = "BSSID", value = compliance.bssid)
+                                            DetailRow(label = "Auth", value = compliance.auth)
+                                            DetailRow(label = "PMF", value = compliance.pmf)
+                                            DetailRow(
+                                                label = "WPA3",
+                                                value = if (compliance.wpa3Present) "Present${if (compliance.transitionMode) " (transition mode)" else ""}" else "Not present",
+                                                valueColor = if (compliance.wpa3Present && !compliance.transitionMode) successColor() else warningColor()
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = stringResource(R.string.label_wpa3_finding, compliance.finding),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    } else if (report != null) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            DetailRow(label = "APs scanned", value = report.apCount.toString())
+                                            DetailRow(label = "Compliant", value = report.compliant.toString(), valueColor = successColor())
+                                            DetailRow(label = "Downgradable", value = report.downgradable.toString(), valueColor = warningColor())
+                                            DetailRow(label = "Legacy", value = report.legacy.toString(), valueColor = warningColor())
+                                            DetailRow(label = "Open", value = report.open.toString(), valueColor = errorColor())
+                                            DetailRow(label = "Other", value = report.other.toString())
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_channel_switch_attack),
+                                description = stringResource(R.string.desc_channel_switch_attack),
+                                isRunning = isChannelSwitchRunning,
+                                startEnabled = isConnected && targetApIndex != null,
+                                icon = Icons.Default.SwapHoriz,
+                                onStart = {
+                                    val index = targetApIndex ?: return@AttackLauncherRow
+                                    viewModel.selectAp(index.toString())
+                                    viewModel.startChannelSwitchAttack()
+                                    isChannelSwitchRunning = true
+                                },
+                                onStop = {
+                                    viewModel.stopAll()
+                                    isChannelSwitchRunning = false
+                                },
+                                expandedContent = if (targetApIndex == null) {
+                                    { TargetApHint() }
+                                } else null,
+                                resultsContent = {
+                                    if (csaAttackStatus.targetCount > 0) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Text(
+                                                text = stringResource(R.string.label_csa_targeting, csaAttackStatus.targetCount),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            csaAttackStatus.targets.forEach { target ->
+                                                Text(
+                                                    text = target,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            csaAttackStatus.packetsPerSecond?.let { rate ->
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = stringResource(R.string.label_csa_rate, rate),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = errorColor()
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_gtk_abuse),
+                                description = stringResource(R.string.desc_gtk_abuse),
+                                isRunning = isGtkAbuseRunning,
+                                startEnabled = isConnected && gtkAbuseTargetSsid != null && gtkAbusePassword.isNotBlank(),
+                                icon = Icons.Default.Lock,
+                                onStart = {
+                                    val ssid = gtkAbuseTargetSsid ?: return@AttackLauncherRow
+                                    viewModel.startGtkAbuse(ssid, gtkAbusePassword)
+                                    isGtkAbuseRunning = true
+                                },
+                                onStop = {
+                                    viewModel.stopAll()
+                                    isGtkAbuseRunning = false
+                                },
+                                expandedContent = {
+                                    if (targetApIndex == null) {
+                                        TargetApHint()
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                    }
+                                    OutlinedTextField(
+                                        value = gtkAbusePassword,
+                                        onValueChange = { gtkAbusePassword = it },
+                                        label = { Text(stringResource(R.string.label_gtk_password)) },
+                                        singleLine = true,
+                                        enabled = isConnected && !isGtkAbuseRunning,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
+                                resultsContent = {
+                                    if (gtkAbuseLog.isNotEmpty()) {
+                                        val isolationBroken = gtkAbuseLog.any { it.message.contains("isolation is BROKEN", ignoreCase = true) }
+                                        val isolationOk = gtkAbuseLog.any { it.message.contains("No echo reply received", ignoreCase = true) }
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            if (isolationBroken || isolationOk) {
+                                                Text(
+                                                    text = if (isolationBroken) stringResource(R.string.label_gtk_isolation_broken) else stringResource(R.string.label_gtk_isolation_ok),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (isolationBroken) errorColor() else successColor()
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                            }
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(max = 160.dp)
+                                                    .verticalScroll(rememberScrollState())
+                                            ) {
+                                                gtkAbuseLog.forEach { status ->
+                                                    Text(
+                                                        text = status.message,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.padding(vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_packet_capture),
+                                description = stringResource(R.string.msg_packet_capture_hint),
+                                isRunning = activePacketCaptureMode != null,
+                                startEnabled = isConnected,
+                                icon = Icons.Default.Podcasts,
+                                onStart = { showPacketCaptureDialog = true },
+                                onStop = {
+                                    viewModel.stopPacketCapture()
+                                    activePacketCaptureMode = null
+                                }
+                            )
                         }
                     }
                 }
@@ -611,12 +1312,17 @@ fun WifiScreen(
                 isRickRolling = false
                 isKarmaRunning = false
                 activePacketCaptureMode = null
+                isSaeFloodRunning = false
+                isDhcpStarveRunning = false
+                isListenProbesRunning = false
             }
         )
     }
 
     if (showPacketCaptureDialog) {
         PacketCaptureDialog(
+            bleCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.BLE),
+            ieee802154Capability = deviceInfo.resolve(GhostResponse.DeviceFeature.IEEE802154),
             onDismiss = { showPacketCaptureDialog = false },
             onStart = { mode, channel ->
                 viewModel.startPacketCapture(mode, channel)
@@ -686,9 +1392,7 @@ private fun ActiveAttackBanner(
     onStopAll: () -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         color = if (isScanningStations) warningColor().copy(alpha = 0.15f) else errorColor().copy(alpha = 0.15f),
         border = BorderStroke(1.dp, if (isScanningStations) warningColor() else errorColor())
@@ -1184,7 +1888,145 @@ private fun AttackOptionItem(
     }
 }
 
+/**
+ * Shared target-AP selector shown once above the Attacks tab row list. Every attack row that
+ * operates on the firmware's `select -a` selection (deauth, EAPOL, SAE flood, WPA3 check,
+ * channel switch, GTK abuse) reads this single target instead of picking its own.
+ */
+@Composable
+private fun TargetApSelectorCard(
+    accessPoints: List<AccessPointPreview>,
+    privacyMode: Boolean,
+    selectedIndex: Int?,
+    enabled: Boolean,
+    onSelect: (Int) -> Unit
+) {
+    val selectedAp = accessPoints.find { it.index == selectedIndex }
+    BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.label_select_target_ap),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = if (selectedAp != null) {
+                stringResource(R.string.msg_target_ap_selected, selectedAp.ssid.censorSsid(privacyMode), selectedAp.rssi)
+            } else {
+                stringResource(R.string.msg_no_ap_selected)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        ApTargetPicker(
+            accessPoints = accessPoints,
+            privacyMode = privacyMode,
+            selectedIndex = selectedIndex,
+            enabled = enabled,
+            onSelect = onSelect
+        )
+    }
+}
 
+/**
+ * Hint shown inside an attack row's expanded content when no shared target AP is selected yet.
+ */
+@Composable
+private fun TargetApHint() {
+    Text(
+        text = stringResource(R.string.msg_select_target_ap_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+/**
+ * Compact target-AP dropdown used inside attack launcher rows (deauth, EAPOL capture).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ApTargetPicker(
+    accessPoints: List<AccessPointPreview>,
+    privacyMode: Boolean,
+    selectedIndex: Int?,
+    enabled: Boolean,
+    onSelect: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedAp = accessPoints.find { it.index == selectedIndex }
+    val label = selectedAp?.ssid?.censorSsid(privacyMode) ?: stringResource(R.string.msg_no_ap_selected)
+
+    ExposedDropdownMenuBox(
+        expanded = expanded && accessPoints.isNotEmpty(),
+        onExpandedChange = { if (accessPoints.isNotEmpty()) expanded = it }
+    ) {
+        OutlinedButton(
+            onClick = { if (accessPoints.isNotEmpty()) expanded = true },
+            enabled = enabled && accessPoints.isNotEmpty(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor()
+        ) {
+            Text(label, modifier = Modifier.weight(1f), maxLines = 1)
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+        }
+        ExposedDropdownMenu(
+            expanded = expanded && accessPoints.isNotEmpty(),
+            onDismissRequest = { expanded = false }
+        ) {
+            accessPoints.forEach { ap ->
+                DropdownMenuItem(
+                    text = { Text(ap.ssid.censorSsid(privacyMode)) },
+                    onClick = {
+                        onSelect(ap.index)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Compact "N found" count plus a scrollable list of raw hit lines, used for the
+ * scan-type attack launcher rows (Flock, NetBIOS, HTTP banner, SNMP, Enum, PineAp).
+ */
+@Composable
+private fun ScanFindingsList(
+    count: Int,
+    lines: List<String>,
+    modifier: Modifier = Modifier
+) {
+    if (count == 0 && lines.isEmpty()) return
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.label_scan_findings_count, count),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (lines.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 180.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                lines.forEach { line ->
+                    Text(
+                        text = line,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
 
 /**
  * Detail row for displaying key-value information
@@ -1243,6 +2085,8 @@ private fun WifiApCardWithStations(
     associatedStations: List<GhostResponse.Station>,
     isCurrentConnection: Boolean = false,
     connectedIp: String? = null,
+    multiSelectMode: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
     onStationClick: (GhostResponse.Station) -> Unit
 ) {
@@ -1252,7 +2096,7 @@ private fun WifiApCardWithStations(
         accessPoint.rssi >= -70 -> SignalFair
         else -> SignalWeak
     }
-    
+
     val securityColor = when (accessPoint.security) {
         "Open" -> MaterialTheme.colorScheme.tertiary
         "WPA3" -> MaterialTheme.colorScheme.primary
@@ -1261,11 +2105,13 @@ private fun WifiApCardWithStations(
     }
 
     val borderColor = when {
+        isSelected -> primaryColor()
         isCurrentConnection -> successColor()
         isAttacking -> errorColor()
         else -> MaterialTheme.colorScheme.outline
     }
     val backgroundColor = when {
+        isSelected -> primaryColor().copy(alpha = 0.1f)
         isCurrentConnection -> successColor().copy(alpha = 0.1f)
         isAttacking -> errorColor().copy(alpha = 0.1f)
         else -> MaterialTheme.colorScheme.surface
@@ -1280,12 +2126,20 @@ private fun WifiApCardWithStations(
             modifier = Modifier.fillMaxWidth(),
             borderColor = borderColor,
             backgroundColor = backgroundColor,
-            borderWidth = if (isAttacking) 2.dp else 1.dp
+            borderWidth = if (isAttacking || isSelected) 2.dp else 1.dp
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (multiSelectMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { onClick() }
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+
                 // WiFi Icon
                 Icon(
                     imageVector = Icons.Default.SignalWifi4Bar,
@@ -1293,7 +2147,7 @@ private fun WifiApCardWithStations(
                     tint = signalColor,
                     modifier = Modifier.size(24.dp)
                 )
-                
+
                 Spacer(modifier = Modifier.width(14.dp))
                 
                 // Network info
@@ -1406,6 +2260,53 @@ private fun WifiApCardWithStations(
                     onClick = { onStationClick(station) }
                 )
             }
+        }
+    }
+}
+
+/**
+ * Bulk action bar shown while APs are multi-selected.
+ *
+ * Firmware's `select -a i,j,k` populates a genuine multi-target list that deauth
+ * loops over (see deauth_attack.c), so this is the one bulk attack worth exposing here.
+ */
+@Composable
+private fun ApBulkActionBar(
+    selectedCount: Int,
+    enabled: Boolean,
+    onDeauthSelected: () -> Unit,
+    onClear: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = errorColor().copy(alpha = 0.1f),
+        border = BorderStroke(1.dp, errorColor())
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.label_selected_count, selectedCount),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onClear) {
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_cancel))
+            }
+            BrutalistButton(
+                text = stringResource(R.string.action_deauth_selected),
+                onClick = onDeauthSelected,
+                containerColor = errorColor(),
+                borderColor = errorColor(),
+                enabled = enabled,
+                leadingIcon = { Icon(Icons.Default.WifiOff, contentDescription = null) }
+            )
         }
     }
 }
@@ -1741,6 +2642,8 @@ private fun AttackOptionsSheet(
  */
 @Composable
 private fun PacketCaptureDialog(
+    bleCapability: GhostResponse.CapabilityResolution,
+    ieee802154Capability: GhostResponse.CapabilityResolution,
     onDismiss: () -> Unit,
     onStart: (GhostCommand.CaptureMode, Int?) -> Unit,
     onStop: () -> Unit
@@ -1765,6 +2668,11 @@ private fun PacketCaptureDialog(
     val customChannelValue = customChannel.trim().toIntOrNull()
     val selectedChannel = customChannelValue ?: selectedQuickChannel
     val channelValid = customChannel.isBlank() || (customChannelValue != null && customChannelValue > 0)
+    fun isModeUsable(mode: GhostCommand.CaptureMode): Boolean = when (mode) {
+        GhostCommand.CaptureMode.BLE -> bleCapability.isUsable
+        GhostCommand.CaptureMode.IEEE802154 -> ieee802154Capability.isUsable
+        else -> true
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1790,7 +2698,8 @@ private fun PacketCaptureDialog(
                     ) {
                         modes.forEach { (mode, label) ->
                             DropdownMenuItem(
-                                text = { Text(label) },
+                                text = { Text(if (isModeUsable(mode)) label else "$label (unsupported)") },
+                                enabled = isModeUsable(mode),
                                 onClick = {
                                     selectedMode = mode
                                     modeExpanded = false
@@ -1833,7 +2742,7 @@ private fun PacketCaptureDialog(
                     Text(stringResource(R.string.action_stop))
                 }
                 Button(
-                    enabled = channelValid,
+                    enabled = channelValid && isModeUsable(selectedMode),
                     onClick = { onStart(selectedMode, selectedChannel) }
                 ) {
                     Text(if (selectedChannel == null) stringResource(R.string.status_connecting).replace("…", "") else stringResource(R.string.action_start_capture_channel, selectedChannel))
@@ -1929,5 +2838,4 @@ private fun StationDetailSheet(
         }
     }
 }
-
 

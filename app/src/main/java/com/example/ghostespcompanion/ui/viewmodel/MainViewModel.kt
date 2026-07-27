@@ -57,6 +57,27 @@ class MainViewModel @Inject constructor(
     val appSettings: StateFlow<AppSettings> = preferencesRepository.appSettings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
 
+    // Last-used BadUSB config from DataStore
+    val lastBadUsbConfig: StateFlow<com.example.ghostespcompanion.data.repository.BadUsbConfig> =
+        preferencesRepository.lastBadUsbConfig
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.example.ghostespcompanion.data.repository.BadUsbConfig())
+
+    // Last-selected NFC backend from DataStore, so the NFC screen doesn't reset to AUTO every visit
+    val lastNfcBackend: StateFlow<String?> =
+        preferencesRepository.lastNfcBackend
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    // User-selected Dashboard Quick Links destination IDs, ordered, comma-separated
+    val quickLinks: StateFlow<String> =
+        preferencesRepository.quickLinks
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PreferencesRepository.DEFAULT_QUICK_LINKS)
+
+    fun setQuickLinks(destinationIds: List<String>) {
+        viewModelScope.launch {
+            preferencesRepository.setQuickLinks(destinationIds)
+        }
+    }
+
     // Connection state
     val connectionState: StateFlow<SerialManager.ConnectionState> = ghostRepository.connectionState
     val connectionTransport: StateFlow<SerialManager.ConnectionTransport> = ghostRepository.connectionTransport
@@ -161,6 +182,7 @@ class MainViewModel @Inject constructor(
     val airTagDevices: StateFlow<List<GhostResponse.AirTagDevice>> = ghostRepository.airTagDevices
     val gattDevices: StateFlow<List<GhostResponse.GattDevice>> = ghostRepository.gattDevices
     val gattServices: StateFlow<List<GhostResponse.GattService>> = ghostRepository.gattServices
+    val advertiserDevices: StateFlow<List<GhostResponse.AdvertiserDevice>> = ghostRepository.advertiserDevices
 
     // NFC
     val nfcTags: StateFlow<List<GhostResponse.NfcTag>> = ghostRepository.nfcTags
@@ -173,6 +195,30 @@ class MainViewModel @Inject constructor(
 
     // Portal credentials
     val portalCredentials: StateFlow<List<GhostResponse.PortalCredentials>> = ghostRepository.portalCredentials
+
+    // Ethernet
+    val ethernetInfo: StateFlow<GhostResponse.EthernetInfo?> = ghostRepository.ethernetInfo
+    val ethernetStats: StateFlow<GhostResponse.EthernetStats?> = ghostRepository.ethernetStats
+    val arpScanResults: StateFlow<List<GhostResponse.ArpScanResult>> = ghostRepository.arpScanResults
+    val portScanResults: StateFlow<List<GhostResponse.PortScanResult>> = ghostRepository.portScanResults
+    val pingScanResults: StateFlow<List<GhostResponse.PingScanResult>> = ghostRepository.pingScanResults
+    val traceHops: StateFlow<List<GhostResponse.TraceHop>> = ghostRepository.traceHops
+
+    // WiFi scan/attack findings
+    val pineapDetections: StateFlow<List<GhostResponse.PineapDetection>> = ghostRepository.pineapDetections
+    val flockDetections: StateFlow<List<GhostResponse.FlockDetection>> = ghostRepository.flockDetections
+    val flockScanComplete: StateFlow<GhostResponse.FlockScanComplete?> = ghostRepository.flockScanComplete
+    val netBiosResults: StateFlow<List<GhostResponse.NetBiosResult>> = ghostRepository.netBiosResults
+    val httpBannerHits: StateFlow<List<GhostResponse.HttpBannerHit>> = ghostRepository.httpBannerHits
+    val httpBannerSummary: StateFlow<GhostResponse.HttpBannerSummary?> = ghostRepository.httpBannerSummary
+    val snmpHits: StateFlow<List<GhostResponse.SnmpHit>> = ghostRepository.snmpHits
+    val snmpSummary: StateFlow<GhostResponse.SnmpSummary?> = ghostRepository.snmpSummary
+    val enumHits: StateFlow<List<GhostResponse.EnumHit>> = ghostRepository.enumHits
+    val enumSummary: StateFlow<GhostResponse.EnumSummary?> = ghostRepository.enumSummary
+    val wpa3Compliance: StateFlow<GhostResponse.Wpa3Compliance?> = ghostRepository.wpa3Compliance
+    val wpa3ReportSummary: StateFlow<GhostResponse.Wpa3ReportSummary?> = ghostRepository.wpa3ReportSummary
+    val csaAttackStatus: StateFlow<GhostResponse.CsaAttackStatus> = ghostRepository.csaAttackStatus
+    val gtkAbuseLog: StateFlow<List<GhostResponse.GtkAbuseStatus>> = ghostRepository.gtkAbuseLog
 
     // IR Remotes
     val irRemotes: StateFlow<List<GhostResponse.IrRemote>> = ghostRepository.irRemotes
@@ -297,6 +343,8 @@ class MainViewModel @Inject constructor(
                                 }
                             }
                             SavedConnectionAttempt.FAILED -> _connectionSelectionRequests.tryEmit(Unit)
+                            SavedConnectionAttempt.BLUETOOTH_PERMISSION_REQUIRED,
+                            SavedConnectionAttempt.BLUETOOTH_DISABLED -> _connectionSelectionRequests.tryEmit(Unit)
                             SavedConnectionAttempt.STARTED -> Unit
                         }
                     }
@@ -571,6 +619,120 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    // Thin wrappers around firmware commands that don't yet have dedicated
+    // GhostRepository methods; uses the repository's generic sendCommand
+    // rather than adding new repository surface.
+    fun startSaeFlood(password: String) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.SaeFlood(password)) }
+    }
+
+    fun stopSaeFlood() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.StopSaeFlood) }
+    }
+
+    fun startDhcpStarve(threads: Int? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.DhcpStarve(threads = threads)) }
+    }
+
+    fun stopDhcpStarve() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.DhcpStarve(stop = true)) }
+    }
+
+    fun runCongestionScan() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.Congestion) }
+    }
+
+    fun startListenProbes() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.ListenProbes()) }
+    }
+
+    fun stopListenProbes() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.ListenProbes(stop = true)) }
+    }
+
+    fun startPineApDetection() {
+        ghostRepository.clearPineapDetections()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.PineAp()) }
+    }
+
+    fun stopPineApDetection() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.PineAp(stop = true)) }
+    }
+
+    fun startFlockScan() {
+        ghostRepository.clearFlockScan()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.FlockScan()) }
+    }
+
+    fun stopFlockScan() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.FlockScan(stop = true)) }
+    }
+
+    fun runWpa3Check() {
+        ghostRepository.clearWpa3Results()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.Wpa3Check) }
+    }
+
+    fun startChannelSwitchAttack() {
+        ghostRepository.clearCsaAttackStatus()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.AttackChannelSwitch) }
+    }
+
+    fun startGtkAbuse(ssid: String, password: String) {
+        ghostRepository.clearGtkAbuseLog()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.AttackGtkAbuse(ssid, password)) }
+    }
+
+    fun runScanPorts(target: String) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.ScanPorts(target)) }
+    }
+
+    fun runScanSsh(target: String) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.ScanSsh(target)) }
+    }
+
+    fun runNetBiosScan(target: String) {
+        ghostRepository.clearNetBiosResults()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.NetBiosScan(target)) }
+    }
+
+    fun runHttpBannerScan(target: String) {
+        ghostRepository.clearHttpBannerResults()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.HttpBannerScan(target)) }
+    }
+
+    fun runSnmpProbe(target: String, walk: Boolean = false) {
+        ghostRepository.clearSnmpResults()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.SnmpProbe(target, walk)) }
+    }
+
+    fun runEnumScan(target: String) {
+        ghostRepository.clearEnumResults()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.EnumScan(target)) }
+    }
+
+    fun captureList() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.captureList() }
+    }
+
+    fun captureExport(pcapFile: String) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.captureExport(pcapFile) }
+    }
+
+    fun startWiresharkCapture(channel: Int? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_PACKET_CAPTURE, "Wireshark capture")
+            ghostRepository.startWiresharkCapture(channel)
+        }
+    }
+
+    fun startWiresharkBleCapture() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_PACKET_CAPTURE, "Wireshark BLE capture")
+            ghostRepository.startWiresharkBleCapture()
+        }
+    }
+
     // ==================== BLE ====================
 
     fun scanBle(mode: GhostCommand.BleScanMode) {
@@ -624,6 +786,14 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.enumGatt() }
     }
 
+    fun scanBleAdvertisers(filter: GhostCommand.BleAdvertiserFilter) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.scanBleAdvertisers(filter) }
+    }
+
+    fun listAdvertisers() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.listAdvertisers() }
+    }
+
     fun selectGatt(indices: String) {
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.selectGatt(indices) }
     }
@@ -661,16 +831,91 @@ class MainViewModel @Inject constructor(
         ghostRepository.clearGattDevices()
     }
 
-    // ==================== NFC ====================
+    // ==================== Chameleon Ultra ====================
 
-    fun scanNfc(timeout: Int = 60) {
+    fun chameleonScan(timeout: Int = 60) {
         viewModelScope.launch(Dispatchers.IO) {
-            ghostRepository.scanNfc(timeout)
+            ghostRepository.sendCommand(GhostCommand.Chameleon(GhostCommand.ChameleonSubcommand.Scan(timeout)))
         }
     }
 
-    fun stopNfcScan() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopNfcScan() }
+    fun chameleonStopScan() {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.sendCommand(GhostCommand.Chameleon(GhostCommand.ChameleonSubcommand.ScanStop))
+        }
+    }
+
+    // ==================== NFC ====================
+
+    val nfcBackend: StateFlow<GhostResponse.NfcBackend?> = ghostRepository.nfcBackend
+    val nfcTaskRunning: StateFlow<Boolean> = ghostRepository.nfcTaskRunning
+    val nfcEmulateStatus: StateFlow<GhostResponse.NfcEmulateStatus?> = ghostRepository.nfcEmulateStatus
+    val nfcSaveResult: StateFlow<GhostResponse.NfcSaveResult?> = ghostRepository.nfcSaveResult
+    val nfcHardnestedResult: StateFlow<GhostResponse.NfcHardnestedResult?> = ghostRepository.nfcHardnestedResult
+    val nfcPicopassResult: StateFlow<GhostResponse.NfcPicopassResult?> = ghostRepository.nfcPicopassResult
+
+    fun nfcGetBackend() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcGetBackend() }
+    }
+
+    fun nfcSetBackend(backend: GhostCommand.NfcBackendType) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.nfcSetBackend(backend)
+            preferencesRepository.setLastNfcBackend(backend.value)
+        }
+    }
+
+    fun nfcScan(parse: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcScan(parse) }
+    }
+
+    fun nfcOnce(parse: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcOnce(parse) }
+    }
+
+    fun nfcSave() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcSave() }
+    }
+
+    fun nfcHardnested(
+        knownBlock: Int,
+        knownKeyType: GhostCommand.NfcKeyType,
+        knownKeyHex: String,
+        targetBlock: Int,
+        targetKeyType: GhostCommand.NfcKeyType,
+        samples: Int? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.nfcHardnested(knownBlock, knownKeyType, knownKeyHex, targetBlock, targetKeyType, samples)
+        }
+    }
+
+    fun nfcPicopass(save: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcPicopass(save) }
+    }
+
+    fun nfcStatus() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcStatus() }
+    }
+
+    fun nfcStop() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcStop() }
+    }
+
+    fun nfcEmulateUid(uid: String, atqa: String? = null, sak: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcEmulateUid(uid, atqa, sak) }
+    }
+
+    fun nfcEmulateNdef(url: String? = null, text: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcEmulateNdef(url, text) }
+    }
+
+    fun nfcEmulateFile(path: String) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcEmulateFile(path) }
+    }
+
+    fun nfcEmulateStop() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.nfcEmulateStop() }
     }
 
     // ==================== IR ====================
@@ -753,6 +998,10 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.typeBadUsbText(text) }
     }
 
+    fun typeBadUsbChar(charCode: Int) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.typeBadUsbChar(charCode) }
+    }
+
     fun startBadUsbJiggler() {
         viewModelScope.launch(Dispatchers.IO) {
             runInBackground(BackgroundOperationService.OP_BADUSB_JIGGLER, "BadUSB jiggler")
@@ -765,6 +1014,26 @@ class MainViewModel @Inject constructor(
             ghostRepository.stopBadUsbJiggler()
             stopBackgroundOperation(BackgroundOperationService.OP_BADUSB_JIGGLER)
         }
+    }
+
+    fun badUsbConfig(setting: GhostCommand.BadUsbSetting) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.badUsbConfig(setting) }
+    }
+
+    fun badUsbKey(modifier: Int, keyCode: Int) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.badUsbKey(modifier, keyCode) }
+    }
+
+    fun badUsbTrackpad(action: GhostCommand.BadUsbTrackpadAction) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.badUsbTrackpad(action) }
+    }
+
+    fun badUsbExec(size: Int) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.badUsbExec(size) }
+    }
+
+    fun badUsbStatus(status: String) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.badUsbStatus(status) }
     }
 
     // ==================== GPS ====================
@@ -794,6 +1063,13 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.stopWardrive()
             stopBackgroundOperation(BackgroundOperationService.OP_WARDRIVE)
+        }
+    }
+
+    fun startWardrive(helper: Boolean, channels: String?, hopMs: Int?, weighted: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runInBackground(BackgroundOperationService.OP_WARDRIVE, "Wardriving")
+            ghostRepository.startWardrive(helper, channels, hopMs, weighted)
         }
     }
 
@@ -896,10 +1172,28 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun uploadSdFile(path: String, bytes: ByteArray, fileName: String = path.substringAfterLast('/')) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ghostRepository.uploadSdFile(path, bytes, fileName)
+        }
+    }
+
     fun checkSdCard() {
         viewModelScope.launch(Dispatchers.IO) {
             ghostRepository.checkSdCard()
         }
+    }
+
+    fun sdTree(path: String? = null, depth: Int? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sdTree(path, depth) }
+    }
+
+    fun sdInfo(path: String) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sdInfo(path) }
+    }
+
+    fun sdConfig() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sdConfig() }
     }
 
     // ==================== Aerial ====================
@@ -962,6 +1256,57 @@ class MainViewModel @Inject constructor(
 
     fun listPortals() {
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.listPortals() }
+    }
+
+    fun ethStats() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.ethStats() }
+    }
+
+    fun ethInfo() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.ethInfo() }
+    }
+
+    fun ethFingerprint() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.ethFingerprint() }
+    }
+
+    fun ethArp() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.ethArp() }
+    }
+
+    fun ethPorts(ip: String, startPort: Int? = null, endPort: Int? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.ethPorts(ip, startPort, endPort) }
+    }
+
+    fun ethPing() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.ethPing() }
+    }
+
+    fun ethTrace(hostname: String, maxHops: Int? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.ethTrace(hostname, maxHops) }
+    }
+
+    fun ethPoison(action: GhostCommand.EthPoisonAction) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (action == GhostCommand.EthPoisonAction.START) {
+                runInBackground(BackgroundOperationService.OP_ETHERNET_POISON, "ARP poisoning")
+            } else {
+                stopBackgroundOperation(BackgroundOperationService.OP_ETHERNET_POISON)
+            }
+            ghostRepository.ethPoison(action)
+        }
+    }
+
+    fun setRgbColor(color: GhostCommand.RgbColorType) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.setRgbColor(color) }
+    }
+
+    fun setRgbMode(mode: GhostCommand.RgbModeType) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.setRgbMode(mode) }
+    }
+
+    fun setPersistentRgbMode(mode: GhostCommand.PersistentRgbMode) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.setPersistentRgbMode(mode) }
     }
 
     // ==================== Settings ====================
@@ -1093,6 +1438,12 @@ class MainViewModel @Inject constructor(
     fun setDtrCompatibilityMode(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setDtrCompatibilityMode(enabled)
+        }
+    }
+
+    fun setLastBadUsbConfig(config: com.example.ghostespcompanion.data.repository.BadUsbConfig) {
+        viewModelScope.launch {
+            preferencesRepository.setLastBadUsbConfig(config)
         }
     }
 

@@ -41,7 +41,10 @@ fun TrackFlipperScreen(
     val flipperDevices by viewModel.flipperDevices.collectAsState()
     val flipperTrackData by viewModel.flipperTrackData.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val bleCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.BLE)
+    val commandsEnabled = isConnected && bleCapability.isUsable
     val privacyMode = appSettings.privacyMode
 
     val flipperDevice = flipperDevices.find { it.index == flipperIndex }
@@ -59,8 +62,8 @@ fun TrackFlipperScreen(
         label = "pulse"
     )
 
-    LaunchedEffect(isConnected) {
-        if (isConnected && !isTracking) {
+    LaunchedEffect(commandsEnabled) {
+        if (commandsEnabled && !isTracking) {
             viewModel.trackFlipper(flipperIndex)
             isTracking = true
         }
@@ -89,7 +92,7 @@ fun TrackFlipperScreen(
                     viewModel.trackFlipper(flipperIndex)
                     isTracking = true
                 }
-            }) {
+            }, enabled = commandsEnabled || isTracking) {
                 Icon(
                     if (isTracking) Icons.Default.Stop else Icons.Default.PlayArrow,
                     contentDescription = if (isTracking) stringResource(R.string.action_stop) else stringResource(R.string.action_start),
@@ -106,6 +109,7 @@ fun TrackFlipperScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            CapabilityNotice(bleCapability, "Firmware BLE")
             TrackFlipperBanner(
                 isConnected = isConnected,
                 connectionTransport = connectionTransport,

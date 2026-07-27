@@ -37,14 +37,17 @@ fun GattDetailScreen(
     val gattDevices by viewModel.gattDevices.collectAsState()
     val gattServices by viewModel.gattServices.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val bleCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.BLE)
+    val commandsEnabled = isConnected && bleCapability.isUsable
     val privacyMode = appSettings.privacyMode
     
     val gattDevice = gattDevices.find { it.index == gattIndex }
     var isEnumerating by remember { mutableStateOf(false) }
     
     LaunchedEffect(isConnected, gattDevice) {
-        if (isConnected && gattDevice != null && gattServices.isEmpty()) {
+        if (commandsEnabled && gattDevice != null && gattServices.isEmpty()) {
             isEnumerating = true
             viewModel.selectAndEnumGatt(gattIndex.toString())
         }
@@ -61,11 +64,11 @@ fun GattDetailScreen(
         title = stringResource(R.string.label_gatt_device),
         actions = {
             IconButton(onClick = {
-                if (isConnected && gattDevice != null) {
+                if (commandsEnabled && gattDevice != null) {
                     isEnumerating = true
                     viewModel.selectAndEnumGatt(gattIndex.toString())
                 }
-            }) {
+            }, enabled = commandsEnabled) {
                 if (isEnumerating) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
@@ -89,6 +92,7 @@ fun GattDetailScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            CapabilityNotice(bleCapability, "Firmware BLE")
             GattDetailConnectionBanner(
                 isConnected = isConnected,
                 isEnumerating = isEnumerating,
@@ -157,6 +161,7 @@ fun GattDetailScreen(
                     BrutalistOutlinedButton(
                         text = stringResource(R.string.action_track),
                         onClick = { onNavigateToTrack(gattIndex) },
+                        enabled = commandsEnabled,
                         modifier = Modifier.weight(1f),
                         leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) }
                     )

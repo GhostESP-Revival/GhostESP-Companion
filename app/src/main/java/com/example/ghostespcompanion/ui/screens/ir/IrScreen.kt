@@ -56,16 +56,13 @@ fun IrScreen(
         }
     }
     
-    val isIrSupported = deviceInfo?.let {
-        it.hasFeature(GhostResponse.DeviceFeature.INFRARED_TX) || 
-        it.hasFeature(GhostResponse.DeviceFeature.INFRARED_RX) 
-    } ?: true
-    val hasIrRx = deviceInfo?.hasFeature(GhostResponse.DeviceFeature.INFRARED_RX) ?: true
-    val hasDeviceInfo = deviceInfo != null
+    val irCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.INFRARED_TX, GhostResponse.DeviceFeature.INFRARED_RX)
+    val irTx = deviceInfo.resolve(GhostResponse.DeviceFeature.INFRARED_TX)
+    val irRx = deviceInfo.resolve(GhostResponse.DeviceFeature.INFRARED_RX)
     
     // Load IR remotes when connected
     LaunchedEffect(isConnected) {
-        if (isConnected) {
+        if (isConnected && irCapability.isUsable) {
             isLoadingRemotes = true
             viewModel.listIrRemotes()
         }
@@ -102,7 +99,7 @@ fun IrScreen(
     MainScreen(
         title = stringResource(R.string.title_ir),
         actions = {
-            IconButton(onClick = onNavigateToLearn) {
+            IconButton(onClick = onNavigateToLearn, enabled = irRx.isUsable) {
                 Icon(
                     Icons.Default.SettingsRemote, 
                     contentDescription = stringResource(R.string.title_learn_signal),
@@ -117,6 +114,7 @@ fun IrScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            CapabilityNotice(irCapability, stringResource(R.string.title_ir), Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             // Quick actions
             Row(
                 modifier = Modifier
@@ -145,7 +143,7 @@ fun IrScreen(
                             contentDescription = null
                         )
                     },
-                    enabled = isConnected
+                    enabled = isConnected && irTx.isUsable
                 )
             }
             
@@ -252,7 +250,7 @@ fun IrScreen(
                     RemoteCard(
                         remote = remote,
                         onClick = {
-                            if (isConnected) {
+                            if (isConnected && irTx.isUsable) {
                                 // Find the actual remote index from the original list
                                 val originalRemote = irRemotes.find { 
                                     it.filename.removeSuffix(".ir").removeSuffix(".json") == remote.name 
@@ -274,14 +272,14 @@ fun IrScreen(
                         modifier = Modifier.fillMaxWidth(),
                         borderColor = MaterialTheme.colorScheme.outline,
                         leadingIcon = { Icon(Icons.Default.SettingsRemote, contentDescription = null) },
-                        enabled = isConnected && hasIrRx
+                        enabled = isConnected && irRx.isUsable
                     )
                 }
             }
         }
         
         // Feature Not Supported Overlay
-        if (hasDeviceInfo && !isIrSupported) {
+        if (irCapability == GhostResponse.CapabilityResolution.UNSUPPORTED) {
             FeatureNotSupportedOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },

@@ -1,0 +1,6 @@
+WD:BEGIN ts=1000
+WD:STATUS aps=12 ch=3 up=2s
+WD:AP ts=1500 bssid=AA:BB:CC:DD:EE:FF ssid_hex=486F6D65 rssi=-55 ch=6 auth=WPA2 hidden=0
+WD:BLE ts=1600 mac=DE:AD:BE:EF:00:01 name_hex=466C6970706572 rssi=-70 type=adv mfg=0x004C
+WD:STATUS aps=15 ch=11 up=4s
+WD:END ts=2000

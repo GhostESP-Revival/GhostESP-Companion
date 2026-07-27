@@ -1,0 +1,11 @@
+[0] Station MAC: 00:11:22:33:44:55,
+     Station Vendor: Espressif,
+     Associated AP: HomeNetwork,
+     AP BSSID: AA:BB:CC:DD:EE:FF,
+     AP Vendor: TP-Link
+New Station:
+Station: 66:77:88:99:AA:BB,
+     STA Vendor: Apple,
+     Associated AP: HomeNetwork,
+     AP BSSID: AA:BB:CC:DD:EE:FF,
+     AP Vendor: TP-Link

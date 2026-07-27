@@ -154,13 +154,15 @@ fun GhostESPNavGraph(
             val onNavigateToGattDetail = remember { { gattIndex: Int -> navController.navigate(Screen.GattDetail.createRoute(gattIndex)) } }
             val onNavigateToTrackGatt = remember { { gattIndex: Int -> navController.navigate(Screen.TrackGatt.createRoute(gattIndex)) } }
             val onNavigateToTrackFlipper = remember { { flipperIndex: Int -> navController.navigate(Screen.TrackFlipper.createRoute(flipperIndex)) } }
+            val onNavigateToGps = remember { { navController.navigate(Screen.Gps.route) } }
 
             BleScreen(
                 viewModel = sharedViewModel,
                 onNavigateToFlipper = onNavigateToFlipper,
                 onNavigateToGattDetail = onNavigateToGattDetail,
                 onNavigateToTrackGatt = onNavigateToTrackGatt,
-                onNavigateToTrackFlipper = onNavigateToTrackFlipper
+                onNavigateToTrackFlipper = onNavigateToTrackFlipper,
+                onNavigateToGps = onNavigateToGps
             )
         }
 

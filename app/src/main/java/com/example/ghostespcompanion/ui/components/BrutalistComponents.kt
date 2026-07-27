@@ -393,6 +393,98 @@ fun BrutalistDivider(
 }
 
 /**
+ * Row-based attack launcher card used by the WiFi Attacks and BLE Attacks tabs.
+ *
+ * Shows a title, one-line description, idle/running status pill, an optional
+ * expandable content slot for inline controls (AP picker, mode picker, text
+ * fields), and a start/stop control.
+ */
+@Composable
+fun AttackLauncherRow(
+    title: String,
+    description: String,
+    isRunning: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    startEnabled: Boolean = true,
+    startLabel: String = stringResource(R.string.label_start),
+    stopLabel: String = stringResource(R.string.label_stop),
+    statusIdleLabel: String = stringResource(R.string.label_status_idle),
+    statusRunningLabel: String = stringResource(R.string.label_status_running),
+    expandedContent: (@Composable ColumnScope.() -> Unit)? = null,
+    resultsContent: (@Composable ColumnScope.() -> Unit)? = null
+) {
+    BrutalistCard(
+        modifier = modifier.fillMaxWidth(),
+        borderColor = if (isRunning) errorColor() else MaterialTheme.colorScheme.outline,
+        backgroundColor = if (isRunning) errorColor().copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
+        borderWidth = if (isRunning) 2.dp else 1.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (isRunning) errorColor() else primaryColor(),
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            BrutalistStatusBadge(
+                text = if (isRunning) statusRunningLabel else statusIdleLabel,
+                statusColor = if (isRunning) errorColor() else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (expandedContent != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            expandedContent()
+        }
+
+        if (resultsContent != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            resultsContent()
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        BrutalistButton(
+            text = if (isRunning) stopLabel else startLabel,
+            onClick = if (isRunning) onStop else onStart,
+            modifier = Modifier.fillMaxWidth(),
+            containerColor = if (isRunning) warningColor() else primaryColor(),
+            borderColor = if (isRunning) warningColor() else primaryColor(),
+            enabled = isRunning || startEnabled,
+            leadingIcon = {
+                Icon(
+                    if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = null
+                )
+            }
+        )
+    }
+}
+
+/**
  * BLE Connection Status Banner
  */
 @Composable
@@ -754,6 +846,27 @@ fun DeviceInfoDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+
+                    if (deviceInfo.capabilities.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Firmware capabilities",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = deviceInfo.capabilities.map { it.name.replace('_', ' ') }.sorted().joinToString(", "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    DeviceInfoRow(
+                        label = "Capability inventory",
+                        value = if (deviceInfo.chipInfoEndedExplicitly) "Complete" else "Incomplete"
+                    )
                     
                     // Debug section
                     var showRawResponse by remember { mutableStateOf(false) }

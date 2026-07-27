@@ -1,0 +1,9 @@
+[0] Service: Generic Access,
+     UUID: 0x1800,
+     Handles: 1-7
+[1] Service: Battery Service,
+     UUID: 0x180F,
+     Handles: 12-15
+[2] Service: Unknown Test Service,
+     UUID: 0xFFE0,
+     Handles: 20-30

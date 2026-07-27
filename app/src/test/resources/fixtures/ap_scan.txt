@@ -1,0 +1,9 @@
+[0] SSID: HomeNetwork,
+     BSSID: AA:BB:CC:DD:EE:FF,
+     RSSI: -42,
+     Channel: 6,
+     Band: 2GHz,
+     Security: WPA2-PSK
+     PMF: Disabled
+     Vendor: TP-Link
+[1] SSID: , BSSID: 11:22:33:44:55:66, RSSI: -85, Channel: 11, Band: 2GHz, Security: OPEN

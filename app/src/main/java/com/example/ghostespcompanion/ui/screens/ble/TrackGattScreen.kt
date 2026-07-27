@@ -42,7 +42,10 @@ fun TrackGattScreen(
     val trackData by viewModel.trackData.collectAsState()
     val trackHeader by viewModel.trackHeader.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val bleCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.BLE)
+    val commandsEnabled = isConnected && bleCapability.isUsable
     val privacyMode = appSettings.privacyMode
     
     val gattDevice = gattDevices.find { it.index == gattIndex }
@@ -60,8 +63,8 @@ fun TrackGattScreen(
         label = "pulse"
     )
     
-    LaunchedEffect(isConnected) {
-        if (isConnected && !isTracking) {
+    LaunchedEffect(commandsEnabled) {
+        if (commandsEnabled && !isTracking) {
             viewModel.selectAndTrackGatt(gattIndex.toString())
             isTracking = true
         }
@@ -90,7 +93,7 @@ fun TrackGattScreen(
                     viewModel.selectAndTrackGatt(gattIndex.toString())
                     isTracking = true
                 }
-            }) {
+            }, enabled = commandsEnabled || isTracking) {
                 Icon(
                     if (isTracking) Icons.Default.Stop else Icons.Default.PlayArrow,
                     contentDescription = if (isTracking) stringResource(R.string.action_stop) else stringResource(R.string.action_start),
@@ -107,6 +110,7 @@ fun TrackGattScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            CapabilityNotice(bleCapability, "Firmware BLE")
             TrackGattBanner(
                 isConnected = isConnected,
                 isTracking = isTracking,

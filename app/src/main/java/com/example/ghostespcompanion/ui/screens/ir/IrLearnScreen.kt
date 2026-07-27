@@ -42,8 +42,8 @@ fun IrLearnScreen(
     val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     
-    val hasIrRx = deviceInfo?.hasFeature(GhostResponse.DeviceFeature.INFRARED_RX) ?: true
-    val hasDeviceInfo = deviceInfo != null
+    val irRx = deviceInfo.resolve(GhostResponse.DeviceFeature.INFRARED_RX)
+    val irTx = deviceInfo.resolve(GhostResponse.DeviceFeature.INFRARED_TX)
     
     // Observe parsed IR learn responses from repository
     val irLearnedSignal by viewModel.irLearnedSignal.collectAsState()
@@ -83,6 +83,7 @@ fun IrLearnScreen(
     
     // Clear state when starting new learn
     fun startLearning() {
+        if (!irRx.isUsable) return
         viewModel.clearIrLearnState()
         viewModel.learnIr()
         isLearning = true
@@ -207,7 +208,7 @@ fun IrLearnScreen(
                     BrutalistButton(
                         text = if (isLearning) stringResource(R.string.action_stop_learning) else stringResource(R.string.action_start_learning),
                         onClick = {
-                            if (isConnected) {
+                            if (isConnected && irRx.isUsable) {
                                 if (isLearning) {
                                     viewModel.stopAll()
                                     viewModel.clearIrLearnState()
@@ -219,7 +220,7 @@ fun IrLearnScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = if (isLearning) errorColor() else primaryColor(),
-                        enabled = isConnected,
+                        enabled = isConnected && irRx.isUsable,
                         leadingIcon = {
                             Icon(
                                 if (isLearning) Icons.Default.Stop else Icons.Default.SettingsRemote,
@@ -294,7 +295,7 @@ fun IrLearnScreen(
                         LearnedSignalCard(
                             signal = signal,
                             onReplay = {
-                                if (isConnected) {
+                                if (isConnected && irTx.isUsable) {
                                     viewModel.sendIr(signal.name, null)
                                 }
                             },
@@ -357,7 +358,7 @@ fun IrLearnScreen(
         }
         
         // Feature Not Supported Overlay
-        if (hasDeviceInfo && !hasIrRx) {
+        if (irRx == GhostResponse.CapabilityResolution.UNSUPPORTED) {
             FeatureNotSupportedOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },

@@ -43,6 +43,12 @@ private object ResponsePatterns {
     val FLIPPER_NAME = Regex("Name:\\s*([^,\\n]+)")
     val FLIPPER_RSSI = Regex("RSSI:\\s*(-?\\d+)\\s*dBm")
     val FLIPPER_TYPE = Regex("(White|Black|Transparent)\\s*Flipper", RegexOption.IGNORE_CASE)
+
+    // listflippers/listairtags static output (flipper_scan_print_results / airtag_scan_print_results):
+    // [N] MAC: XX:XX:XX:XX:XX:XX,
+    //      Name: XXX,               <- Flipper only
+    //      RSSI: -XX dBm (XXX)      <- AirTag has proximity in parens, Flipper doesn't
+    val MAC_LIST_INDEX = Regex("^\\[(\\d+)\\]\\s*MAC:")
     
     // Station scan (multiline format from firmware):
     // Format 1 (indexed):
@@ -83,6 +89,46 @@ private object ResponsePatterns {
     val BLE_RSSI = Regex("RSSI:\\s*(-?\\d+)")
     val BLE_MAC = Regex("([0-9A-Fa-f:]{17})")
     
+    // Ethernet info (ethinfo, multiline block from "Status: UP"/"Status: DOWN"):
+    // Status: UP
+    // Link: 100Mbps Full Duplex
+    // MAC: XX:XX:XX:XX:XX:XX
+    // IP Address: X.X.X.X
+    // Netmask: X.X.X.X
+    // Gateway: X.X.X.X
+    // DNS Main: X.X.X.X
+    // DHCP Server: X.X.X.X
+    val ETH_LINK = Regex("Link:\\s*(.+)")
+    val ETH_MAC = Regex("MAC:\\s*([0-9A-Fa-f:]{17})")
+    val ETH_IP = Regex("IP Address:\\s*([^\\n]+)")
+    val ETH_NETMASK = Regex("Netmask:\\s*([^\\n]+)")
+    val ETH_GATEWAY = Regex("Gateway:\\s*([^\\n]+)")
+    val ETH_DNS_MAIN = Regex("DNS Main:\\s*([^\\n]+)")
+    val ETH_DHCP_SERVER = Regex("DHCP Server:\\s*([^\\n]+)")
+
+    // Ethernet statistics (ethstats, multiline block from "=== Ethernet Statistics ===")
+    val ETH_LINK_STATUS = Regex("Link Status:\\s*(\\w+)")
+    val ETH_RX_PACKETS = Regex("RX Packets:\\s*(\\d+)")
+    val ETH_TX_PACKETS = Regex("TX Packets:\\s*(\\d+)")
+    val ETH_RX_ERRORS = Regex("RX Errors:\\s*(\\d+)")
+    val ETH_RX_DROPS = Regex("RX Drops:\\s*(\\d+)")
+    val ETH_TX_ERRORS = Regex("TX Errors:\\s*(\\d+)")
+    val ETH_TX_DROPS = Regex("TX Drops:\\s*(\\d+)")
+    val ETH_ARP_REQUESTS = Regex("ARP Requests:\\s*(\\d+)")
+    val ETH_ARP_REPLIES = Regex("ARP Replies:\\s*(\\d+)")
+
+    // Ethernet ARP scan entry (etharp): "  192.168.1.5   aa:bb:cc:dd:ee:ff"
+    val ETH_ARP_ENTRY = Regex("^(\\d{1,3}(?:\\.\\d{1,3}){3})\\s+([0-9A-Fa-f:]{17})$")
+
+    // Ethernet port scan entry (ethports): "  192.168.1.1:80 - OPEN"
+    val ETH_PORT_OPEN = Regex("^(\\S+):(\\d+)\\s*-\\s*OPEN$")
+
+    // Ethernet ping scan entry (ethping): "  192.168.1.5 - ALIVE"
+    val ETH_PING_ALIVE = Regex("^(\\S+)\\s*-\\s*ALIVE$")
+
+    // Ethernet traceroute hop (ethtrace): "  1  192.168.1.1  12ms" or "  5  *  (timeout)"
+    val ETH_TRACE_HOP = Regex("^(\\d+)\\s+(\\S+)\\s+(.+)$")
+
     // Aerial device: [N] device_id\n    MAC: XX:XX:XX:XX:XX:XX\n    Type: XXX\n    RSSI: -XX dBm
     val AERIAL_INDEX = Regex("^\\[(\\d+)\\]")
     val AERIAL_ID = Regex("^\\[(?:\\d+)\\]\\s*(.+)$", RegexOption.MULTILINE)
@@ -128,9 +174,29 @@ private object ResponsePatterns {
     val SD_REMOVED = Regex("SD:OK:removed:(.+)$")
     val SD_APPENDED = Regex("SD:OK:appended:(.+)$")
     
-    // NFC Tag: NFC Tag Found: TYPE UID: XXXXXX
-    val NFC_TYPE = Regex("NFC Tag Found:\\s*(\\w+)")
-    val NFC_UID = Regex("UID:\\s*([0-9A-Fa-f]+)")
+    // NFC Tag scan line: "NFC: <TypeName> uid=<XX:XX:...> atqa=0x%04X sak=0x%02X"
+    val NFC_SCAN_LINE = Regex(
+        "^NFC:\\s*(MIFARE Classic|MIFARE DESFire|ISO14443-4|ISO14443-A)\\s+uid=([0-9A-Fa-f:]+)\\s+atqa=0x([0-9A-Fa-f]+)\\s+sak=0x([0-9A-Fa-f]+)"
+    )
+    // "NFC: backend=<name>" or "NFC: backend set to <name>"
+    val NFC_BACKEND_CURRENT = Regex("^NFC:\\s*backend=(\\w+)")
+    val NFC_BACKEND_SET = Regex("^NFC:\\s*backend set to (\\w+)")
+    // "NFC: emulating NFC-A uid=<hex> atqa=0x%04X sak=0x%02X..."
+    val NFC_EMULATE_START = Regex(
+        "^NFC:\\s*emulating NFC-A uid=([0-9A-Fa-f:]+)\\s+atqa=0x([0-9A-Fa-f]+)\\s+sak=0x([0-9A-Fa-f]+)"
+    )
+    // "NFC: PicoPass/iCLASS CSN=<hex:hex:...>"
+    val NFC_PICOPASS_CSN = Regex("^NFC:\\s*PicoPass/iCLASS CSN=([0-9A-Fa-f:]+)")
+    // "  PACS: FC=%u CN=%u (%ubit)"
+    val NFC_PICOPASS_PACS = Regex("PACS:\\s*FC=(\\d+)\\s+CN=(\\d+)\\s*\\((\\d+)bit\\)")
+    // "  Encryption: 0x%02X, Biometrics: yes/no, PIN len: %u, SIO: yes/no"
+    val NFC_PICOPASS_ENCRYPTION = Regex(
+        "Encryption:\\s*0x([0-9A-Fa-f]+),\\s*Biometrics:\\s*(yes|no),\\s*PIN len:\\s*(\\d+),\\s*SIO:\\s*(yes|no)"
+    )
+    // "NFC: saved MIFARE Classic dump: <path>" / "NFC: saved Type 2/NTAG dump: <path>" / "NFC: failed to save ..."
+    val NFC_SAVE_OK = Regex("^NFC:\\s*saved (.+?) dump:\\s*(.+)$")
+    // "NFC: hardnested capture saved: <path>"
+    val NFC_HARDNESTED_SAVED = Regex("^NFC:\\s*hardnested capture saved:\\s*(.+)$")
     
     // GPS position - firmware output format:
     // GPS Info
@@ -185,8 +251,59 @@ private object ResponsePatterns {
     val WARDRIVE_SATS = Regex("Sats:\\s*(\\d+)(?:/(\\d+))?")
     val WARDRIVE_ACCURACY = Regex("Accuracy:\\s*(\\S+)")
     
+    // BLE Advertiser live single-line format (print_advertiser_line):
+    // [N] Advertiser|iBeacon | MAC | RSSI dBm | AdvType | Name (opt) | OUI xxx (opt) | MFG xxx (opt) | SVC xxx (opt) | Major N Minor N (opt)
+    val ADVERTISER_LIVE = Regex(
+        "^\\[(\\d+)]\\s*(Advertiser|iBeacon)\\s*\\|\\s*([0-9A-Fa-f:]{17})\\s*\\|\\s*(-?\\d+)\\s*dBm\\s*\\|\\s*(\\S+)"
+    )
+
+    // BLE Advertiser detailed block format (print_advertiser_detail), preceded by
+    // "--- BLE Advertisers (N) ---" header, one indented field-block per device:
+    // [N] BLE Advertiser / [N] iBeacon
+    //      MAC: xx:xx:xx:xx:xx:xx
+    //      Address Type: xxx
+    //      RSSI: -XX dBm (xxx), seen N
+    //      Adv Type: xxx
+    //      Name: xxx (optional)
+    //      Flags: 0xXX (optional)
+    //      TX Power: -XX dBm (optional)
+    //      OUI Vendor: xxx (optional)
+    //      Manufacturer: xxx (optional)
+    //      Appearance: 0xXXXX xxx (optional)
+    //      Services: xxx (optional)
+    //      Service Data: xxx (optional)
+    //      iBeacon UUID: xxx (optional, iBeacon only)
+    //      iBeacon Major: N / iBeacon Minor: N (optional, iBeacon only)
+    //      Measured Power: -XX dBm (optional, iBeacon only)
+    val ADVERTISER_DETAIL_HEADER = Regex("^\\[(\\d+)]\\s*(BLE Advertiser|iBeacon)\\s*$", RegexOption.MULTILINE)
+    val ADVERTISER_DETAIL_MAC = Regex("MAC:\\s*([0-9A-Fa-f:]{17})")
+    val ADVERTISER_DETAIL_ADDR_TYPE = Regex("Address Type:\\s*(\\S+)")
+    val ADVERTISER_DETAIL_RSSI = Regex("RSSI:\\s*(-?\\d+)\\s*dBm\\s*\\(([^)]*)\\),\\s*seen\\s*(\\d+)")
+    val ADVERTISER_DETAIL_ADV_TYPE = Regex("Adv Type:\\s*(\\S+)")
+    val ADVERTISER_DETAIL_NAME = Regex("(?:^|\\n)\\s*Name:\\s*([^\\n]+)")
+    val ADVERTISER_DETAIL_FLAGS = Regex("Flags:\\s*0x([0-9A-Fa-f]+)")
+    val ADVERTISER_DETAIL_TX_POWER = Regex("TX Power:\\s*(-?\\d+)\\s*dBm")
+    val ADVERTISER_DETAIL_OUI = Regex("OUI Vendor:\\s*([^\\n]+)")
+    val ADVERTISER_DETAIL_MFG = Regex("Manufacturer:\\s*([^\\n]+)")
+    val ADVERTISER_DETAIL_APPEARANCE = Regex("Appearance:\\s*0x([0-9A-Fa-f]+)\\s*([^\\n]*)")
+    val ADVERTISER_DETAIL_SERVICES = Regex("(?:^|\\n)\\s*Services:\\s*([^\\n]+)")
+    val ADVERTISER_DETAIL_SERVICE_DATA = Regex("Service Data:\\s*([^\\n]+)")
+    val ADVERTISER_DETAIL_IBEACON_UUID = Regex("iBeacon UUID:\\s*(\\S+)")
+    val ADVERTISER_DETAIL_IBEACON_MAJOR = Regex("iBeacon Major:\\s*(\\d+)")
+    val ADVERTISER_DETAIL_IBEACON_MINOR = Regex("iBeacon Minor:\\s*(\\d+)")
+    val ADVERTISER_DETAIL_MEASURED_POWER = Regex("Measured Power:\\s*(-?\\d+)\\s*dBm")
+
     // Error/Success
-    val ERROR = Regex("ERROR:\\s*(.+)")
+    val ERROR_PREFIX = Regex("^error\\b\\s*[:\\-]?\\s*(.*)$", RegexOption.IGNORE_CASE)
+    val ERROR_FAILED = Regex("^failed\\b\\s*[:\\-]?\\s*(.*)$", RegexOption.IGNORE_CASE)
+    val ERROR_INVALID = Regex("^invalid\\b\\s*[:\\-]?\\s*(.*)$", RegexOption.IGNORE_CASE)
+    val NON_ERROR_METRIC = Regex("^(?:failed|invalid)\\s+\\w+:\\s*\\d+(?:\\s|$)", RegexOption.IGNORE_CASE)
+    val ERROR_UNKNOWN = Regex("^unknown\\s+(?:command|subcommand|option|argument|mode|capture type)\\b.*$", RegexOption.IGNORE_CASE)
+    val ERROR_TIMEOUT = Regex(
+        "^(?:timed?\\s+out\\b.*|timeout(?!\\s*:\\s*\\d+\\s*(?:seconds?|ms)\\b)\\b.*)$",
+        RegexOption.IGNORE_CASE
+    )
+    val ERROR_UNSUPPORTED = Regex("^(?:unsupported\\b.*|.*\\b(?:is\\s+)?not supported\\b.*)$", RegexOption.IGNORE_CASE)
     val SUCCESS = Regex("^OK:\\s*(.+)$", RegexOption.MULTILINE)
     val SD_SUCCESS = Regex("^SD:OK.*$")
     
@@ -863,9 +980,11 @@ data class Handshake(
              *      RSSI: -XX dBm
              */
             fun parse(text: String): FlipperDevice? {
-                if (!text.contains("Flipper") || !text.contains("Found")) return null
-                
-                val index = ResponsePatterns.FLIPPER_INDEX.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+                val liveMatch = ResponsePatterns.FLIPPER_INDEX.find(text)
+                val listMatch = if (liveMatch == null) {
+                    ResponsePatterns.MAC_LIST_INDEX.find(text)?.takeIf { text.contains("Name:") }
+                } else null
+                val index = (liveMatch ?: listMatch)?.groupValues?.get(1)?.toIntOrNull() ?: return null
                 val flipperType = ResponsePatterns.FLIPPER_TYPE.find(text)?.groupValues?.get(1)?.trim() ?: "Unknown"
                 val mac = ResponsePatterns.FLIPPER_MAC.find(text)?.groupValues?.get(1) ?: return null
                 val name = ResponsePatterns.FLIPPER_NAME.find(text)?.groupValues?.get(1)?.trim()
@@ -922,9 +1041,11 @@ data class Handshake(
              *      Payload: XX XX XX...
              */
             fun parse(text: String): AirTagDevice? {
-                if (!text.contains("AirTag")) return null
-                
-                val index = ResponsePatterns.AIRTAG_INDEX.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+                val liveMatch = ResponsePatterns.AIRTAG_INDEX.find(text)
+                val listMatch = if (liveMatch == null) {
+                    ResponsePatterns.MAC_LIST_INDEX.find(text)?.takeIf { !text.contains("Name:") && text.contains("RSSI:") }
+                } else null
+                val index = (liveMatch ?: listMatch)?.groupValues?.get(1)?.toIntOrNull() ?: return null
                 val total = ResponsePatterns.AIRTAG_TOTAL.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 1
                 val mac = ResponsePatterns.AIRTAG_MAC.find(text)?.groupValues?.get(1) ?: return null
                 val rssi = ResponsePatterns.AIRTAG_RSSI.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: -100
@@ -988,6 +1109,150 @@ data class Handshake(
     enum class BleDeviceType {
         GENERIC, FLIPPER_ZERO, AIR_TAG, IPHONE, SAMSUNG, GOOGLE, GATT_DEVICE
     }
+
+    /**
+     * BLE Advertiser (blescan -adv/-oui/-vendor, listadv) - covers both the live
+     * single-line format emitted per newly-discovered advertiser and the richer
+     * detail block emitted by listadv. Detail-only fields are nullable since the
+     * live format doesn't carry them.
+     */
+    @Immutable
+    data class AdvertiserDevice(
+        val index: Int,
+        val mac: String,
+        val rssi: Int,
+        val advType: String,
+        val name: String? = null,
+        val ouiVendor: String? = null,
+        val manufacturer: String? = null,
+        val services: String? = null,
+        val isIBeacon: Boolean = false,
+        val ibeaconMajor: Int? = null,
+        val ibeaconMinor: Int? = null,
+        // Detail-only fields (listadv)
+        val addressType: String? = null,
+        val seenCount: Long? = null,
+        val proximity: String? = null,
+        val txPower: Int? = null,
+        val flags: Int? = null,
+        val appearance: Int? = null,
+        val appearanceName: String? = null,
+        val serviceData: String? = null,
+        val ibeaconUuid: String? = null,
+        val measuredPower: Int? = null
+    ) : GhostResponse() {
+        companion object {
+            /**
+             * Parse the live single-line advertiser format:
+             * [N] Advertiser|iBeacon | MAC | RSSI dBm | AdvType | Name (opt) | OUI xxx (opt) | MFG xxx (opt) | SVC xxx (opt) | Major N Minor N (opt)
+             */
+            fun parseLive(line: String): AdvertiserDevice? {
+                val match = ResponsePatterns.ADVERTISER_LIVE.find(line) ?: return null
+                val index = match.groupValues[1].toIntOrNull() ?: return null
+                val isIBeacon = match.groupValues[2] == "iBeacon"
+                val mac = match.groupValues[3]
+                val rssi = match.groupValues[4].toIntOrNull() ?: -100
+                val advType = match.groupValues[5]
+
+                var name: String? = null
+                var oui: String? = null
+                var mfg: String? = null
+                var services: String? = null
+                var major: Int? = null
+                var minor: Int? = null
+
+                line.substring(match.range.last + 1).split("|").map { it.trim() }.filter { it.isNotEmpty() }.forEach { segment ->
+                    when {
+                        segment.startsWith("OUI ") -> oui = segment.removePrefix("OUI ").trim()
+                        segment.startsWith("MFG ") -> mfg = segment.removePrefix("MFG ").trim()
+                        segment.startsWith("SVC ") -> services = segment.removePrefix("SVC ").trim()
+                        segment.startsWith("Major ") -> {
+                            val majorMinor = Regex("Major\\s+(\\d+)\\s+Minor\\s+(\\d+)").find(segment)
+                            major = majorMinor?.groupValues?.get(1)?.toIntOrNull()
+                            minor = majorMinor?.groupValues?.get(2)?.toIntOrNull()
+                        }
+                        name == null -> name = segment
+                    }
+                }
+
+                return AdvertiserDevice(
+                    index = index,
+                    mac = mac,
+                    rssi = rssi,
+                    advType = advType,
+                    name = name,
+                    ouiVendor = oui,
+                    manufacturer = mfg,
+                    services = services,
+                    isIBeacon = isIBeacon,
+                    ibeaconMajor = major,
+                    ibeaconMinor = minor
+                )
+            }
+
+            /**
+             * Parse a single detailed device block from listadv output:
+             * [N] BLE Advertiser (or "[N] iBeacon")
+             *      MAC: xx:xx:xx:xx:xx:xx
+             *      Address Type: xxx
+             *      RSSI: -XX dBm (xxx), seen N
+             *      Adv Type: xxx
+             *      Name/Flags/TX Power/OUI Vendor/Manufacturer/Appearance/Services/Service Data (all optional)
+             *      iBeacon UUID/Major/Minor, Measured Power (iBeacon only)
+             */
+            fun parseDetail(text: String): AdvertiserDevice? {
+                val header = ResponsePatterns.ADVERTISER_DETAIL_HEADER.find(text) ?: return null
+                val index = header.groupValues[1].toIntOrNull() ?: return null
+                val isIBeacon = header.groupValues[2] == "iBeacon"
+                val mac = ResponsePatterns.ADVERTISER_DETAIL_MAC.find(text)?.groupValues?.get(1) ?: return null
+
+                val addressType = ResponsePatterns.ADVERTISER_DETAIL_ADDR_TYPE.find(text)?.groupValues?.get(1)?.trim()
+                val rssiMatch = ResponsePatterns.ADVERTISER_DETAIL_RSSI.find(text)
+                val rssi = rssiMatch?.groupValues?.get(1)?.toIntOrNull() ?: -100
+                val proximity = rssiMatch?.groupValues?.get(2)?.trim()?.takeIf { it.isNotEmpty() }
+                val seenCount = rssiMatch?.groupValues?.get(3)?.toLongOrNull()
+                val advType = ResponsePatterns.ADVERTISER_DETAIL_ADV_TYPE.find(text)?.groupValues?.get(1) ?: "UNKNOWN"
+                val name = ResponsePatterns.ADVERTISER_DETAIL_NAME.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+                val flags = ResponsePatterns.ADVERTISER_DETAIL_FLAGS.find(text)?.groupValues?.get(1)?.toIntOrNull(16)
+                val txPower = ResponsePatterns.ADVERTISER_DETAIL_TX_POWER.find(text)?.groupValues?.get(1)?.toIntOrNull()
+                val oui = ResponsePatterns.ADVERTISER_DETAIL_OUI.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+                val mfg = ResponsePatterns.ADVERTISER_DETAIL_MFG.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+                val appearanceMatch = ResponsePatterns.ADVERTISER_DETAIL_APPEARANCE.find(text)
+                val appearance = appearanceMatch?.groupValues?.get(1)?.toIntOrNull(16)
+                val appearanceName = appearanceMatch?.groupValues?.get(2)?.trim()?.takeIf { it.isNotEmpty() }
+                val services = ResponsePatterns.ADVERTISER_DETAIL_SERVICES.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+                val serviceData = ResponsePatterns.ADVERTISER_DETAIL_SERVICE_DATA.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+                val ibeaconUuid = ResponsePatterns.ADVERTISER_DETAIL_IBEACON_UUID.find(text)?.groupValues?.get(1)
+                val ibeaconMajor = ResponsePatterns.ADVERTISER_DETAIL_IBEACON_MAJOR.find(text)?.groupValues?.get(1)?.toIntOrNull()
+                val ibeaconMinor = ResponsePatterns.ADVERTISER_DETAIL_IBEACON_MINOR.find(text)?.groupValues?.get(1)?.toIntOrNull()
+                val measuredPower = ResponsePatterns.ADVERTISER_DETAIL_MEASURED_POWER.find(text)?.groupValues?.get(1)?.toIntOrNull()
+
+                return AdvertiserDevice(
+                    index = index,
+                    mac = mac,
+                    rssi = rssi,
+                    advType = advType,
+                    name = name,
+                    ouiVendor = oui,
+                    manufacturer = mfg,
+                    services = services,
+                    isIBeacon = isIBeacon,
+                    ibeaconMajor = ibeaconMajor,
+                    ibeaconMinor = ibeaconMinor,
+                    addressType = addressType,
+                    seenCount = seenCount,
+                    proximity = proximity,
+                    txPower = txPower,
+                    flags = flags,
+                    appearance = appearance,
+                    appearanceName = appearanceName,
+                    serviceData = serviceData,
+                    ibeaconUuid = ibeaconUuid,
+                    measuredPower = measuredPower
+                )
+            }
+        }
+    }
     
     // ==================== GATT Service Models ====================
     
@@ -1001,15 +1266,33 @@ data class Handshake(
         val characteristics: List<GattCharacteristic> = emptyList()
     ) : GhostResponse() {
         companion object {
-            private val SERVICE_PATTERN = Regex("Service:\\s*(.+?)\\s*\\((0x[0-9A-Fa-f]{4}|0x[0-9A-Fa-f]+)\\)\\s*handles\\s*(\\d+)-(\\d+)", RegexOption.IGNORE_CASE)
-            private val SERVICE_UUID_PATTERN = Regex("\\(([0-9A-Fa-f]{4})\\)")
+            private val COMPACT_SERVICE_PATTERN = Regex(
+                "Service:\\s*(.+?)\\s*\\(([^)]+)\\)\\s*(?:\\[\\s*)?handles\\s*(\\d+)\\s*-\\s*(\\d+)(?:\\s*])?",
+                RegexOption.IGNORE_CASE
+            )
+            private val MULTILINE_SERVICE_NAME = Regex("(?:^|\\r?\\n)[ \\t]*(?:\\[\\d+])?[ \\t]*Service:[ \\t]*([^,\\r\\n]*)", RegexOption.IGNORE_CASE)
+            private val MULTILINE_UUID = Regex("(?:^|\\r?\\n)\\s*UUID:\\s*([^,\\s]+)", RegexOption.IGNORE_CASE)
+            private val MULTILINE_HANDLES = Regex("(?:^|\\r?\\n)\\s*Handles:\\s*(\\d+)\\s*-\\s*(\\d+)", RegexOption.IGNORE_CASE)
             
             fun parse(line: String): GattService? {
-                val match = SERVICE_PATTERN.find(line) ?: return null
-                val name = match.groupValues[1].trim()
-                val uuid = match.groupValues[2]
-                val startHandle = match.groupValues[3].toIntOrNull() ?: return null
-                val endHandle = match.groupValues[4].toIntOrNull() ?: return null
+                val compact = COMPACT_SERVICE_PATTERN.find(line)
+                val name: String
+                val uuid: String
+                val startHandle: Int
+                val endHandle: Int
+                if (compact != null) {
+                    name = compact.groupValues[1].trim()
+                    uuid = compact.groupValues[2].trim()
+                    startHandle = compact.groupValues[3].toIntOrNull() ?: return null
+                    endHandle = compact.groupValues[4].toIntOrNull() ?: return null
+                } else {
+                    val service = MULTILINE_SERVICE_NAME.find(line) ?: return null
+                    name = service.groupValues[1].trim()
+                    uuid = MULTILINE_UUID.find(line)?.groupValues?.get(1)?.trim() ?: return null
+                    val handles = MULTILINE_HANDLES.find(line) ?: return null
+                    startHandle = handles.groupValues[1].toIntOrNull() ?: return null
+                    endHandle = handles.groupValues[2].toIntOrNull() ?: return null
+                }
                 return GattService(
                     uuid = uuid,
                     name = name.takeIf { it.isNotEmpty() && it != "Unknown" },
@@ -1145,38 +1428,145 @@ data class Handshake(
     
     // ==================== NFC Models ====================
     
-    /** NFC Tag */
+    /**
+     * NFC Tag scan result.
+     * Firmware line format: "NFC: <TypeName> uid=<XX:XX:...> atqa=0x%04X sak=0x%02X"
+     * or "NFC: no tag found" (does not parse to a tag).
+     */
     @Immutable
     data class NfcTag(
         val uid: String,
         val type: NfcTagType,
+        val atqa: String? = null,
+        val sak: String? = null,
         val data: String? = null
     ) : GhostResponse() {
         companion object {
             fun parse(line: String): NfcTag? {
-                if (!line.contains("NFC Tag")) return null
-                
-                val typeStr = ResponsePatterns.NFC_TYPE.find(line)?.groupValues?.get(1) ?: return null
-                val uid = ResponsePatterns.NFC_UID.find(line)?.groupValues?.get(1) ?: return null
-                
+                val match = ResponsePatterns.NFC_SCAN_LINE.find(line.trim()) ?: return null
+                val (typeStr, uid, atqa, sak) = match.destructured
+
                 return NfcTag(
                     uid = uid,
-                    type = when {
-                        typeStr.contains("NTAG213", ignoreCase = true) -> NfcTagType.NTAG213
-                        typeStr.contains("NTAG215", ignoreCase = true) -> NfcTagType.NTAG215
-                        typeStr.contains("NTAG216", ignoreCase = true) -> NfcTagType.NTAG216
-                        typeStr.contains("DESFIRE", ignoreCase = true) -> NfcTagType.MIFARE_DESFIRE
-                        typeStr.contains("MIFARE", ignoreCase = true) -> NfcTagType.MIFARE_CLASSIC
+                    type = when (typeStr) {
+                        "MIFARE Classic" -> NfcTagType.MIFARE_CLASSIC
+                        "MIFARE DESFire" -> NfcTagType.MIFARE_DESFIRE
+                        "ISO14443-4" -> NfcTagType.ISO14443_4
+                        "ISO14443-A" -> NfcTagType.ISO14443_A
                         else -> NfcTagType.UNKNOWN
                     },
+                    atqa = atqa,
+                    sak = sak,
                     data = line
                 )
             }
         }
     }
-    
+
     enum class NfcTagType {
-        NTAG213, NTAG215, NTAG216, MIFARE_CLASSIC, MIFARE_DESFIRE, UNKNOWN
+        MIFARE_CLASSIC, MIFARE_DESFIRE, ISO14443_4, ISO14443_A, UNKNOWN
+    }
+
+    /** Current/updated NFC backend, from "nfc backend" get or set */
+    @Immutable
+    data class NfcBackend(val name: String) : GhostResponse() {
+        companion object {
+            fun parse(line: String): NfcBackend? {
+                val trimmed = line.trim()
+                ResponsePatterns.NFC_BACKEND_SET.find(trimmed)?.let { return NfcBackend(it.groupValues[1]) }
+                ResponsePatterns.NFC_BACKEND_CURRENT.find(trimmed)?.let { return NfcBackend(it.groupValues[1]) }
+                return null
+            }
+        }
+    }
+
+    /** Current NFC/emulation task status ("NFC: task running"/"idle", or emulate uid=.../"emulation stopped") */
+    @Immutable
+    data class NfcEmulateStatus(
+        val running: Boolean,
+        val uid: String? = null,
+        val atqa: String? = null,
+        val sak: String? = null
+    ) : GhostResponse() {
+        companion object {
+            fun parse(line: String): NfcEmulateStatus? {
+                val trimmed = line.trim()
+                ResponsePatterns.NFC_EMULATE_START.find(trimmed)?.let {
+                    val (uid, atqa, sak) = it.destructured
+                    return NfcEmulateStatus(running = true, uid = uid, atqa = atqa, sak = sak)
+                }
+                if (trimmed.contains("NFC: emulation stopped")) return NfcEmulateStatus(running = false)
+                return null
+            }
+        }
+    }
+
+    /** Result of "nfc save"/"nfc dump" */
+    @Immutable
+    data class NfcSaveResult(val success: Boolean, val dumpType: String? = null, val path: String? = null) : GhostResponse() {
+        companion object {
+            fun parse(line: String): NfcSaveResult? {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("NFC: failed to save")) return NfcSaveResult(success = false)
+                ResponsePatterns.NFC_SAVE_OK.find(trimmed)?.let {
+                    return NfcSaveResult(success = true, dumpType = it.groupValues[1], path = it.groupValues[2])
+                }
+                return null
+            }
+        }
+    }
+
+    /** Result of "nfc hardnested" attack */
+    @Immutable
+    data class NfcHardnestedResult(val success: Boolean, val path: String? = null) : GhostResponse() {
+        companion object {
+            fun parse(line: String): NfcHardnestedResult? {
+                val trimmed = line.trim()
+                if (trimmed.contains("NFC: hardnested capture failed")) return NfcHardnestedResult(success = false)
+                ResponsePatterns.NFC_HARDNESTED_SAVED.find(trimmed)?.let {
+                    return NfcHardnestedResult(success = true, path = it.groupValues[1])
+                }
+                return null
+            }
+        }
+    }
+
+    /** Result of "nfc picopass" scan - accumulated across multiple response lines */
+    @Immutable
+    data class NfcPicopassResult(
+        val found: Boolean,
+        val csn: String? = null,
+        val fc: Int? = null,
+        val cn: Int? = null,
+        val bits: Int? = null,
+        val encryption: String? = null,
+        val biometrics: Boolean? = null,
+        val pinLen: Int? = null,
+        val sio: Boolean? = null,
+        val authFailed: Boolean = false,
+        val unsupported: Boolean = false
+    ) : GhostResponse() {
+        companion object {
+            fun parseCsn(line: String): String? =
+                ResponsePatterns.NFC_PICOPASS_CSN.find(line.trim())?.groupValues?.get(1)
+
+            data class Pacs(val fc: Int?, val cn: Int?, val bits: Int?)
+            fun parsePacs(line: String): Pacs? =
+                ResponsePatterns.NFC_PICOPASS_PACS.find(line.trim())?.let {
+                    Pacs(it.groupValues[1].toIntOrNull(), it.groupValues[2].toIntOrNull(), it.groupValues[3].toIntOrNull())
+                }
+
+            data class Encryption(val value: String, val biometrics: Boolean, val pinLen: Int?, val sio: Boolean)
+            fun parseEncryption(line: String): Encryption? =
+                ResponsePatterns.NFC_PICOPASS_ENCRYPTION.find(line.trim())?.let {
+                    Encryption(
+                        value = it.groupValues[1],
+                        biometrics = it.groupValues[2].equals("yes", ignoreCase = true),
+                        pinLen = it.groupValues[3].toIntOrNull(),
+                        sio = it.groupValues[4].equals("yes", ignoreCase = true)
+                    )
+                }
+        }
     }
     
     // ==================== Status Models ====================
@@ -1208,7 +1598,39 @@ data class Handshake(
         GHOST_BOARD,
         S3TWATCH,
         SD_CARD_SPI,
-        SD_CARD_MMC
+        SD_CARD_MMC;
+
+        enum class Capability {
+            BLE,
+            IEEE802154,
+            CHAMELEON,
+            OTA,
+            CAMERA,
+            MICROPHONE,
+            GHOSTSCRIPT,
+            NRF24,
+            SUB_GHZ
+        }
+
+        companion object {
+            val BLE = Capability.BLE
+            val IEEE802154 = Capability.IEEE802154
+            val CHAMELEON = Capability.CHAMELEON
+            val OTA = Capability.OTA
+            val CAMERA = Capability.CAMERA
+            val MICROPHONE = Capability.MICROPHONE
+            val GHOSTSCRIPT = Capability.GHOSTSCRIPT
+            val NRF24 = Capability.NRF24
+            val SUB_GHZ = Capability.SUB_GHZ
+        }
+    }
+
+    enum class CapabilityResolution {
+        SUPPORTED,
+        UNSUPPORTED,
+        UNKNOWN;
+
+        val isUsable: Boolean get() = this != UNSUPPORTED
     }
 
     /**
@@ -1241,12 +1663,34 @@ data class Handshake(
         val idfVersion: String,
         val buildConfig: String? = null,
         val enabledFeatures: Set<DeviceFeature> = emptySet(),
+        val capabilities: Set<DeviceFeature.Capability> = emptySet(),
         val firmwareVersion: String? = null,
         val gitCommit: String? = null,
         val rawResponse: String? = null,
-        val parseErrors: List<String> = emptyList()
+        val parseErrors: List<String> = emptyList(),
+        /** True only when the firmware explicitly closed this inventory. */
+        val chipInfoEndedExplicitly: Boolean = false
     ) : GhostResponse() {
         fun hasFeature(feature: DeviceFeature): Boolean = enabledFeatures.contains(feature)
+        fun hasFeature(feature: DeviceFeature.Capability): Boolean = capabilities.contains(feature)
+
+        fun resolveFeature(feature: DeviceFeature): CapabilityResolution = when {
+            hasFeature(feature) -> CapabilityResolution.SUPPORTED
+            chipInfoEndedExplicitly -> CapabilityResolution.UNSUPPORTED
+            else -> CapabilityResolution.UNKNOWN
+        }
+
+        fun resolveFeature(vararg features: DeviceFeature): CapabilityResolution = when {
+            features.any(::hasFeature) -> CapabilityResolution.SUPPORTED
+            chipInfoEndedExplicitly -> CapabilityResolution.UNSUPPORTED
+            else -> CapabilityResolution.UNKNOWN
+        }
+
+        fun resolveCapability(feature: DeviceFeature.Capability): CapabilityResolution = when {
+            hasFeature(feature) -> CapabilityResolution.SUPPORTED
+            chipInfoEndedExplicitly -> CapabilityResolution.UNSUPPORTED
+            else -> CapabilityResolution.UNKNOWN
+        }
         
         companion object {
             private val MODEL_PATTERN = Regex("Model:\\s*([^,\\s\\n]+(?:\\s+[^,\\s\\n]+)*?)(?=\\s*(?:[,\\n]|$))")
@@ -1255,7 +1699,7 @@ data class Handshake(
             // Features uses "/" as separator (WiFi/BLE/802.15.4/…) — stop at comma or newline
             private val FEATURES_PATTERN = Regex("(?<!Enabled )Features:\\s*([^,\\n]+)")
             private val FREE_HEAP_PATTERN = Regex("Free Heap:\\s*(\\d+)")
-            private val MIN_FREE_HEAP_PATTERN = Regex("Min Free Heap:\\s*(\\d+)")
+            private val MIN_FREE_HEAP_PATTERN = Regex("Min(?:imum)?(?: Free)? Heap:\\s*(\\d+)")
             private val IDF_VERSION_PATTERN = Regex("IDF Version:\\s*([^,\\s\\n]+)")
             private val BUILD_CONFIG_PATTERN = Regex("Build Config:\\s*([^,\\n]+)")
             private val FIRMWARE_PATTERN = Regex("Firmware:\\s*([^,\\n]+)")
@@ -1289,6 +1733,24 @@ data class Handshake(
                 "SD Card (SPI)" to DeviceFeature.SD_CARD_SPI,
                 "SD Card (MMC)" to DeviceFeature.SD_CARD_MMC
             )
+
+            private val CAPABILITY_MAPPING = mapOf(
+                "BLE" to DeviceFeature.BLE,
+                "Bluetooth LE" to DeviceFeature.BLE,
+                "802.15.4" to DeviceFeature.IEEE802154,
+                "802154" to DeviceFeature.IEEE802154,
+                "Chameleon" to DeviceFeature.CHAMELEON,
+                "Chameleon Ultra" to DeviceFeature.CHAMELEON,
+                "OTA" to DeviceFeature.OTA,
+                "OTA Updates" to DeviceFeature.OTA,
+                "Camera" to DeviceFeature.CAMERA,
+                "Microphone" to DeviceFeature.MICROPHONE,
+                "MIC" to DeviceFeature.MICROPHONE,
+                "GhostScript" to DeviceFeature.GHOSTSCRIPT,
+                "NRF24" to DeviceFeature.NRF24,
+                "SubGHz" to DeviceFeature.SUB_GHZ,
+                "Sub-GHz" to DeviceFeature.SUB_GHZ
+            )
             
             fun parse(text: String): DeviceInfo? {
                 val isDeviceInfo = text.contains("Chip Information") ||
@@ -1317,6 +1779,7 @@ data class Handshake(
                 val gitCommit = GIT_COMMIT_PATTERN.find(text)?.groupValues?.get(1)?.trim()
                 
                 val enabledFeatures = parseEnabledFeatures(text)
+                val capabilities = parseCapabilities(text, features)
                 if (enabledFeatures.isEmpty() && text.contains("Enabled Features:")) {
                     errors.add("Enabled Features section found but no features parsed")
                 }
@@ -1331,10 +1794,12 @@ data class Handshake(
                     idfVersion = idfVersion,
                     buildConfig = buildConfig,
                     enabledFeatures = enabledFeatures,
+                    capabilities = capabilities,
                     firmwareVersion = firmwareVersion,
                     gitCommit = gitCommit,
                     rawResponse = text,
-                    parseErrors = errors
+                    parseErrors = errors,
+                    chipInfoEndedExplicitly = text.contains("[CHIPINFO_END]")
                 )
             }
             
@@ -1346,19 +1811,33 @@ data class Handshake(
                 val marker = "Enabled Features:"
                 val markerIndex = text.indexOf(marker)
                 if (markerIndex == -1) return emptySet()
-                
-                val afterMarker = text.substring(markerIndex + marker.length)
-                
+
                 val features = mutableSetOf<DeviceFeature>()
+                val afterMarker = text.substring(markerIndex + marker.length)
                 // Split on ", " OR "\n" to handle both the comma-joined buffer format
                 // and any future raw-newline format
                 afterMarker.split(", ", "\n").forEach { segment ->
-                    val trimmed = segment.trim()
+                    val trimmed = segment.trim().removePrefix("-").trim().removeSuffix(": Yes").trim()
                     if (trimmed.isNotEmpty()) {
                         FEATURE_MAPPING[trimmed]?.let { features.add(it) }
                     }
                 }
                 return features
+            }
+
+            private fun parseCapabilities(text: String, chipFeatures: String): Set<DeviceFeature.Capability> {
+                val capabilities = mutableSetOf<DeviceFeature.Capability>()
+                chipFeatures.split('/').forEach { token ->
+                    CAPABILITY_MAPPING[token.trim()]?.let(capabilities::add)
+                }
+
+                val markerIndex = text.indexOf("Enabled Features:")
+                if (markerIndex == -1) return capabilities
+                text.substring(markerIndex + "Enabled Features:".length)
+                    .split(Regex("\\s*(?:,|\\r?\\n)\\s*"))
+                    .map { it.trim().removePrefix("-").trim().removeSuffix(": Yes").trim() }
+                    .forEach { CAPABILITY_MAPPING[it]?.let(capabilities::add) }
+                return capabilities
             }
         }
     }
@@ -1382,9 +1861,30 @@ data class Handshake(
     ) : GhostResponse() {
         companion object {
             fun parse(line: String): Error? {
-                if (!line.startsWith("ERROR:")) return null
-                val message = ResponsePatterns.ERROR.find(line)?.groupValues?.get(1)?.trim() ?: return null
-                return Error(message = message)
+                val trimmed = line.trim()
+                if (trimmed.isEmpty() || trimmed.contains('\n')) return null
+
+                ResponsePatterns.ERROR_PREFIX.matchEntire(trimmed)?.let { match ->
+                    val detail = match.groupValues[1].trim()
+                    return Error(message = detail.ifEmpty { trimmed })
+                }
+                if (!ResponsePatterns.NON_ERROR_METRIC.containsMatchIn(trimmed)) {
+                    ResponsePatterns.ERROR_FAILED.matchEntire(trimmed)?.let { match ->
+                        val detail = match.groupValues[1].trim()
+                        return Error(message = detail.ifEmpty { trimmed })
+                    }
+                    ResponsePatterns.ERROR_INVALID.matchEntire(trimmed)?.let { match ->
+                        val detail = match.groupValues[1].trim()
+                        return Error(message = detail.ifEmpty { trimmed })
+                    }
+                }
+                if (ResponsePatterns.ERROR_UNKNOWN.matches(trimmed) ||
+                    ResponsePatterns.ERROR_TIMEOUT.matches(trimmed) ||
+                    ResponsePatterns.ERROR_UNSUPPORTED.matches(trimmed)
+                ) {
+                    return Error(message = trimmed)
+                }
+                return null
             }
         }
     }
@@ -1883,31 +2383,437 @@ data class Handshake(
     }
     
     // ==================== Ethernet Models ====================
-    
-    /** Ethernet info */
+
+    /** Ethernet info (from ethinfo) */
     @Immutable
     data class EthernetInfo(
         val linkUp: Boolean,
+        val link: String?,
+        val mac: String?,
         val ip: String?,
         val netmask: String?,
         val gateway: String?,
-        val mac: String?
-    ) : GhostResponse()
-    
-    /** Port scan result */
+        val dnsMain: String?,
+        val dhcpServer: String?
+    ) : GhostResponse() {
+        companion object {
+            fun parse(text: String): EthernetInfo? {
+                if (!text.startsWith("Status:")) return null
+
+                return EthernetInfo(
+                    linkUp = text.contains("Status: UP"),
+                    link = ResponsePatterns.ETH_LINK.find(text)?.groupValues?.get(1)?.trim(),
+                    mac = ResponsePatterns.ETH_MAC.find(text)?.groupValues?.get(1),
+                    ip = ResponsePatterns.ETH_IP.find(text)?.groupValues?.get(1)?.trim(),
+                    netmask = ResponsePatterns.ETH_NETMASK.find(text)?.groupValues?.get(1)?.trim(),
+                    gateway = ResponsePatterns.ETH_GATEWAY.find(text)?.groupValues?.get(1)?.trim(),
+                    dnsMain = ResponsePatterns.ETH_DNS_MAIN.find(text)?.groupValues?.get(1)?.trim(),
+                    dhcpServer = ResponsePatterns.ETH_DHCP_SERVER.find(text)?.groupValues?.get(1)?.trim()
+                )
+            }
+        }
+    }
+
+    /** Ethernet statistics (from ethstats) */
+    @Immutable
+    data class EthernetStats(
+        val linkStatus: String?,
+        val rxPackets: Long?,
+        val txPackets: Long?,
+        val rxErrors: Long?,
+        val rxDrops: Long?,
+        val txErrors: Long?,
+        val txDrops: Long?,
+        val arpRequests: Long?,
+        val arpReplies: Long?
+    ) : GhostResponse() {
+        companion object {
+            fun parse(text: String): EthernetStats? {
+                if (!text.startsWith("=== Ethernet Statistics ===")) return null
+
+                return EthernetStats(
+                    linkStatus = ResponsePatterns.ETH_LINK_STATUS.find(text)?.groupValues?.get(1),
+                    rxPackets = ResponsePatterns.ETH_RX_PACKETS.find(text)?.groupValues?.get(1)?.toLongOrNull(),
+                    txPackets = ResponsePatterns.ETH_TX_PACKETS.find(text)?.groupValues?.get(1)?.toLongOrNull(),
+                    rxErrors = ResponsePatterns.ETH_RX_ERRORS.find(text)?.groupValues?.get(1)?.toLongOrNull(),
+                    rxDrops = ResponsePatterns.ETH_RX_DROPS.find(text)?.groupValues?.get(1)?.toLongOrNull(),
+                    txErrors = ResponsePatterns.ETH_TX_ERRORS.find(text)?.groupValues?.get(1)?.toLongOrNull(),
+                    txDrops = ResponsePatterns.ETH_TX_DROPS.find(text)?.groupValues?.get(1)?.toLongOrNull(),
+                    arpRequests = ResponsePatterns.ETH_ARP_REQUESTS.find(text)?.groupValues?.get(1)?.toLongOrNull(),
+                    arpReplies = ResponsePatterns.ETH_ARP_REPLIES.find(text)?.groupValues?.get(1)?.toLongOrNull()
+                )
+            }
+        }
+    }
+
+    /** Port scan result (from ethports): "192.168.1.1:80 - OPEN" */
     @Immutable
     data class PortScanResult(
         val ip: String,
         val port: Int,
         val state: String, // OPEN, CLOSED, FILTERED
         val service: String? = null
-    ) : GhostResponse()
-    
-    /** ARP scan result */
+    ) : GhostResponse() {
+        companion object {
+            fun parse(line: String): PortScanResult? {
+                val match = ResponsePatterns.ETH_PORT_OPEN.find(line.trim()) ?: return null
+                val ip = match.groupValues[1]
+                val port = match.groupValues[2].toIntOrNull() ?: return null
+                return PortScanResult(ip = ip, port = port, state = "OPEN")
+            }
+        }
+    }
+
+    /** ARP scan result (from etharp): "192.168.1.5   aa:bb:cc:dd:ee:ff" */
     @Immutable
     data class ArpScanResult(
         val ip: String,
         val mac: String,
         val vendor: String? = null
-    ) : GhostResponse()
+    ) : GhostResponse() {
+        companion object {
+            fun parse(line: String): ArpScanResult? {
+                val match = ResponsePatterns.ETH_ARP_ENTRY.find(line.trim()) ?: return null
+                return ArpScanResult(ip = match.groupValues[1], mac = match.groupValues[2])
+            }
+        }
+    }
+
+    /** Ping scan result (from ethping): "192.168.1.5 - ALIVE" */
+    @Immutable
+    data class PingScanResult(val ip: String) : GhostResponse() {
+        companion object {
+            fun parse(line: String): PingScanResult? {
+                val match = ResponsePatterns.ETH_PING_ALIVE.find(line.trim()) ?: return null
+                return PingScanResult(ip = match.groupValues[1])
+            }
+        }
+    }
+
+    /** Traceroute hop (from ethtrace): "1  192.168.1.1  12ms" or "5  *  (timeout)" */
+    @Immutable
+    data class TraceHop(
+        val hop: Int,
+        val ip: String?,
+        val ms: Long?,
+        val timeout: Boolean
+    ) : GhostResponse() {
+        companion object {
+            fun parse(line: String): TraceHop? {
+                val match = ResponsePatterns.ETH_TRACE_HOP.find(line.trim()) ?: return null
+                val hop = match.groupValues[1].toIntOrNull() ?: return null
+                val target = match.groupValues[2]
+                val timing = match.groupValues[3]
+                return if (target == "*" || timing.contains("timeout")) {
+                    TraceHop(hop = hop, ip = null, ms = null, timeout = true)
+                } else {
+                    TraceHop(hop = hop, ip = target, ms = timing.removeSuffix("ms").toLongOrNull(), timeout = false)
+                }
+            }
+        }
+    }
+
+    // ==================== WiFi Scan/Attack Findings ====================
+
+    /** Pineapple rogue AP detection block (pineap): heading + BSSID/Channel/RSSI/SSIDs lines */
+    @Immutable
+    data class PineapDetection(
+        val heading: String,
+        val bssid: String,
+        val channel: Int,
+        val rssi: Int,
+        val ssidCount: Int,
+        val ssids: String
+    ) : GhostResponse() {
+        companion object {
+            private val HEADING = Regex("(Pineapple detected!|Pineapple OUI match!)")
+            private val BSSID = Regex("BSSID:\\s*([0-9A-Fa-f:]+)")
+            private val CHANNEL = Regex("Channel:\\s*(\\d+)")
+            private val RSSI = Regex("RSSI:\\s*(-?\\d+)")
+            private val SSIDS = Regex("SSIDs\\s*\\((\\d+)\\):\\s*(.*)")
+
+            fun parse(text: String): PineapDetection? {
+                val heading = HEADING.find(text)?.groupValues?.get(1) ?: return null
+                val bssid = BSSID.find(text)?.groupValues?.get(1) ?: return null
+                val channel = CHANNEL.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+                val rssi = RSSI.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+                val ssidsMatch = SSIDS.find(text)
+                val ssidCount = ssidsMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                val ssids = ssidsMatch?.groupValues?.get(2)?.trim() ?: ""
+                return PineapDetection(heading, bssid, channel, rssi, ssidCount, ssids)
+            }
+        }
+    }
+
+    /** Flock Safety surveillance device detection (flockscan) */
+    @Immutable
+    data class FlockDetection(
+        val method: String,
+        val mac: String,
+        val signalLabel: String,
+        val rssi: Int,
+        val channel: Int,
+        val ssid: String?,
+        val hits: Int
+    ) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex(
+                "\\[FLOCK] Surveillance device detected! (.+?) \\| MAC: ([0-9A-Fa-f:]+) \\| Signal: (\\w+) \\((-?\\d+)dBm\\) \\| Ch: (\\d+)(?: \\| SSID: (.+?))? \\| Hits: (\\d+)"
+            )
+
+            fun parse(line: String): FlockDetection? {
+                val m = PATTERN.find(line) ?: return null
+                return FlockDetection(
+                    method = m.groupValues[1],
+                    mac = m.groupValues[2],
+                    signalLabel = m.groupValues[3],
+                    rssi = m.groupValues[4].toIntOrNull() ?: -100,
+                    channel = m.groupValues[5].toIntOrNull() ?: 0,
+                    ssid = m.groupValues[6].takeIf { it.isNotEmpty() },
+                    hits = m.groupValues[7].toIntOrNull() ?: 0
+                )
+            }
+        }
+    }
+
+    /** Flock scan completion summary: "[FLOCK] Scan stopped. N surveillance device(s) found." */
+    @Immutable
+    data class FlockScanComplete(val count: Int) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("\\[FLOCK] Scan stopped\\. (\\d+) surveillance device")
+
+            fun parse(line: String): FlockScanComplete? {
+                val count = PATTERN.find(line)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+                return FlockScanComplete(count)
+            }
+        }
+    }
+
+    /** NetBIOS host result (netbiosscan): either a Names line or an IP/Flags line for a host */
+    @Immutable
+    data class NetBiosResult(
+        val host: String,
+        val names: String? = null,
+        val remoteIp: String? = null,
+        val flags: Int? = null
+    ) : GhostResponse() {
+        companion object {
+            private val NAMES = Regex("\\[NetBIOS] Host:\\s*(\\S+)\\s+Names:\\s*(.*)")
+            private val IP_FLAGS = Regex("\\[NetBIOS] Host:\\s*(\\S+)\\s+IP:\\s*(\\S+)\\s+Flags:\\s*0x([0-9A-Fa-f]+)")
+
+            fun parse(line: String): NetBiosResult? {
+                IP_FLAGS.find(line)?.let { m ->
+                    return NetBiosResult(
+                        host = m.groupValues[1],
+                        remoteIp = m.groupValues[2],
+                        flags = m.groupValues[3].toIntOrNull(16)
+                    )
+                }
+                NAMES.find(line)?.let { m ->
+                    return NetBiosResult(host = m.groupValues[1], names = m.groupValues[2].trim().takeIf { it.isNotEmpty() && it != "none" })
+                }
+                return null
+            }
+        }
+    }
+
+    /** HTTP banner scan hit (httpbannerscan) */
+    @Immutable
+    data class HttpBannerHit(
+        val ip: String,
+        val port: Int,
+        val scheme: String,
+        val server: String?
+    ) : GhostResponse() {
+        companion object {
+            private val SERVER = Regex("^\\[(\\S+):(\\d+)] \\((\\w+)\\) Server:\\s*(.+)$")
+            private val NO_BANNER = Regex("^\\[(\\S+):(\\d+)] \\((\\w+)\\) Status: OPEN, no banner$")
+
+            fun parse(line: String): HttpBannerHit? {
+                SERVER.find(line)?.let { m ->
+                    return HttpBannerHit(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: 0, m.groupValues[3], m.groupValues[4].trim())
+                }
+                NO_BANNER.find(line)?.let { m ->
+                    return HttpBannerHit(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: 0, m.groupValues[3], null)
+                }
+                return null
+            }
+        }
+    }
+
+    /** HTTP banner scan completion: "HTTP Banner Scan: ... found N hosts with M HTTP service(s)" */
+    @Immutable
+    data class HttpBannerSummary(val hostsFound: Int, val servicesFound: Int) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("HTTP Banner Scan:.*found (\\d+) hosts with (\\d+) HTTP service")
+
+            fun parse(line: String): HttpBannerSummary? {
+                val m = PATTERN.find(line) ?: return null
+                return HttpBannerSummary(m.groupValues[1].toIntOrNull() ?: 0, m.groupValues[2].toIntOrNull() ?: 0)
+            }
+        }
+    }
+
+    /** SNMP probe/walk hit (snmpprobe) */
+    @Immutable
+    data class SnmpHit(
+        val ip: String,
+        val community: String? = null,
+        val sysDescr: String? = null,
+        val oid: String? = null,
+        val value: String? = null,
+        val type: String? = null
+    ) : GhostResponse() {
+        companion object {
+            private val PROBE = Regex("\\[SNMP] (\\S+) \\(community: (\\S+)\\) sysDescr:\\s*(.*)")
+            private val WALK = Regex("\\[SNMP-WALK] (\\S+) = (.*) \\((\\w+)\\)")
+
+            fun parse(line: String): SnmpHit? {
+                PROBE.find(line)?.let { m ->
+                    return SnmpHit(ip = m.groupValues[1], community = m.groupValues[2], sysDescr = m.groupValues[3].trim())
+                }
+                WALK.find(line)?.let { m ->
+                    return SnmpHit(ip = "", oid = m.groupValues[1], value = m.groupValues[2].trim(), type = m.groupValues[3])
+                }
+                return null
+            }
+        }
+    }
+
+    /** SNMP scan completion: "SNMP Scan: ... found N SNMP host(s)" */
+    @Immutable
+    data class SnmpSummary(val hostsFound: Int) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("SNMP Scan:.*found (\\d+) SNMP host")
+
+            fun parse(line: String): SnmpSummary? {
+                val m = PATTERN.find(line) ?: return null
+                return SnmpSummary(m.groupValues[1].toIntOrNull() ?: 0)
+            }
+        }
+    }
+
+    /** SMB/NetBIOS enumeration hit (enumscan) - kept as raw display line since fields are variadic */
+    @Immutable
+    data class EnumHit(val raw: String) : GhostResponse() {
+        companion object {
+            fun parse(line: String): EnumHit? {
+                if (!line.startsWith("[Enum]")) return null
+                val body = line.removePrefix("[Enum]").trim()
+                return body.takeIf { it.isNotEmpty() }?.let { EnumHit(it) }
+            }
+        }
+    }
+
+    /** Enum scan completion: "Enum Scan: ... Found N host(s)" */
+    @Immutable
+    data class EnumSummary(val hostsFound: Int) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("Enum Scan:.*Found (\\d+) host")
+
+            fun parse(line: String): EnumSummary? {
+                val m = PATTERN.find(line) ?: return null
+                return EnumSummary(m.groupValues[1].toIntOrNull() ?: 0)
+            }
+        }
+    }
+
+    /** WPA3 compliance check result for a single AP (wpa3check) */
+    @Immutable
+    data class Wpa3Compliance(
+        val ssid: String,
+        val bssid: String,
+        val auth: String,
+        val wpa3Present: Boolean,
+        val transitionMode: Boolean,
+        val pmf: String,
+        val finding: String
+    ) : GhostResponse() {
+        companion object {
+            private val SSID = Regex("SSID:\\s*(.*)")
+            private val BSSID = Regex("BSSID:\\s*([0-9A-Fa-f:]+)")
+            private val AUTH = Regex("Auth:\\s*(.*)")
+            private val WPA3 = Regex("WPA3 Present:\\s*(Yes|No)")
+            private val TRANSITION = Regex("Transition Mode:\\s*(Enabled|Disabled)")
+            private val PMF = Regex("PMF:\\s*(.*)")
+            private val FINDING = Regex("Finding:\\s*(.*)")
+
+            fun parse(text: String): Wpa3Compliance? {
+                val ssid = SSID.find(text)?.groupValues?.get(1)?.trim() ?: return null
+                val bssid = BSSID.find(text)?.groupValues?.get(1) ?: return null
+                val auth = AUTH.find(text)?.groupValues?.get(1)?.trim() ?: ""
+                val wpa3Present = WPA3.find(text)?.groupValues?.get(1) == "Yes"
+                val transitionMode = TRANSITION.find(text)?.groupValues?.get(1) == "Enabled"
+                val pmf = PMF.find(text)?.groupValues?.get(1)?.trim() ?: ""
+                val finding = FINDING.find(text)?.groupValues?.get(1)?.trim() ?: return null
+                return Wpa3Compliance(ssid, bssid, auth, wpa3Present, transitionMode, pmf, finding)
+            }
+        }
+    }
+
+    /** WPA3 compliance report summary across all cached APs (wpa3check on multiple APs) */
+    @Immutable
+    data class Wpa3ReportSummary(
+        val apCount: Int,
+        val compliant: Int,
+        val downgradable: Int,
+        val legacy: Int,
+        val open: Int,
+        val other: Int
+    ) : GhostResponse() {
+        companion object {
+            private val HEADER = Regex("--- WPA3 Compliance Report \\((\\d+) APs\\) ---")
+            private val SUMMARY = Regex(
+                "Summary:\\s*(\\d+) compliant,\\s*(\\d+) downgradable,\\s*(\\d+) legacy,\\s*(\\d+) open,\\s*(\\d+) other"
+            )
+
+            fun parseHeader(line: String): Int? = HEADER.find(line)?.groupValues?.get(1)?.toIntOrNull()
+
+            fun parseSummary(line: String, apCount: Int): Wpa3ReportSummary? {
+                val m = SUMMARY.find(line) ?: return null
+                return Wpa3ReportSummary(
+                    apCount = apCount,
+                    compliant = m.groupValues[1].toIntOrNull() ?: 0,
+                    downgradable = m.groupValues[2].toIntOrNull() ?: 0,
+                    legacy = m.groupValues[3].toIntOrNull() ?: 0,
+                    open = m.groupValues[4].toIntOrNull() ?: 0,
+                    other = m.groupValues[5].toIntOrNull() ?: 0
+                )
+            }
+        }
+    }
+
+    /** Channel Switch Announcement (CSA) attack status (attack -c) */
+    @Immutable
+    data class CsaAttackStatus(
+        val targetCount: Int,
+        val targets: List<String> = emptyList(),
+        val packetsPerSecond: Int? = null
+    ) : GhostResponse() {
+        companion object {
+            private val TARGETING = Regex("CSA Attack: Targeting (\\d+) AP")
+            private val TARGET_LINE = Regex("^\\[(\\d+)] (.+?) \\(Ch:(\\d+)\\) ([0-9A-Fa-f:]+)$")
+            private val RATE = Regex("CSA: (\\d+) pkts/sec")
+
+            fun parseTargeting(line: String): Int? = TARGETING.find(line)?.groupValues?.get(1)?.toIntOrNull()
+
+            fun parseTarget(line: String): String? {
+                val m = TARGET_LINE.find(line.trim()) ?: return null
+                return "${m.groupValues[2]} (Ch:${m.groupValues[3]}) ${m.groupValues[4]}"
+            }
+
+            fun parseRate(line: String): Int? = RATE.find(line)?.groupValues?.get(1)?.toIntOrNull()
+        }
+    }
+
+    /** GTK Abuse attack progress/outcome (attack -g) */
+    @Immutable
+    data class GtkAbuseStatus(val message: String) : GhostResponse() {
+        companion object {
+            fun parse(line: String): GtkAbuseStatus? {
+                if (!line.startsWith("GTK")) return null
+                return GtkAbuseStatus(line.trim())
+            }
+        }
+    }
 }

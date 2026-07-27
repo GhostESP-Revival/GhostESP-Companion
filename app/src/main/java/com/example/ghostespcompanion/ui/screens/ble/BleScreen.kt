@@ -19,8 +19,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -37,7 +40,7 @@ import com.example.ghostespcompanion.data.ble.BleBridgeDevice
 import com.example.ghostespcompanion.data.serial.SerialManager
 import com.example.ghostespcompanion.domain.model.GhostCommand
 import com.example.ghostespcompanion.domain.model.GhostResponse
-import com.example.ghostespcompanion.ui.components.ConnectionSelectionDialog
+import com.example.ghostespcompanion.ui.components.*
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.theme.*
 import com.example.ghostespcompanion.ui.utils.censorDevice
@@ -59,16 +62,23 @@ fun BleScreen(
     onNavigateToFlipper: () -> Unit,
     onNavigateToGattDetail: (Int) -> Unit,
     onNavigateToTrackGatt: (Int) -> Unit,
+    onNavigateToGps: () -> Unit,
     onNavigateToTrackFlipper: (Int) -> Unit,
     viewModel: MainViewModel
 ) {
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var isScanning by remember { mutableStateOf(false) }
     var isSpamming by remember { mutableStateOf(false) }
-    var selectedScanMode by remember { mutableStateOf(GhostCommand.BleScanMode.FLIPPER) }
+    var selectedScanUiMode by remember { mutableStateOf(BleScanUiMode.FLIPPER) }
     var selectedSpamMode by remember { mutableStateOf(GhostCommand.BleSpamMode.APPLE) }
     var showScanModeMenu by remember { mutableStateOf(false) }
     var showSpamModeMenu by remember { mutableStateOf(false) }
     var showDeviceDialog by remember { mutableStateOf(false) }
+    var advFilterOui by remember { mutableStateOf("") }
+    var advFilterVendor by remember { mutableStateOf("") }
+    var isAdvScanning by remember { mutableStateOf(false) }
+    var isBleWardriving by remember { mutableStateOf(false) }
+    var isSpoofingAirTag by remember { mutableStateOf(false) }
     val availableUsbDevices by viewModel.availableUsbDevices.collectAsState()
     val usbPortCounts by viewModel.usbPortCounts.collectAsState()
     val allUsbDevices by viewModel.allUsbDevices.collectAsState()
@@ -87,8 +97,12 @@ fun BleScreen(
     val flipperDevices by viewModel.flipperDevices.collectAsState()
     val airTagDevices by viewModel.airTagDevices.collectAsState()
     val gattDevices by viewModel.gattDevices.collectAsState()
+    val advertiserDevices by viewModel.advertiserDevices.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val bleCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.BLE)
+    val bleUsable = bleCapability.isUsable
     val privacyMode = appSettings.privacyMode
     val context = LocalContext.current
     val blePermissionLauncher = rememberLauncherForActivityResult(
@@ -105,6 +119,15 @@ fun BleScreen(
             viewModel.stopBleScan()
             if (isSpamming) {
                 viewModel.stopBleSpam()
+            }
+            if (isAdvScanning) {
+                viewModel.stopBleScan()
+            }
+            if (isBleWardriving) {
+                viewModel.stopBleWardrive()
+            }
+            if (isSpoofingAirTag) {
+                viewModel.spoofAirTag(false)
             }
         }
     }
@@ -129,7 +152,7 @@ fun BleScreen(
         }
     }
 
-    val displayDevices = remember(bleDevices, flipperDevices, airTagDevices, gattDevices) {
+    val displayDevices = remember(bleDevices, flipperDevices, airTagDevices, gattDevices, advertiserDevices) {
         val unknownStr = context.getString(R.string.label_unknown)
         val flipperStr = context.getString(R.string.label_flipper_zero)
         val airtagStr = context.getString(R.string.label_airtag)
@@ -177,13 +200,20 @@ fun BleScreen(
                     index = it.index
                 )
             }.also { addAll(it) }
+
+            advertiserDevices.map { it.toPreview() }.also { addAll(it) }
         }.sortedByDescending { it.rssi }
     }
-    
+
+    val tabTitles = listOf(
+        stringResource(R.string.tab_ble_scan),
+        stringResource(R.string.tab_ble_spam)
+    )
+
     MainScreen(
         title = stringResource(R.string.title_ble),
         actions = {
-            IconButton(onClick = onNavigateToFlipper) {
+            IconButton(onClick = onNavigateToFlipper, enabled = bleUsable) {
                 Icon(
                     painter = painterResource(R.drawable.ic_dolphin),
                     contentDescription = stringResource(R.string.ble_scan_mode_flipper),
@@ -197,6 +227,7 @@ fun BleScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            CapabilityNotice(bleCapability, "Firmware BLE", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             // Connection Status Banner
             BleConnectionBanner(
                 isConnected = isConnected,
@@ -239,248 +270,200 @@ fun BleScreen(
                     }
                 )
             }
-            
-            // Scan Mode Selection
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+            TabRow(selectedTabIndex = selectedTab) {
+                tabTitles.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = { Text(title) }
+                    )
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
             ) {
-                // Scan Mode Dropdown
-                ExposedDropdownMenuBox(
-                    expanded = showScanModeMenu,
-                    onExpandedChange = { showScanModeMenu = it },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    OutlinedButton(
-                        onClick = { showScanModeMenu = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor(),
-                        enabled = isConnected && !isScanning
-                    ) {
-                        Icon(
-                            imageVector = when (selectedScanMode) {
-                                GhostCommand.BleScanMode.FLIPPER -> Icons.Default.DeveloperBoard
-                                GhostCommand.BleScanMode.AIR_TAG -> Icons.Default.LocationOn
-                                GhostCommand.BleScanMode.GATT -> Icons.Default.SettingsBluetooth
-                                GhostCommand.BleScanMode.RAW -> Icons.Default.Radar
-                                GhostCommand.BleScanMode.SPAM_DETECTOR -> Icons.Default.Shield
-                            },
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = scanModeToString(selectedScanMode),
-                            maxLines = 1
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                    }
-                    
-                    ExposedDropdownMenu(
+            when (selectedTab) {
+                0 -> {
+            item {
+            // Scan card: unified mode selector (standard modes + Advertisers) + single start/stop
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+                    BrutalistSectionHeader(title = stringResource(R.string.title_standard_scan))
+
+                    val scanBusy = isScanning || isAdvScanning
+                    val isAdvertiserMode = selectedScanUiMode == BleScanUiMode.ADVERTISER
+
+                    ExposedDropdownMenuBox(
                         expanded = showScanModeMenu,
-                        onDismissRequest = { showScanModeMenu = false }
+                        onExpandedChange = { showScanModeMenu = it },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        GhostCommand.BleScanMode.entries.forEach { mode ->
-                            DropdownMenuItem(
-                                text = { Text(scanModeToString(mode)) },
-                                onClick = {
-                                    selectedScanMode = mode
-                                    showScanModeMenu = false
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = when (mode) {
-                                            GhostCommand.BleScanMode.FLIPPER -> Icons.Default.DeveloperBoard
-                                            GhostCommand.BleScanMode.AIR_TAG -> Icons.Default.LocationOn
-                                            GhostCommand.BleScanMode.GATT -> Icons.Default.SettingsBluetooth
-                                            GhostCommand.BleScanMode.RAW -> Icons.Default.Radar
-                                            GhostCommand.BleScanMode.SPAM_DETECTOR -> Icons.Default.Shield
-                                        },
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
+                        OutlinedButton(
+                            onClick = { showScanModeMenu = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(),
+                            enabled = isConnected && bleUsable && !scanBusy
+                        ) {
+                            Icon(
+                                imageVector = scanUiModeIcon(selectedScanUiMode),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = scanUiModeToString(selectedScanUiMode),
+                                maxLines = 1
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                        }
+
+                        ExposedDropdownMenu(
+                            expanded = showScanModeMenu,
+                            onDismissRequest = { showScanModeMenu = false }
+                        ) {
+                            BleScanUiMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text(scanUiModeToString(mode)) },
+                                    onClick = {
+                                        selectedScanUiMode = mode
+                                        showScanModeMenu = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = scanUiModeIcon(mode),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (isAdvertiserMode) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = advFilterOui,
+                                onValueChange = { advFilterOui = it; advFilterVendor = "" },
+                                label = { Text(stringResource(R.string.label_oui_prefix)) },
+                                singleLine = true,
+                                enabled = isConnected && bleUsable && !scanBusy,
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = advFilterVendor,
+                                onValueChange = { advFilterVendor = it; advFilterOui = "" },
+                                label = { Text(stringResource(R.string.label_advertiser_vendor)) },
+                                singleLine = true,
+                                enabled = isConnected && bleUsable && !scanBusy,
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
-                }
-            }
-            
-            // Scan Button
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                Button(
-                    onClick = { 
-                        if (isConnected) {
-                            isScanning = !isScanning
-                            if (isScanning) {
-                                when (selectedScanMode) {
-                                    GhostCommand.BleScanMode.FLIPPER -> viewModel.clearFlipperDevices()
-                                    GhostCommand.BleScanMode.AIR_TAG -> viewModel.clearAirTagDevices()
-                                    GhostCommand.BleScanMode.GATT -> viewModel.clearGattDevices()
-                                    else -> viewModel.clearBleDevices()
-                                }
-                                viewModel.scanBle(selectedScanMode)
-                            } else {
-                                viewModel.stopBleScan()
-                            }
-                        }
-                    },
-                    enabled = isConnected,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isScanning) errorColor() else primaryColor()
-                    )
-                ) {
-                    if (isScanning) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.action_stop_scan_mode, scanModeToString(selectedScanMode)))
-                    } else {
-                        Icon(Icons.Default.BluetoothSearching, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.action_start_scan_mode, scanModeToString(selectedScanMode)))
-                    }
-                }
-            }
-            
-            // BLE Spam Section
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Spam Mode Selection
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.label_ble_spam_attack),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSpamming) errorColor() else MaterialTheme.colorScheme.onSurface
-                )
-            }
-            
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Spam Mode Dropdown
-                ExposedDropdownMenuBox(
-                    expanded = showSpamModeMenu,
-                    onExpandedChange = { showSpamModeMenu = it },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    OutlinedButton(
-                        onClick = { showSpamModeMenu = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor(),
-                        enabled = isConnected && !isSpamming,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (isSpamming) errorColor() else MaterialTheme.colorScheme.primary
-                        )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(spamModeToString(selectedSpamMode), maxLines = 1)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                    }
-                    
-                    ExposedDropdownMenu(
-                        expanded = showSpamModeMenu,
-                        onDismissRequest = { showSpamModeMenu = false }
-                    ) {
-                        listOf(
-                            GhostCommand.BleSpamMode.APPLE,
-                            GhostCommand.BleSpamMode.MICROSOFT,
-                            GhostCommand.BleSpamMode.SAMSUNG,
-                            GhostCommand.BleSpamMode.GOOGLE,
-                            GhostCommand.BleSpamMode.RANDOM
-                        ).forEach { mode ->
-                            DropdownMenuItem(
-                                text = { Text(spamModeToString(mode)) },
-                                onClick = {
-                                    selectedSpamMode = mode
-                                    showSpamModeMenu = false
+                        Button(
+                            onClick = {
+                                if (!isConnected || !bleUsable) return@Button
+                                if (isAdvertiserMode) {
+                                    isAdvScanning = !isAdvScanning
+                                    if (isAdvScanning) {
+                                        val filter = when {
+                                            advFilterOui.isNotBlank() -> GhostCommand.BleAdvertiserFilter.Oui(advFilterOui.trim())
+                                            advFilterVendor.isNotBlank() -> GhostCommand.BleAdvertiserFilter.Vendor(advFilterVendor.trim())
+                                            else -> GhostCommand.BleAdvertiserFilter.All
+                                        }
+                                        viewModel.scanBleAdvertisers(filter)
+                                    } else {
+                                        viewModel.stopBleScan()
+                                    }
+                                } else {
+                                    isScanning = !isScanning
+                                    if (isScanning) {
+                                        when (selectedScanUiMode) {
+                                            BleScanUiMode.FLIPPER -> viewModel.clearFlipperDevices()
+                                            BleScanUiMode.AIR_TAG -> viewModel.clearAirTagDevices()
+                                            BleScanUiMode.GATT -> viewModel.clearGattDevices()
+                                            else -> viewModel.clearBleDevices()
+                                        }
+                                        viewModel.scanBle(selectedScanUiMode.toBleScanMode()!!)
+                                    } else {
+                                        viewModel.stopBleScan()
+                                    }
                                 }
+                            },
+                            enabled = isConnected && bleUsable,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (scanBusy) errorColor() else primaryColor()
                             )
+                        ) {
+                            if (scanBusy) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.action_stop_scan_mode, scanUiModeToString(selectedScanUiMode)))
+                            } else {
+                                Icon(Icons.Default.BluetoothSearching, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.action_start_scan_mode, scanUiModeToString(selectedScanUiMode)))
+                            }
+                        }
+
+                        if (isAdvertiserMode) {
+                            IconButton(
+                                onClick = { if (isConnected && bleUsable) viewModel.listAdvertisers() },
+                                enabled = isConnected && bleUsable
+                            ) {
+                                Icon(Icons.Default.List, contentDescription = stringResource(R.string.action_list_results))
+                            }
                         }
                     }
                 }
             }
-            
-            // Spam Toggle Button
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Button(
-                    onClick = {
-                        if (isConnected) {
-                            isSpamming = !isSpamming
-                            if (isSpamming) {
-                                viewModel.startBleSpam(selectedSpamMode)
-                            } else {
-                                viewModel.stopBleSpam()
-                            }
-                        }
-                    },
-                    enabled = isConnected,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isSpamming) errorColor() else warningColor()
+            }
+
+            item {
+                // Combined device list header
+                Spacer(modifier = Modifier.height(8.dp))
+                if (displayDevices.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.msg_found_devices_count, displayDevices.size),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
-                ) {
-                    Icon(
-                        if (isSpamming) Icons.Default.Stop else Icons.Default.Warning,
-                        contentDescription = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isSpamming) stringResource(R.string.action_stop_spam_attack) else stringResource(R.string.action_start_spam_attack))
                 }
             }
-            
-            // Device list header
-            Spacer(modifier = Modifier.height(8.dp))
 
             if (displayDevices.isNotEmpty()) {
-                Text(
-                    text = stringResource(R.string.msg_found_devices_count, displayDevices.size),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        items = displayDevices,
-                        key = { it.mac },
-                        contentType = { it.deviceCategory.name }
-                    ) { device ->
+                items(
+                    items = displayDevices,
+                    key = { "${it.deviceCategory}_${it.mac}" },
+                    contentType = { it.deviceCategory.name }
+                ) { device ->
+                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                         BleDeviceCard(
                             device = device,
                             privacyMode = privacyMode,
-                            onClick = when (device.deviceCategory) {
+                            onClick = if (!bleUsable) null else when (device.deviceCategory) {
                                 BleDeviceCategory.GATT -> {
                                     val gattDevice = gattDevices.find { it.mac == device.mac }
                                     if (gattDevice != null) {
@@ -499,39 +482,158 @@ fun BleScreen(
                     }
                 }
             } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 32.dp)
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.Default.BluetoothDisabled,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = stringResource(R.string.msg_no_ble_devices),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.msg_ble_scan_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.BluetoothDisabled,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = stringResource(R.string.msg_no_ble_devices),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.msg_ble_scan_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
+                }
+
+                1 -> {
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
+
+                    item {
+                        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_ble_spam_attack),
+                                description = stringResource(R.string.desc_ble_spam),
+                                isRunning = isSpamming,
+                                startEnabled = isConnected && bleUsable,
+                                icon = Icons.Default.Warning,
+                                onStart = {
+                                    viewModel.startBleSpam(selectedSpamMode)
+                                    isSpamming = true
+                                },
+                                onStop = {
+                                    viewModel.stopBleSpam()
+                                    isSpamming = false
+                                },
+                                expandedContent = {
+                                    ExposedDropdownMenuBox(
+                                        expanded = showSpamModeMenu,
+                                        onExpandedChange = { showSpamModeMenu = it }
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { showSpamModeMenu = true },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .menuAnchor(),
+                                            enabled = isConnected && bleUsable && !isSpamming
+                                        ) {
+                                            Text(spamModeToString(selectedSpamMode), modifier = Modifier.weight(1f), maxLines = 1)
+                                            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                        }
+
+                                        ExposedDropdownMenu(
+                                            expanded = showSpamModeMenu,
+                                            onDismissRequest = { showSpamModeMenu = false }
+                                        ) {
+                                            listOf(
+                                                GhostCommand.BleSpamMode.APPLE,
+                                                GhostCommand.BleSpamMode.MICROSOFT,
+                                                GhostCommand.BleSpamMode.SAMSUNG,
+                                                GhostCommand.BleSpamMode.GOOGLE,
+                                                GhostCommand.BleSpamMode.RANDOM
+                                            ).forEach { mode ->
+                                                DropdownMenuItem(
+                                                    text = { Text(spamModeToString(mode)) },
+                                                    onClick = {
+                                                        selectedSpamMode = mode
+                                                        showSpamModeMenu = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    item {
+                        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            BrutalistCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onNavigateToGps
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Radar, contentDescription = null, tint = primaryColor())
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(R.string.label_ble_wardrive),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.desc_ble_wardrive_gps_hint),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null)
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_spoof_airtag),
+                                description = stringResource(R.string.desc_spoof_airtag),
+                                isRunning = isSpoofingAirTag,
+                                startEnabled = isConnected && bleUsable,
+                                icon = Icons.Default.LocationOn,
+                                onStart = {
+                                    viewModel.spoofAirTag(true)
+                                    isSpoofingAirTag = true
+                                },
+                                onStop = {
+                                    viewModel.spoofAirTag(false)
+                                    isSpoofingAirTag = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            }
         }
     }
-    
+
     // GATT Device Detail Bottom Sheet
     if (showGattDetailSheet && selectedGattDevice != null) {
         GattDeviceDetailSheet(
@@ -540,11 +642,11 @@ fun BleScreen(
             onDismiss = { showGattDetailSheet = false },
             onViewServices = {
                 showGattDetailSheet = false
-                onNavigateToGattDetail(selectedGattDevice!!.index)
+                if (bleUsable) onNavigateToGattDetail(selectedGattDevice!!.index)
             },
             onTrack = {
                 showGattDetailSheet = false
-                onNavigateToTrackGatt(selectedGattDevice!!.index)
+                if (bleUsable) onNavigateToTrackGatt(selectedGattDevice!!.index)
             }
         )
     }
@@ -557,22 +659,49 @@ fun BleScreen(
             onDismiss = { showFlipperDetailSheet = false },
             onTrack = {
                 showFlipperDetailSheet = false
-                onNavigateToTrackFlipper(selectedFlipperDevice!!.index)
+                if (bleUsable) onNavigateToTrackFlipper(selectedFlipperDevice!!.index)
             }
         )
     }
 }
 
 /**
+ * Unified scan mode covering both standard blescan modes and BLE advertiser scanning,
+ * so both can share one mode selector, one start/stop button, and one results list.
+ */
+private enum class BleScanUiMode {
+    FLIPPER, AIR_TAG, GATT, RAW, SPAM_DETECTOR, ADVERTISER
+}
+
+private fun BleScanUiMode.toBleScanMode(): GhostCommand.BleScanMode? = when (this) {
+    BleScanUiMode.FLIPPER -> GhostCommand.BleScanMode.FLIPPER
+    BleScanUiMode.AIR_TAG -> GhostCommand.BleScanMode.AIR_TAG
+    BleScanUiMode.GATT -> GhostCommand.BleScanMode.GATT
+    BleScanUiMode.RAW -> GhostCommand.BleScanMode.RAW
+    BleScanUiMode.SPAM_DETECTOR -> GhostCommand.BleScanMode.SPAM_DETECTOR
+    BleScanUiMode.ADVERTISER -> null
+}
+
+private fun scanUiModeIcon(mode: BleScanUiMode): ImageVector = when (mode) {
+    BleScanUiMode.FLIPPER -> Icons.Default.DeveloperBoard
+    BleScanUiMode.AIR_TAG -> Icons.Default.LocationOn
+    BleScanUiMode.GATT -> Icons.Default.SettingsBluetooth
+    BleScanUiMode.RAW -> Icons.Default.Radar
+    BleScanUiMode.SPAM_DETECTOR -> Icons.Default.Shield
+    BleScanUiMode.ADVERTISER -> Icons.Default.Podcasts
+}
+
+/**
  * Convert scan mode to display string
  */
 @Composable
-private fun scanModeToString(mode: GhostCommand.BleScanMode): String = when (mode) {
-    GhostCommand.BleScanMode.FLIPPER -> stringResource(R.string.ble_scan_mode_flipper)
-    GhostCommand.BleScanMode.SPAM_DETECTOR -> stringResource(R.string.ble_scan_mode_spam)
-    GhostCommand.BleScanMode.AIR_TAG -> stringResource(R.string.ble_scan_mode_airtag)
-    GhostCommand.BleScanMode.RAW -> stringResource(R.string.ble_scan_mode_raw)
-    GhostCommand.BleScanMode.GATT -> stringResource(R.string.ble_scan_mode_gatt)
+private fun scanUiModeToString(mode: BleScanUiMode): String = when (mode) {
+    BleScanUiMode.FLIPPER -> stringResource(R.string.ble_scan_mode_flipper)
+    BleScanUiMode.SPAM_DETECTOR -> stringResource(R.string.ble_scan_mode_spam)
+    BleScanUiMode.AIR_TAG -> stringResource(R.string.ble_scan_mode_airtag)
+    BleScanUiMode.RAW -> stringResource(R.string.ble_scan_mode_raw)
+    BleScanUiMode.GATT -> stringResource(R.string.ble_scan_mode_gatt)
+    BleScanUiMode.ADVERTISER -> stringResource(R.string.title_advertiser_scan)
 }
 
 /**
@@ -592,8 +721,21 @@ private fun spamModeToString(mode: GhostCommand.BleSpamMode): String = when (mod
  * Device category for display
  */
 enum class BleDeviceCategory {
-    GENERIC, FLIPPER, AIRTAG, GATT
+    GENERIC, FLIPPER, AIRTAG, GATT, ADVERTISER
 }
+
+/**
+ * Map an [GhostResponse.AdvertiserDevice] to the shared [BleDevicePreview] shape so it
+ * can reuse [BleDeviceCard].
+ */
+private fun GhostResponse.AdvertiserDevice.toPreview(): BleDevicePreview = BleDevicePreview(
+    name = name ?: if (isIBeacon) "iBeacon" else "Advertiser",
+    mac = mac,
+    rssi = rssi,
+    deviceType = if (isIBeacon) "iBeacon" else advType,
+    deviceCategory = BleDeviceCategory.ADVERTISER,
+    index = index
+)
 
 /**
  * BLE Connection Banner
@@ -775,6 +917,7 @@ private fun BleDeviceCard(
         BleDeviceCategory.FLIPPER -> primaryColor()
         BleDeviceCategory.AIRTAG -> warningColor()
         BleDeviceCategory.GATT -> primaryColor()
+        BleDeviceCategory.ADVERTISER -> primaryColor()
         else -> MaterialTheme.colorScheme.outline
     }
 
@@ -807,6 +950,7 @@ private fun BleDeviceCard(
                         imageVector = when (device.deviceCategory) {
                             BleDeviceCategory.AIRTAG -> Icons.Default.LocationOn
                             BleDeviceCategory.GATT -> Icons.Default.SettingsBluetooth
+                            BleDeviceCategory.ADVERTISER -> Icons.Default.Radar
                             else -> when (device.deviceType) {
                                 "IPHONE" -> Icons.Default.PhoneIphone
                                 "SAMSUNG" -> Icons.Default.Watch
@@ -818,6 +962,7 @@ private fun BleDeviceCard(
                         tint = when (device.deviceCategory) {
                             BleDeviceCategory.AIRTAG -> warningColor()
                             BleDeviceCategory.GATT -> primaryColor()
+                            BleDeviceCategory.ADVERTISER -> primaryColor()
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         modifier = Modifier.size(24.dp)
@@ -852,6 +997,7 @@ private fun BleDeviceCard(
                                     BleDeviceCategory.FLIPPER -> primaryColor()
                                     BleDeviceCategory.AIRTAG -> warningColor()
                                     BleDeviceCategory.GATT -> primaryColor()
+                                    BleDeviceCategory.ADVERTISER -> primaryColor()
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )

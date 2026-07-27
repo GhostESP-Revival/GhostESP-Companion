@@ -46,9 +46,186 @@ import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
+
+internal object BleBridgeProtocol {
+    const val DEFAULT_MTU = 23
+    const val MAX_COMMAND_BYTES = 250
+    const val HEADER_LENGTH = 12
+    const val FLAG_FIRST = 0x01
+    const val FLAG_MORE = 0x02
+    private const val ATT_WRITE_OVERHEAD = 3
+    private const val TYPE_COMMAND = 1
+
+    data class DecodedFrame(
+        val type: Int,
+        val status: Int,
+        val commandId: Int,
+        val payload: ByteArray
+    )
+
+    data class DecodeResult(val frames: List<DecodedFrame>, val fallback: ByteArray)
+
+    class Decoder {
+        private val buffer = ByteArrayOutputStream()
+
+        fun feed(bytes: ByteArray): DecodeResult {
+            buffer.write(bytes)
+            val input = buffer.toByteArray()
+            val frames = mutableListOf<DecodedFrame>()
+            val fallback = ByteArrayOutputStream()
+            var offset = 0
+
+            while (input.size - offset >= 3) {
+                if (input[offset] != 0x47.toByte() || input[offset + 1] != 0x42.toByte() ||
+                    input[offset + 2] != 0x01.toByte()) {
+                    fallback.write(input[offset].toInt() and 0xFF)
+                    offset++
+                    continue
+                }
+                if (input.size - offset < HEADER_LENGTH) break
+
+                val payloadLength = (input[offset + 10].toInt() and 0xFF) or
+                    ((input[offset + 11].toInt() and 0xFF) shl 8)
+                val frameLength = HEADER_LENGTH + payloadLength
+                if (input.size - offset < frameLength) break
+
+                val commandId = (input[offset + 6].toInt() and 0xFF) or
+                    ((input[offset + 7].toInt() and 0xFF) shl 8) or
+                    ((input[offset + 8].toInt() and 0xFF) shl 16) or
+                    ((input[offset + 9].toInt() and 0xFF) shl 24)
+                frames += DecodedFrame(
+                    type = input[offset + 3].toInt() and 0xFF,
+                    status = input[offset + 4].toInt() and 0xFF,
+                    commandId = commandId,
+                    payload = input.copyOfRange(offset + HEADER_LENGTH, offset + frameLength)
+                )
+                offset += frameLength
+            }
+
+            val trailing = input.size - offset
+            if (trailing in 1..2) {
+                val prefixBytes = when {
+                    trailing == 2 && input[offset] == 0x47.toByte() && input[offset + 1] == 0x42.toByte() -> 2
+                    input[input.lastIndex] == 0x47.toByte() -> 1
+                    else -> 0
+                }
+                val fallbackBytes = trailing - prefixBytes
+                if (fallbackBytes > 0) {
+                    fallback.write(input, offset, fallbackBytes)
+                    offset += fallbackBytes
+                }
+            }
+
+            buffer.reset()
+            if (offset < input.size) buffer.write(input, offset, input.size - offset)
+            return DecodeResult(frames, fallback.toByteArray())
+        }
+
+        fun reset() = buffer.reset()
+    }
+
+    fun commandFrames(commandId: Int, payload: ByteArray, mtu: Int): List<ByteArray> {
+        require(payload.isNotEmpty()) { "Command must not be empty" }
+        require(payload.size <= MAX_COMMAND_BYTES) { "Command exceeds $MAX_COMMAND_BYTES bytes" }
+        val chunkSize = mtu.coerceAtLeast(DEFAULT_MTU) - ATT_WRITE_OVERHEAD - HEADER_LENGTH
+        require(chunkSize > 0) { "MTU is too small for bridge header" }
+
+        if (payload.size <= chunkSize) {
+            return listOf(frame(commandId, payload, 0))
+        }
+
+        return (payload.indices step chunkSize).map { offset ->
+            val end = (offset + chunkSize).coerceAtMost(payload.size)
+            val hasMore = end < payload.size
+            val flags = (if (offset == 0) FLAG_FIRST else 0) or
+                (if (hasMore) FLAG_MORE else 0)
+            frame(commandId, payload.copyOfRange(offset, end), flags)
+        }
+    }
+
+    private fun frame(commandId: Int, payload: ByteArray, flags: Int): ByteArray {
+        val frame = ByteArray(HEADER_LENGTH + payload.size)
+        frame[0] = 0x47
+        frame[1] = 0x42
+        frame[2] = 0x01
+        frame[3] = TYPE_COMMAND.toByte()
+        frame[4] = 0
+        frame[5] = flags.toByte()
+        frame[6] = (commandId and 0xFF).toByte()
+        frame[7] = ((commandId ushr 8) and 0xFF).toByte()
+        frame[8] = ((commandId ushr 16) and 0xFF).toByte()
+        frame[9] = ((commandId ushr 24) and 0xFF).toByte()
+        frame[10] = (payload.size and 0xFF).toByte()
+        frame[11] = ((payload.size ushr 8) and 0xFF).toByte()
+        payload.copyInto(frame, HEADER_LENGTH)
+        return frame
+    }
+}
+
+enum class BleConnectionFailure {
+    NONE,
+    PERMISSION_REQUIRED,
+    BLUETOOTH_DISABLED,
+    UNSUPPORTED,
+    INVALID_ADDRESS,
+    GATT_UNAVAILABLE,
+    CONNECTION_FAILED,
+    TIMEOUT,
+    HANDSHAKE_FAILED
+}
+
+internal data class BleAttemptResult(
+    val connected: Boolean,
+    val failure: BleConnectionFailure = BleConnectionFailure.NONE,
+    val retryable: Boolean = false
+)
+
+internal class BleConnectAttemptTracker {
+    class Attempt internal constructor(
+        val token: Long,
+        internal val completion: CompletableDeferred<BleAttemptResult>
+    )
+
+    private val nextToken = AtomicLong(0)
+    private var active: Attempt? = null
+
+    @Synchronized
+    fun begin(): Attempt {
+        active?.completion?.complete(BleAttemptResult(false, BleConnectionFailure.CONNECTION_FAILED))
+        return Attempt(nextToken.incrementAndGet(), CompletableDeferred()).also { active = it }
+    }
+
+    @Synchronized
+    fun isCurrent(attempt: Attempt): Boolean = active === attempt
+
+    @Synchronized
+    fun complete(
+        attempt: Attempt,
+        result: BleAttemptResult,
+        keepActive: Boolean = false,
+        beforeComplete: () -> Unit = {}
+    ): Boolean {
+        if (active !== attempt || attempt.completion.isCompleted) return false
+        beforeComplete()
+        val completed = attempt.completion.complete(result)
+        if (completed && !keepActive) active = null
+        return completed
+    }
+
+    @Synchronized
+    fun clear(attempt: Attempt? = null) {
+        if (attempt != null && active !== attempt) return
+        active?.completion?.complete(BleAttemptResult(false, BleConnectionFailure.CONNECTION_FAILED))
+        active = null
+    }
+}
+
+internal fun shouldRetryBleConnection(result: BleAttemptResult, retryIndex: Int): Boolean =
+    !result.connected && result.retryable && retryIndex == 0
 
 /**
  * USB Serial Manager for GhostESP communication
@@ -99,13 +276,19 @@ class SerialManager @Inject constructor(
     private var blePendingDescriptorWrite: CompletableDeferred<Int>? = null
     private var blePendingMtuChange: CompletableDeferred<Int>? = null
     private var bleServiceDiscoveryJob: Job? = null
+    private val bleAttemptTracker = BleConnectAttemptTracker()
+    private val bleGattLock = Any()
     private val bleCommandCounter = AtomicInteger(1)
+    @Volatile private var bleMtu = BleBridgeProtocol.DEFAULT_MTU
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
     private val _connectionTransport = MutableStateFlow(ConnectionTransport.NONE)
     val connectionTransport: StateFlow<ConnectionTransport> = _connectionTransport.asStateFlow()
+
+    private val _lastBleConnectionFailure = MutableStateFlow(BleConnectionFailure.NONE)
+    val lastBleConnectionFailure: StateFlow<BleConnectionFailure> = _lastBleConnectionFailure.asStateFlow()
 
     // Channel for parsed/grouped responses (multi-line accumulation applied here)
     // UNLIMITED capacity ensures we NEVER block the serial read loop and NEVER lose data
@@ -249,8 +432,7 @@ class SerialManager @Inject constructor(
     private var terminatorMatchPos = 0
     private val binaryHeaderBuffer = ByteArrayOutputStream(256)
     private var isCollectingBinaryHeader = false
-    private val bleFrameBuffer = ByteArrayOutputStream(2048)
-    private val bleFallbackBuffer = ByteArrayOutputStream(256)
+    private val bleFrameDecoder = BleBridgeProtocol.Decoder()
     @Volatile private var currentSdReadIsBase64 = false
 
     private val bleCommandMutex = Mutex()
@@ -261,7 +443,7 @@ class SerialManager @Inject constructor(
     private var bleActiveCmdId: Int = 0
     @Volatile private var bleWdStreamCmdId: Int = 0
     private val bleWdStreamLineBuffer = StringBuilder(512)
-    private val cmdIdIdleCloseMs = 200L
+    private val cmdIdIdleCloseMs = 750L
 
     // Atomic flag for connection status
     private val isConnectedFlag = AtomicBoolean(false)
@@ -302,10 +484,6 @@ class SerialManager @Inject constructor(
     )
 
     companion object {
-        private const val BLE_BRIDGE_FRAME_MAGIC0: Byte = 0x47
-        private const val BLE_BRIDGE_FRAME_MAGIC1: Byte = 0x42
-        private const val BLE_BRIDGE_FRAME_VERSION: Byte = 0x01
-        private const val BLE_BRIDGE_FRAME_HEADER_LEN = 12
         private const val BLE_BRIDGE_FRAME_TYPE_CMD = 1
         private const val BLE_BRIDGE_FRAME_TYPE_ACK = 2
         private const val BLE_BRIDGE_FRAME_TYPE_DATA = 3
@@ -323,8 +501,8 @@ class SerialManager @Inject constructor(
         private const val BLE_GATT_OP_GAP_MS = 75L
         private const val BLE_DISCOVER_SERVICES_DELAY_MS = 300L
         private const val BLE_DISCOVERY_TIMEOUT_MS = 6000L
-        private const val BLE_GATT_CONNECT_TIMEOUT_MS = 15000L
-        private const val BLE_FALLBACK_FLUSH_BYTES = 64
+        private const val BLE_CONNECT_ATTEMPT_TIMEOUT_MS = 30000L
+        private const val BLE_RECONNECT_DELAY_MS = 300L
         private const val RX_IDLE_POLL_MS = 50L
         /** Stock GhostESP firmware normally uses one of these rates. */
         private val PROBE_BAUD_RATES = listOf(115200, 460800)
@@ -353,27 +531,29 @@ class SerialManager @Inject constructor(
         }
     }
 
-    private val bleGattCallback = object : BluetoothGattCallback() {
+    private fun createBleGattCallback(attempt: BleConnectAttemptTracker.Attempt) = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             usbLog("BLE onConnectionStateChange status=$status (${bleGattStatusName(status)}) newState=$newState (${bleStateName(newState)})")
+            if (!acceptBleCallback(attempt, gatt)) {
+                usbLog("BLE ignoring stale connection callback token=${attempt.token}")
+                closeBluetoothGatt(gatt)
+                return
+            }
+            if (status != BluetoothGatt.GATT_SUCCESS && newState != BluetoothGatt.STATE_DISCONNECTED) {
+                failBleAttempt(attempt, gatt, BleConnectionFailure.CONNECTION_FAILED, "BLE connection failed status=$status", true)
+                return
+            }
             if (newState == BluetoothGatt.STATE_CONNECTED) {
-                // If we're no longer connecting (timed out or failed), close this stale GATT
-                if (!isConnecting.get()) {
-                    usbLog("BLE ignoring late STATE_CONNECTED; isConnecting=false")
-                    closeBluetoothGatt(gatt)
-                    return
-                }
-                bluetoothGatt = gatt
                 bleServiceDiscoveryJob?.cancel()
                 bleServiceDiscoveryJob = scope.launch {
                     delay(BLE_DISCOVER_SERVICES_DELAY_MS)
-                    if (bluetoothGatt !== gatt || !isConnecting.get()) {
+                    if (!acceptBleCallback(attempt, gatt)) {
                         return@launch
                     }
 
                     if (!hasBluetoothConnectPermission()) {
-                        failBleConnection("BLE connect permission missing")
+                        failBleAttempt(attempt, gatt, BleConnectionFailure.PERMISSION_REQUIRED, "BLE connect permission missing")
                         return@launch
                     }
 
@@ -385,30 +565,46 @@ class SerialManager @Inject constructor(
                     }
 
                     if (!started) {
-                        failBleConnection("BLE discoverServices dispatch failed")
+                        failBleAttempt(attempt, gatt, BleConnectionFailure.HANDSHAKE_FAILED, "BLE discoverServices dispatch failed", true)
                         return@launch
                     }
 
                     usbLog("BLE discoverServices dispatched")
                     delay(BLE_DISCOVERY_TIMEOUT_MS)
-                    if (bluetoothGatt === gatt && isConnecting.get()) {
-                        failBleConnection("BLE service discovery timed out")
+                    if (acceptBleCallback(attempt, gatt) && isConnecting.get()) {
+                        failBleAttempt(attempt, gatt, BleConnectionFailure.TIMEOUT, "BLE service discovery timed out", true)
                     }
                 }
             } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
-                scope.launch {
-                    connectionMutex.withLock {
-                        disconnectInternal()
-                    }
+                if (isConnecting.get()) {
+                    failBleAttempt(
+                        attempt,
+                        gatt,
+                        BleConnectionFailure.CONNECTION_FAILED,
+                        "BLE disconnected while connecting status=$status",
+                        retryable = true
+                    )
+                } else {
+                    bleAttemptTracker.clear(attempt)
+                    scope.launch { connectionMutex.withLock { disconnectInternal() } }
                 }
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (!acceptBleCallback(attempt, gatt)) return
             usbLog("BLE onServicesDiscovered status=$status (${bleGattStatusName(status)})")
             bleServiceDiscoveryJob?.cancel()
             bleServiceDiscoveryJob = null
-            val service: BluetoothGattService? = gatt.getService(BleBridgeConstants.SERVICE_UUID)
+            val service: BluetoothGattService? = try {
+                gatt.getService(BleBridgeConstants.SERVICE_UUID)
+            } catch (e: Exception) {
+                usbLog("BLE service lookup exception: ${e.message ?: e.javaClass.simpleName}")
+                val failure = if (e is SecurityException) BleConnectionFailure.PERMISSION_REQUIRED
+                    else BleConnectionFailure.HANDSHAKE_FAILED
+                failBleAttempt(attempt, gatt, failure, "BLE service lookup failed", e !is SecurityException)
+                return
+            }
             bleRxCharacteristic = service?.getCharacteristic(BleBridgeConstants.RX_UUID)
             bleTxCharacteristic = service?.getCharacteristic(BleBridgeConstants.TX_UUID)
             val rx = bleRxCharacteristic
@@ -416,21 +612,26 @@ class SerialManager @Inject constructor(
             val ctrl = service?.getCharacteristic(BleBridgeConstants.CTRL_UUID)
             if (status == BluetoothGatt.GATT_SUCCESS && rx != null && tx != null && ctrl != null) {
                 scope.launch {
-                    completeBleHandshake(gatt, tx)
+                    completeBleHandshake(attempt, gatt, tx)
                 }
             } else {
-                failBleConnection("BLE services missing or discovery failed status=$status")
+                failBleAttempt(attempt, gatt, BleConnectionFailure.HANDSHAKE_FAILED, "BLE services missing or discovery failed status=$status", true)
             }
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            if (!acceptBleCallback(attempt, gatt)) return
             usbLog("BLE onMtuChanged mtu=$mtu status=$status (${bleGattStatusName(status)})")
+            if (status == BluetoothGatt.GATT_SUCCESS && mtu >= BleBridgeProtocol.DEFAULT_MTU) {
+                bleMtu = mtu
+            }
             blePendingMtuChange?.complete(status)
             blePendingMtuChange = null
         }
 
         @Deprecated("Deprecated in Java")
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+            if (!acceptBleCallback(attempt, gatt)) return
             val value = characteristic.value
             if (value == null || value.isEmpty()) return
             val queued = bleNotificationChannel.trySend(value.copyOf())
@@ -444,6 +645,7 @@ class SerialManager @Inject constructor(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
+            if (!acceptBleCallback(attempt, gatt)) return
             if (value.isEmpty()) return
             val queued = bleNotificationChannel.trySend(value.copyOf())
             if (queued.isFailure) {
@@ -452,12 +654,14 @@ class SerialManager @Inject constructor(
         }
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            if (!acceptBleCallback(attempt, gatt)) return
             usbLog("BLE onDescriptorWrite status=$status (${bleGattStatusName(status)}) uuid=${descriptor.uuid}")
             blePendingDescriptorWrite?.complete(status)
             blePendingDescriptorWrite = null
         }
 
         override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            if (!acceptBleCallback(attempt, gatt)) return
             usbLog("BLE onCharacteristicWrite status=$status (${bleGattStatusName(status)}) uuid=${characteristic.uuid}")
             if (characteristic.uuid == BleBridgeConstants.RX_UUID || characteristic.uuid == BleBridgeConstants.CTRL_UUID) {
                 blePendingWrite?.complete(status)
@@ -467,8 +671,19 @@ class SerialManager @Inject constructor(
 
         @Deprecated("Deprecated in Java")
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            if (!acceptBleCallback(attempt, gatt)) return
             val text = characteristic.value?.let { String(it, Charsets.US_ASCII) }.orEmpty().trim()
             usbLog("BLE onCharacteristicRead status=$status (${bleGattStatusName(status)}) uuid=${characteristic.uuid} value=$text")
+        }
+    }
+
+    private fun acceptBleCallback(attempt: BleConnectAttemptTracker.Attempt, gatt: BluetoothGatt): Boolean {
+        if (!bleAttemptTracker.isCurrent(attempt)) return false
+        synchronized(bleGattLock) {
+            if (!bleAttemptTracker.isCurrent(attempt)) return false
+            val currentGatt = bluetoothGatt
+            if (currentGatt == null) bluetoothGatt = gatt
+            return currentGatt == null || currentGatt === gatt
         }
     }
 
@@ -650,30 +865,41 @@ class SerialManager @Inject constructor(
     }
 
     fun startBleScan() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+        if (!hasBluetoothScanPermission()) {
             return
         }
-        val scanner = bluetoothScanner ?: return
+        val scanner = try { bluetoothScanner } catch (_: SecurityException) { null } ?: return
         _bleDevices.value = emptyList()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         _isBleScanning.value = true
-        scanner.startScan(null, settings, bleScanCallback)
+        try {
+            scanner.startScan(null, settings, bleScanCallback)
+        } catch (_: SecurityException) {
+            _isBleScanning.value = false
+        }
     }
 
     fun stopBleScan() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
-            bluetoothScanner?.stopScan(bleScanCallback)
+        if (hasBluetoothScanPermission()) {
+            try { bluetoothScanner?.stopScan(bleScanCallback) } catch (_: SecurityException) {}
         }
         _isBleScanning.value = false
     }
 
-    fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
+    fun isBluetoothEnabled(): Boolean = try { bluetoothAdapter?.isEnabled == true } catch (_: SecurityException) { false }
 
     fun isBluetoothSupported(): Boolean = bluetoothAdapter != null
 
     private fun hasBluetoothConnectPermission(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+
+    private fun hasBluetoothScanPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            context,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Manifest.permission.BLUETOOTH_SCAN
+            else Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
 
     @SuppressLint("MissingPermission")
     private fun closeBluetoothGatt(gatt: BluetoothGatt?) {
@@ -682,41 +908,97 @@ class SerialManager @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    suspend fun connectBle(device: BleBridgeDevice): Boolean = connectionMutex.withLock {
-        if (isConnecting.get()) return@withLock false
-        disconnectInternal()
-        isConnecting.set(true)
-        _connectionState.value = ConnectionState.CONNECTING
+    suspend fun connectBle(device: BleBridgeDevice): Boolean = connectionRequestMutex.withLock {
+        if (isConnecting.get() || isConnectedFlag.get()) return@withLock false
+        _lastBleConnectionFailure.value = BleConnectionFailure.NONE
         if (!hasBluetoothConnectPermission()) {
-            _connectionState.value = ConnectionState.ERROR
-            _connectionTransport.value = ConnectionTransport.NONE
-            isConnecting.set(false)
+            rejectBleConnection(BleConnectionFailure.PERMISSION_REQUIRED, "BLE connect permission missing")
             return@withLock false
         }
-        resetParsingState()
-        isBleTransport = true
-        val remoteDevice = bluetoothAdapter?.getRemoteDevice(device.address)
-        if (remoteDevice == null) {
-            _connectionState.value = ConnectionState.ERROR
-            _connectionTransport.value = ConnectionTransport.NONE
-            isConnecting.set(false)
+        val adapter = bluetoothAdapter
+        if (adapter == null) {
+            rejectBleConnection(BleConnectionFailure.UNSUPPORTED, "BLE is not supported")
             return@withLock false
         }
-        bluetoothGatt = remoteDevice.connectGatt(context, false, bleGattCallback, BluetoothDevice.TRANSPORT_LE)
-        startBleNotificationProcessor()
-        startConsumer()
-        startFlushTimer()
+        val enabled = try { adapter.isEnabled } catch (_: SecurityException) {
+            rejectBleConnection(BleConnectionFailure.PERMISSION_REQUIRED, "BLE adapter access denied")
+            return@withLock false
+        }
+        if (!enabled) {
+            rejectBleConnection(BleConnectionFailure.BLUETOOTH_DISABLED, "Bluetooth is disabled")
+            return@withLock false
+        }
+        if (!BluetoothAdapter.checkBluetoothAddress(device.address)) {
+            rejectBleConnection(BleConnectionFailure.INVALID_ADDRESS, "Invalid BLE address")
+            return@withLock false
+        }
 
-        // GATT connect timeout — if onConnectionStateChange never fires, fail the connection
-        scope.launch {
-            delay(BLE_GATT_CONNECT_TIMEOUT_MS)
-            if (isConnecting.get() && _connectionState.value == ConnectionState.CONNECTING) {
-                usbLog("BLE GATT connect timed out after ${BLE_GATT_CONNECT_TIMEOUT_MS}ms")
-                failBleConnection("BLE GATT connect timed out")
+        repeat(2) { retryIndex ->
+            val attempt = connectionMutex.withLock {
+                disconnectInternal()
+                isConnecting.set(true)
+                _connectionState.value = ConnectionState.CONNECTING
+                _connectionTransport.value = ConnectionTransport.NONE
+                resetParsingState()
+                bleMtu = BleBridgeProtocol.DEFAULT_MTU
+                isBleTransport = true
+
+                val currentAttempt = bleAttemptTracker.begin()
+                val callback = createBleGattCallback(currentAttempt)
+                val gatt = try {
+                    adapter.getRemoteDevice(device.address)
+                        .connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+                } catch (e: SecurityException) {
+                    failBleAttempt(currentAttempt, null, BleConnectionFailure.PERMISSION_REQUIRED, "BLE connect permission denied")
+                    null
+                } catch (e: IllegalArgumentException) {
+                    failBleAttempt(currentAttempt, null, BleConnectionFailure.INVALID_ADDRESS, "Invalid BLE address")
+                    null
+                } catch (e: Exception) {
+                    usbLog("BLE connectGatt exception: ${e.message ?: e.javaClass.simpleName}")
+                    failBleAttempt(currentAttempt, null, BleConnectionFailure.GATT_UNAVAILABLE, "BLE connect dispatch failed", true)
+                    null
+                }
+
+                if (gatt == null && !currentAttempt.completion.isCompleted) {
+                    failBleAttempt(currentAttempt, null, BleConnectionFailure.GATT_UNAVAILABLE, "BLE connectGatt returned null", true)
+                } else if (gatt != null && !acceptBleCallback(currentAttempt, gatt)) {
+                    closeBluetoothGatt(gatt)
+                    failBleAttempt(currentAttempt, gatt, BleConnectionFailure.CONNECTION_FAILED, "BLE GATT attempt was superseded")
+                }
+                if (!currentAttempt.completion.isCompleted || isConnectedFlag.get()) {
+                    startBleNotificationProcessor()
+                    startConsumer()
+                    startFlushTimer()
+                }
+                currentAttempt
             }
-        }
 
-        true
+            val result = try {
+                withTimeoutOrNull(BLE_CONNECT_ATTEMPT_TIMEOUT_MS) { attempt.completion.await() }
+                    ?: BleAttemptResult(false, BleConnectionFailure.TIMEOUT, retryable = true).also {
+                        failBleAttempt(attempt, bluetoothGatt, it.failure, "BLE connection handshake timed out", it.retryable)
+                    }
+            } catch (e: CancellationException) {
+                failBleAttempt(attempt, bluetoothGatt, BleConnectionFailure.CONNECTION_FAILED, "BLE connection cancelled")
+                throw e
+            }
+
+            if (result.connected) return@withLock true
+            if (!shouldRetryBleConnection(result, retryIndex)) return@withLock false
+            usbLog("BLE direct reconnect retry ${retryIndex + 1}/1 after ${result.failure}")
+            delay(BLE_RECONNECT_DELAY_MS)
+        }
+        false
+    }
+
+    private fun rejectBleConnection(failure: BleConnectionFailure, reason: String) {
+        usbLog(reason)
+        isConnecting.set(false)
+        isConnectedFlag.set(false)
+        _lastBleConnectionFailure.value = failure
+        _connectionState.value = ConnectionState.ERROR
+        _connectionTransport.value = ConnectionTransport.NONE
     }
     
     /**
@@ -1050,14 +1332,18 @@ class SerialManager @Inject constructor(
         terminatorMatchPos = 0
         binaryHeaderBuffer.reset()
         isCollectingBinaryHeader = false
-        bleFrameBuffer.reset()
-        bleFallbackBuffer.reset()
+        bleFrameDecoder.reset()
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun completeBleHandshake(gatt: BluetoothGatt, tx: BluetoothGattCharacteristic) {
+    private suspend fun completeBleHandshake(
+        attempt: BleConnectAttemptTracker.Attempt,
+        gatt: BluetoothGatt,
+        tx: BluetoothGattCharacteristic
+    ) {
+        if (!acceptBleCallback(attempt, gatt)) return
         if (!hasBluetoothConnectPermission()) {
-            failBleConnection("BLE connect permission missing")
+            failBleAttempt(attempt, gatt, BleConnectionFailure.PERMISSION_REQUIRED, "BLE connect permission missing")
             return
         }
 
@@ -1069,13 +1355,13 @@ class SerialManager @Inject constructor(
         }
 
         if (!notificationsEnabled) {
-            failBleConnection("BLE enable notifications failed")
+            failBleAttempt(attempt, gatt, BleConnectionFailure.HANDSHAKE_FAILED, "BLE enable notifications failed", true)
             return
         }
 
         val descriptor = tx.getDescriptor(BleBridgeConstants.CLIENT_CONFIG_UUID)
         if (descriptor == null) {
-            failBleConnection("BLE missing TX CCCD")
+            failBleAttempt(attempt, gatt, BleConnectionFailure.HANDSHAKE_FAILED, "BLE missing TX CCCD")
             return
         }
 
@@ -1086,17 +1372,19 @@ class SerialManager @Inject constructor(
             "enable notifications"
         )
         if (descriptorStatus != BluetoothGatt.GATT_SUCCESS) {
-            failBleConnection("BLE descriptor write failed status=$descriptorStatus")
+            failBleAttempt(attempt, gatt, BleConnectionFailure.HANDSHAKE_FAILED, "BLE descriptor write failed status=$descriptorStatus", true)
             return
         }
+
+        if (!acceptBleCallback(attempt, gatt)) return
 
         val mtuStatus = bleRequestMtuReliable(gatt, BLE_REQUESTED_MTU)
         if (mtuStatus != BluetoothGatt.GATT_SUCCESS) {
-            failBleConnection("BLE mtu request failed status=$mtuStatus")
-            return
+            bleMtu = BleBridgeProtocol.DEFAULT_MTU
+            usbLog("BLE mtu request failed status=$mtuStatus; continuing with mtu=$bleMtu")
         }
 
-        finishBleConnect()
+        finishBleConnect(attempt, gatt)
     }
 
     @SuppressLint("MissingPermission")
@@ -1113,8 +1401,14 @@ class SerialManager @Inject constructor(
 
         val deferred = CompletableDeferred<Int>()
         blePendingDescriptorWrite = deferred
-        descriptor.value = value
-        if (!gatt.writeDescriptor(descriptor)) {
+        val dispatched = try {
+            descriptor.value = value
+            gatt.writeDescriptor(descriptor)
+        } catch (e: Exception) {
+            usbLog("BLE descriptor write exception label=$label: ${e.message ?: e.javaClass.simpleName}")
+            false
+        }
+        if (!dispatched) {
             blePendingDescriptorWrite = null
             usbLog("BLE descriptor dispatch failed label=$label")
             return@withLock -1
@@ -1201,31 +1495,57 @@ class SerialManager @Inject constructor(
         status
     }
 
-    private fun finishBleConnect() {
-        isConnectedFlag.set(true)
-        isConnecting.set(false)
-        _connectionTransport.value = ConnectionTransport.BLE
-        bleHeartbeatJob?.cancel()
-        bleHeartbeatJob = null
-        bleHeartbeatWatchdog?.cancel()
-        bleHeartbeatWatchdog = null
-        mainScope.launch {
+    private fun finishBleConnect(attempt: BleConnectAttemptTracker.Attempt, gatt: BluetoothGatt) {
+        if (!acceptBleCallback(attempt, gatt)) return
+        bleAttemptTracker.complete(attempt, BleAttemptResult(connected = true), keepActive = true) {
+            isConnectedFlag.set(true)
+            isConnecting.set(false)
+            _connectionTransport.value = ConnectionTransport.BLE
+            bleHeartbeatJob?.cancel()
+            bleHeartbeatJob = null
+            bleHeartbeatWatchdog?.cancel()
+            bleHeartbeatWatchdog = null
+            _lastBleConnectionFailure.value = BleConnectionFailure.NONE
             _connectionState.value = ConnectionState.CONNECTED
         }
     }
 
-    private fun failBleConnection(reason: String) {
-        usbLog(reason)
-        isConnecting.set(false)
-        _connectionTransport.value = ConnectionTransport.NONE
-        // Close GATT synchronously to prevent stale callbacks
-        closeBluetoothGatt(bluetoothGatt)
-        bluetoothGatt = null
-        bleRxCharacteristic = null
-        bleTxCharacteristic = null
-        isBleTransport = false
-        failPendingBleOperations()
-        _connectionState.value = ConnectionState.ERROR
+    private fun failBleAttempt(
+        attempt: BleConnectAttemptTracker.Attempt,
+        gatt: BluetoothGatt?,
+        failure: BleConnectionFailure,
+        reason: String,
+        retryable: Boolean = false
+    ) {
+        val completed = bleAttemptTracker.complete(attempt, BleAttemptResult(false, failure, retryable)) {
+            usbLog(reason)
+            isConnecting.set(false)
+            isConnectedFlag.set(false)
+            _lastBleConnectionFailure.value = failure
+            _connectionTransport.value = ConnectionTransport.NONE
+            val gattToClose = synchronized(bleGattLock) {
+                val current = bluetoothGatt
+                if (gatt == null || current === gatt) bluetoothGatt = null
+                gatt ?: current
+            }
+            closeBluetoothGatt(gattToClose)
+            bleServiceDiscoveryJob?.cancel()
+            bleServiceDiscoveryJob = null
+            bleNotificationJob?.cancel()
+            bleNotificationJob = null
+            consumerJob?.cancel()
+            consumerJob = null
+            flushJob?.cancel()
+            flushJob = null
+            bleRxCharacteristic = null
+            bleTxCharacteristic = null
+            isBleTransport = false
+            failPendingBleOperations()
+            _connectionState.value = ConnectionState.ERROR
+        }
+        if (!completed) {
+            gatt?.let(::closeBluetoothGatt)
+        }
     }
 
     private fun nextBleCommandId(): Int {
@@ -1269,25 +1589,6 @@ class SerialManager @Inject constructor(
             trimmed.equals("wdstream stop", ignoreCase = true)
     }
 
-    private fun buildBleBridgeCommandFrame(commandId: Int, command: String): ByteArray {
-        val payload = command.toByteArray(Charsets.US_ASCII)
-        val frame = ByteArray(BLE_BRIDGE_FRAME_HEADER_LEN + payload.size)
-        frame[0] = BLE_BRIDGE_FRAME_MAGIC0
-        frame[1] = BLE_BRIDGE_FRAME_MAGIC1
-        frame[2] = BLE_BRIDGE_FRAME_VERSION
-        frame[3] = BLE_BRIDGE_FRAME_TYPE_CMD.toByte()
-        frame[4] = BLE_BRIDGE_STATUS_OK.toByte()
-        frame[5] = 0
-        frame[6] = (commandId and 0xFF).toByte()
-        frame[7] = ((commandId shr 8) and 0xFF).toByte()
-        frame[8] = ((commandId shr 16) and 0xFF).toByte()
-        frame[9] = ((commandId shr 24) and 0xFF).toByte()
-        frame[10] = (payload.size and 0xFF).toByte()
-        frame[11] = ((payload.size shr 8) and 0xFF).toByte()
-        payload.copyInto(frame, BLE_BRIDGE_FRAME_HEADER_LEN)
-        return frame
-    }
-
     private fun isBase64SdReadCommand(command: String): Boolean {
         val trimmed = command.trim()
         return trimmed.startsWith("sd read ", ignoreCase = true) &&
@@ -1326,6 +1627,7 @@ class SerialManager @Inject constructor(
         // Set flag first to stop read loop
         isConnectedFlag.set(false)
         isConnecting.set(false)
+        bleAttemptTracker.clear()
 
         // Cancel jobs immediately (don't wait for them)
         readJob?.cancel()
@@ -1358,9 +1660,7 @@ class SerialManager @Inject constructor(
 
         // Close USB connection
         try { usbConnection?.close() } catch (e: Exception) { /* ignore */ }
-        if (hasBluetoothConnectPermission()) {
-            closeBluetoothGatt(bluetoothGatt)
-        }
+        closeBluetoothGatt(bluetoothGatt)
 
         // Clear references
         serialPort = null
@@ -1370,6 +1670,7 @@ class SerialManager @Inject constructor(
         bleRxCharacteristic = null
         bleTxCharacteristic = null
         isBleTransport = false
+        bleMtu = BleBridgeProtocol.DEFAULT_MTU
         bleActiveCmdId = 0
         cmdIdLastDataMs.clear()
         bleHeartbeatWatchdog?.cancel()
@@ -1412,7 +1713,14 @@ class SerialManager @Inject constructor(
         if (!isConnectedFlag.get()) return@withContext false
 
         try {
-            currentSdReadIsBase64 = isBase64SdReadCommand(command)
+            val trimmedCommand = command.trim()
+            val commandPayload = trimmedCommand.toByteArray(Charsets.UTF_8)
+            if (commandPayload.isEmpty() ||
+                (isBleTransport && commandPayload.size > BleBridgeProtocol.MAX_COMMAND_BYTES)) {
+                usbLog("Command rejected byteLength=${commandPayload.size}")
+                return@withContext false
+            }
+            currentSdReadIsBase64 = isBase64SdReadCommand(trimmedCommand)
 
             // Flush any pending multiline buffer before sending a new command
             // so previous response data isn't lost
@@ -1432,11 +1740,10 @@ class SerialManager @Inject constructor(
             }
 
             val bridgeCommandId = if (isBleTransport) nextBleCommandId() else 0
-            val commandBytes = if (isBleTransport) {
-                buildBleBridgeCommandFrame(bridgeCommandId, command.trim())
-            } else {
-                (command + "\r\n").toByteArray(Charsets.US_ASCII)
-            }
+            val commandFrames = if (isBleTransport) {
+                BleBridgeProtocol.commandFrames(bridgeCommandId, commandPayload, bleMtu)
+            } else emptyList()
+            val commandBytes = (command + "\r\n").toByteArray(Charsets.UTF_8)
             if (isBleTransport) {
                 val gatt = bluetoothGatt ?: return@withContext false
                 val characteristic = bleRxCharacteristic ?: return@withContext false
@@ -1471,20 +1778,22 @@ class SerialManager @Inject constructor(
                         blePendingCommandEnds[commandId] = endDeferred
                     }
 
-                    val status = bleWriteCharacteristicReliable(
-                        gatt = gatt,
-                        characteristic = characteristic,
-                        value = commandBytes,
-                        writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
-                        label = "command=$command target=rx"
-                    )
-                    if (status != BluetoothGatt.GATT_SUCCESS) {
-                        usbLog("BLE command write failed command=$command status=$status (${bleGattStatusName(status)})")
-                        synchronized(bleBridgeStateLock) {
-                            blePendingBridgeAcks.remove(commandId)
-                            blePendingCommandEnds.remove(commandId)
+                    for ((index, frame) in commandFrames.withIndex()) {
+                        val status = bleWriteCharacteristicReliable(
+                            gatt = gatt,
+                            characteristic = characteristic,
+                            value = frame,
+                            writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT,
+                            label = "command=$command fragment=${index + 1}/${commandFrames.size} target=rx"
+                        )
+                        if (status != BluetoothGatt.GATT_SUCCESS) {
+                            usbLog("BLE command write failed command=$command fragment=${index + 1}/${commandFrames.size} status=$status (${bleGattStatusName(status)})")
+                            synchronized(bleBridgeStateLock) {
+                                blePendingBridgeAcks.remove(commandId)
+                                blePendingCommandEnds.remove(commandId)
+                            }
+                            return@withLock false
                         }
-                        return@withLock false
                     }
 
                     val ackResult = withTimeoutOrNull(BLE_BRIDGE_ACK_TIMEOUT_MS) {
@@ -1627,92 +1936,21 @@ class SerialManager @Inject constructor(
 
     private fun processBleNotificationPacket(packet: ByteArray) {
         lastIncomingDataAtMs = System.currentTimeMillis()
-        bleFrameBuffer.write(packet)
-        val buffered = bleFrameBuffer.toByteArray()
-        var offset = 0
-
-        while (buffered.size - offset >= BLE_BRIDGE_FRAME_HEADER_LEN) {
-            if (buffered[offset] != BLE_BRIDGE_FRAME_MAGIC0 ||
-                buffered[offset + 1] != BLE_BRIDGE_FRAME_MAGIC1 ||
-                buffered[offset + 2] != BLE_BRIDGE_FRAME_VERSION) {
-                bleFallbackBuffer.write(buffered[offset].toInt() and 0xFF)
-                offset += 1
-                continue
-            }
-
-            if (bleFallbackBuffer.size() > 0) {
-                val fallback = bleFallbackBuffer.toByteArray()
-                bleFallbackBuffer.reset()
-                processIncomingDataFast(fallback, fallback.size)
-            }
-
-            val frameType = buffered[offset + 3].toInt() and 0xFF
-            var payloadLen =
-                (buffered[offset + 10].toInt() and 0xFF) or
-                ((buffered[offset + 11].toInt() and 0xFF) shl 8)
-
-            // Some bridge firmware builds emitted DATA frames with a zero payload
-            // length even though bytes followed the header. Infer that payload so
-            // file downloads do not depend on the raw-byte fallback path.
-            if (payloadLen == 0 &&
-                (frameType == BLE_BRIDGE_FRAME_TYPE_DATA || frameType == BLE_BRIDGE_FRAME_TYPE_ERR) &&
-                buffered.size - offset > BLE_BRIDGE_FRAME_HEADER_LEN) {
-                val nextFrameOffset = findNextBleFrameOffset(buffered, offset + BLE_BRIDGE_FRAME_HEADER_LEN)
-                val payloadEnd = if (nextFrameOffset >= 0) nextFrameOffset else buffered.size
-                payloadLen = (payloadEnd - offset - BLE_BRIDGE_FRAME_HEADER_LEN).coerceAtMost(0xFFFF)
-            }
-
-            val frameLen = BLE_BRIDGE_FRAME_HEADER_LEN + payloadLen
-            if (buffered.size - offset < frameLen) {
-                break
-            }
-
-            val commandId =
-                (buffered[offset + 6].toInt() and 0xFF) or
-                ((buffered[offset + 7].toInt() and 0xFF) shl 8) or
-                ((buffered[offset + 8].toInt() and 0xFF) shl 16) or
-                ((buffered[offset + 9].toInt() and 0xFF) shl 24)
-            val payload = buffered.copyOfRange(offset + BLE_BRIDGE_FRAME_HEADER_LEN, offset + frameLen)
-            val pendingBytes = if (frameType == BLE_BRIDGE_FRAME_TYPE_ACK) {
-                payloadLen
-            } else {
-                0
-            }
+        val decoded = bleFrameDecoder.feed(packet)
+        if (decoded.fallback.isNotEmpty()) {
+            processIncomingDataFast(decoded.fallback, decoded.fallback.size)
+        }
+        for (frame in decoded.frames) {
             processBleBridgeFrame(
                 BleBridgeFrame(
-                    type = frameType,
-                    status = buffered[offset + 4].toInt() and 0xFF,
-                    commandId = commandId,
-                    payload = payload,
-                    pendingBytes = pendingBytes
+                    type = frame.type,
+                    status = frame.status,
+                    commandId = frame.commandId,
+                    payload = frame.payload,
+                    pendingBytes = if (frame.type == BLE_BRIDGE_FRAME_TYPE_ACK) frame.payload.size else 0
                 )
             )
-            offset += frameLen
         }
-
-        bleFrameBuffer.reset()
-        if (offset < buffered.size) {
-            bleFrameBuffer.write(buffered, offset, buffered.size - offset)
-        }
-
-        if (bleFallbackBuffer.size() >= BLE_FALLBACK_FLUSH_BYTES) {
-            val fallback = bleFallbackBuffer.toByteArray()
-            bleFallbackBuffer.reset()
-            processIncomingDataFast(fallback, fallback.size)
-        }
-    }
-
-    private fun findNextBleFrameOffset(buffer: ByteArray, start: Int): Int {
-        var i = start
-        while (i <= buffer.size - 3) {
-            if (buffer[i] == BLE_BRIDGE_FRAME_MAGIC0 &&
-                buffer[i + 1] == BLE_BRIDGE_FRAME_MAGIC1 &&
-                buffer[i + 2] == BLE_BRIDGE_FRAME_VERSION) {
-                return i
-            }
-            i++
-        }
-        return -1
     }
 
     private fun emitBleBridgeText(payload: ByteArray) {
@@ -1774,7 +2012,15 @@ class SerialManager @Inject constructor(
             }
             BLE_BRIDGE_FRAME_TYPE_END -> {
                 android.util.Log.d("SerialManager", "BLE frame END id=${frame.commandId}")
-                cmdIdLastDataMs[frame.commandId] = System.currentTimeMillis()
+                val isCurrentCommand = bleActiveCmdId == frame.commandId
+                if (isCurrentCommand && frame.commandId != bleWdStreamCmdId && !isBinaryMode && lineBuffer.isNotEmpty()) {
+                    val finalLine = lineBuffer.toString()
+                    lineBuffer.clear()
+                    processLine(finalLine)
+                }
+                if (isCurrentCommand) flushMultilineBuffer()
+                cmdIdLastDataMs.remove(frame.commandId)
+                if (isCurrentCommand) bleActiveCmdId = 0
                 synchronized(bleBridgeStateLock) {
                     blePendingCommandEnds.remove(frame.commandId)?.complete(Unit)
                 }
@@ -1784,8 +2030,17 @@ class SerialManager @Inject constructor(
             }
             BLE_BRIDGE_FRAME_TYPE_ERR -> {
                 android.util.Log.d("SerialManager", "BLE frame ERR id=${frame.commandId} status=${frame.status} bytes=${frame.payload.size}")
-                if (frame.payload.isNotEmpty()) {
-                    emitBleBridgeText(frame.payload)
+                val detail = frame.payload.toString(Charsets.UTF_8).trim()
+                val error = buildString {
+                    append("ERROR: BLE bridge status=").append(frame.status)
+                    if (detail.isNotEmpty()) append(": ").append(detail)
+                }
+                _rawOutput.tryEmit(error)
+                sendToResponseChannel(error)
+                cmdIdLastDataMs.remove(frame.commandId)
+                if (bleActiveCmdId == frame.commandId) bleActiveCmdId = 0
+                synchronized(bleBridgeStateLock) {
+                    blePendingCommandEnds.remove(frame.commandId)?.complete(Unit)
                 }
                 handleBleBridgeAck(frame, false, 0)
             }
@@ -2022,8 +2277,9 @@ class SerialManager @Inject constructor(
         }
 
         if (cleanLine.isEmpty()) {
-            // Flush multiline buffer on empty lines (but never chipinfo — it has its own collector)
-            if (isAccumulatingMultiline && multilineBuffer.isNotEmpty()) {
+            // Flush multiline buffer on empty lines (but never chipinfo — it has its own collector,
+            // and never WPA3_START — its block has a blank line between PMF and Finding)
+            if (isAccumulatingMultiline && multilineBuffer.isNotEmpty() && multilineType != LineType.WPA3_START) {
                 flushMultilineBuffer()
             }
             return
@@ -2062,7 +2318,9 @@ class SerialManager @Inject constructor(
             chipInfoCollectAllUntil = 0L
             chipInfoSeenCount = 0
             chipInfoLog("COLLECTOR flushed (${collected.length} chars, end marker)")
-            sendToResponseChannel("Chip Information: $collected")
+            // Keep the explicit terminator in the parsed response. Its presence is
+            // what makes absent inventory entries definitively unsupported.
+            sendToResponseChannel("Chip Information: $collected, [CHIPINFO_END]")
             return
         }
 
@@ -2114,6 +2372,25 @@ class SerialManager @Inject constructor(
                 multilineBuffer.append(cleanLine)
                 isAccumulatingMultiline = true
                 multilineType = lineType
+            }
+            LineType.GATT_SERVICE_START -> {
+                if (isAccumulatingMultiline && multilineBuffer.isNotEmpty()) {
+                    sendToResponseChannel(multilineBuffer.toString())
+                }
+                multilineBuffer.clear()
+                multilineBuffer.append(cleanLine.trim())
+                isAccumulatingMultiline = true
+                multilineType = lineType
+            }
+            LineType.GATT_SERVICE_CONTINUATION -> {
+                if (isAccumulatingMultiline && multilineType == LineType.GATT_SERVICE_START) {
+                    multilineBuffer.append("\n").append(cleanLine.trim())
+                    if (cleanLine.trim().startsWith("Handles:", ignoreCase = true)) {
+                        flushMultilineBuffer()
+                    }
+                } else {
+                    sendToResponseChannel(cleanLine.trim())
+                }
             }
             LineType.HANDSHAKE_START -> {
                 if (isAccumulatingMultiline && multilineBuffer.isNotEmpty()) {
@@ -2168,6 +2445,76 @@ class SerialManager @Inject constructor(
             LineType.GPS_CONTINUATION -> {
                 if (isAccumulatingMultiline) {
                     multilineBuffer.append("\n").append(cleanLine.trim())
+                } else {
+                    sendToResponseChannel(cleanLine.trim())
+                }
+            }
+            LineType.ETH_INFO_START, LineType.ETH_STATS_START -> {
+                if (isAccumulatingMultiline && multilineBuffer.isNotEmpty()) {
+                    sendToResponseChannel(multilineBuffer.toString())
+                }
+                multilineBuffer.clear()
+                multilineBuffer.append(cleanLine)
+                isAccumulatingMultiline = true
+                multilineType = lineType
+            }
+            LineType.ETH_INFO_CONTINUATION, LineType.ETH_STATS_CONTINUATION -> {
+                if (isAccumulatingMultiline) {
+                    multilineBuffer.append("\n").append(cleanLine.trim())
+                } else {
+                    sendToResponseChannel(cleanLine.trim())
+                }
+            }
+            LineType.ADVERTISER_DETAIL_START -> {
+                if (isAccumulatingMultiline && multilineBuffer.isNotEmpty()) {
+                    sendToResponseChannel(multilineBuffer.toString())
+                }
+                multilineBuffer.clear()
+                multilineBuffer.append(cleanLine.trim())
+                isAccumulatingMultiline = true
+                multilineType = lineType
+            }
+            LineType.ADVERTISER_DETAIL_CONTINUATION -> {
+                if (isAccumulatingMultiline && multilineType == LineType.ADVERTISER_DETAIL_START) {
+                    multilineBuffer.append("\n").append(cleanLine.trim())
+                } else {
+                    sendToResponseChannel(cleanLine.trim())
+                }
+            }
+            LineType.PINEAP_START -> {
+                if (isAccumulatingMultiline && multilineBuffer.isNotEmpty()) {
+                    sendToResponseChannel(multilineBuffer.toString())
+                }
+                multilineBuffer.clear()
+                multilineBuffer.append(cleanLine.trim())
+                isAccumulatingMultiline = true
+                multilineType = lineType
+            }
+            LineType.PINEAP_CONTINUATION -> {
+                if (isAccumulatingMultiline && multilineType == LineType.PINEAP_START) {
+                    multilineBuffer.append("\n").append(cleanLine.trim())
+                    if (cleanLine.trim().startsWith("SSIDs", ignoreCase = true)) {
+                        flushMultilineBuffer()
+                    }
+                } else {
+                    sendToResponseChannel(cleanLine.trim())
+                }
+            }
+            LineType.WPA3_START -> {
+                if (isAccumulatingMultiline && multilineBuffer.isNotEmpty() && multilineType != LineType.WPA3_START) {
+                    sendToResponseChannel(multilineBuffer.toString())
+                }
+                multilineBuffer.clear()
+                multilineBuffer.append(cleanLine.trim())
+                isAccumulatingMultiline = true
+                multilineType = lineType
+            }
+            LineType.WPA3_CONTINUATION -> {
+                if (isAccumulatingMultiline && multilineType == LineType.WPA3_START) {
+                    multilineBuffer.append("\n").append(cleanLine.trim())
+                    if (cleanLine.trim().startsWith("Finding:", ignoreCase = true)) {
+                        flushMultilineBuffer()
+                    }
                 } else {
                     sendToResponseChannel(cleanLine.trim())
                 }
@@ -2265,6 +2612,34 @@ class SerialManager @Inject constructor(
         }
 
         val trimmed = line.trim()
+
+        if (isIndexedGattServiceStart(trimmed)) {
+            return LineType.GATT_SERVICE_START
+        }
+
+        // BLE advertiser detail block header (listadv): "[N] BLE Advertiser" or "[N] iBeacon"
+        // (no pipe on the line - distinguishes it from the live single-line format below)
+        if (ADVERTISER_DETAIL_HEADER_FAST.matches(trimmed)) {
+            return LineType.ADVERTISER_DETAIL_START
+        }
+
+        if (isAccumulatingMultiline && multilineType == LineType.ADVERTISER_DETAIL_START &&
+            ADVERTISER_DETAIL_FIELD_PREFIXES.any { trimmed.startsWith(it) }) {
+            return LineType.ADVERTISER_DETAIL_CONTINUATION
+        }
+
+        // BLE advertiser live single-line format: "[N] Advertiser | MAC | RSSI dBm | AdvType | ..."
+        // Fully self-contained on one line, so no multiline accumulation - just avoid it
+        // being misclassified as an IR button below.
+        if (ADVERTISER_LIVE_FAST.containsMatchIn(trimmed)) {
+            return LineType.SINGLE
+        }
+
+        if (isAccumulatingMultiline && multilineType == LineType.GATT_SERVICE_START &&
+            (trimmed.startsWith("UUID:", ignoreCase = true) ||
+                trimmed.startsWith("Handles:", ignoreCase = true))) {
+            return LineType.GATT_SERVICE_CONTINUATION
+        }
 
         // IR remote files - check trimmed since firmware may indent
         if (trimmed.startsWith("[") && (trimmed.contains(".ir") || trimmed.contains(".json"))) {
@@ -2372,6 +2747,59 @@ class SerialManager @Inject constructor(
             return LineType.GPS_START
         }
 
+        // Ethernet info - "Status: UP"/"Status: DOWN" starts ethinfo output
+        if (trimmed == "Status: UP" || trimmed == "Status: DOWN") {
+            return LineType.ETH_INFO_START
+        }
+
+        if (isAccumulatingMultiline && multilineType == LineType.ETH_INFO_START) {
+            if (trimmed.startsWith("Link:") || trimmed.startsWith("MAC:") ||
+                trimmed.startsWith("IP Address:") || trimmed.startsWith("Netmask:") ||
+                trimmed.startsWith("Gateway:") || trimmed.startsWith("DNS Main:") ||
+                trimmed.startsWith("DNS Backup:") || trimmed.startsWith("DNS Fallback:") ||
+                trimmed.startsWith("DHCP Server:") || trimmed.startsWith("Ethernet link is not established")) {
+                return LineType.ETH_INFO_CONTINUATION
+            }
+        }
+
+        // Ethernet statistics - "=== Ethernet Statistics ===" starts ethstats output
+        if (trimmed == "=== Ethernet Statistics ===") {
+            return LineType.ETH_STATS_START
+        }
+
+        if (isAccumulatingMultiline && multilineType == LineType.ETH_STATS_START) {
+            if (trimmed.startsWith("Link Status:") || trimmed.startsWith("IP Address:") ||
+                trimmed.startsWith("Netmask:") || trimmed.startsWith("Gateway:") ||
+                trimmed.startsWith("MAC Address:") || trimmed.startsWith("RX ") ||
+                trimmed.startsWith("TX ") || trimmed.startsWith("ARP Requests:") ||
+                trimmed.startsWith("ARP Replies:") || trimmed.startsWith("Statistics not available") ||
+                trimmed == "--- Packet Statistics ---" || trimmed == "--- ARP Statistics ---") {
+                return LineType.ETH_STATS_CONTINUATION
+            }
+        }
+
+        // Pineapple rogue AP detection block (pineap)
+        if (trimmed == "Pineapple detected!" || trimmed == "Pineapple OUI match!") {
+            return LineType.PINEAP_START
+        }
+        if (isAccumulatingMultiline && multilineType == LineType.PINEAP_START &&
+            (trimmed.startsWith("BSSID:") || trimmed.startsWith("Channel:") ||
+                trimmed.startsWith("RSSI:") || trimmed.startsWith("SSIDs"))) {
+            return LineType.PINEAP_CONTINUATION
+        }
+
+        // WPA3 compliance check block (wpa3check, single-AP form)
+        if (trimmed == "--- WPA3 Compliance ---") {
+            return LineType.WPA3_START
+        }
+        if (isAccumulatingMultiline && multilineType == LineType.WPA3_START &&
+            (trimmed.startsWith("SSID:") || trimmed.startsWith("BSSID:") ||
+                trimmed.startsWith("Auth:") || trimmed.startsWith("WPA3 Present:") ||
+                trimmed.startsWith("Transition Mode:") || trimmed.startsWith("PMF:") ||
+                trimmed.startsWith("Finding:"))) {
+            return LineType.WPA3_CONTINUATION
+        }
+
         // Continuation lines - but NOT if trimmed starts with [ (those are IR buttons)
         if ((line.startsWith("  ") || line.startsWith("\t") || line.startsWith(" ")) && !trimmed.startsWith("[")) {
             return LineType.CONTINUATION
@@ -2381,7 +2809,24 @@ class SerialManager @Inject constructor(
     }
 
     private enum class LineType {
-        AP_START, FLIPPER_START, AIRTAG_START, STATION_START, GATT_START, CHIP_INFO_START, TRACK_HEADER_START, IR_REMOTE, IR_BUTTON, HANDSHAKE_START, HANDSHAKE_CONTINUATION, WIFI_STATUS_START, WIFI_STATUS_CONTINUATION, GPS_START, GPS_CONTINUATION, CONTINUATION, SINGLE
+        AP_START, FLIPPER_START, AIRTAG_START, STATION_START, GATT_START, GATT_SERVICE_START, GATT_SERVICE_CONTINUATION, CHIP_INFO_START, TRACK_HEADER_START, IR_REMOTE, IR_BUTTON, HANDSHAKE_START, HANDSHAKE_CONTINUATION, WIFI_STATUS_START, WIFI_STATUS_CONTINUATION, GPS_START, GPS_CONTINUATION, ETH_INFO_START, ETH_INFO_CONTINUATION, ETH_STATS_START, ETH_STATS_CONTINUATION, ADVERTISER_DETAIL_START, ADVERTISER_DETAIL_CONTINUATION, PINEAP_START, PINEAP_CONTINUATION, WPA3_START, WPA3_CONTINUATION, CONTINUATION, SINGLE
+    }
+
+    // BLE advertiser detail block header (listadv): "[N] BLE Advertiser" or "[N] iBeacon" - no pipe
+    private val ADVERTISER_DETAIL_HEADER_FAST = Regex("^\\[\\d+]\\s*(BLE Advertiser|iBeacon)$")
+
+    // BLE advertiser live single-line format (print_advertiser_line)
+    private val ADVERTISER_LIVE_FAST = Regex("^\\[\\d+]\\s*(Advertiser|iBeacon)\\s*\\|")
+
+    private val ADVERTISER_DETAIL_FIELD_PREFIXES = listOf(
+        "MAC:", "Address Type:", "RSSI:", "Adv Type:", "Name:", "Flags:", "TX Power:",
+        "OUI Vendor:", "Manufacturer:", "Appearance:", "Services:", "Service Data:",
+        "iBeacon UUID:", "iBeacon Major:", "iBeacon Minor:", "Measured Power:"
+    )
+
+    private fun isIndexedGattServiceStart(line: String): Boolean {
+        if (!line.startsWith("[") || !line.contains("] Service:", ignoreCase = true)) return false
+        return line.substringAfter("[").substringBefore("]").toIntOrNull() != null
     }
 
     /**
@@ -2416,6 +2861,7 @@ data class GhostSerialResponse(
         GATT_SERVICE,
         STATION,
         NFC_TAG,
+        NFC_MESSAGE,
         GPS_POSITION,
         SD_ENTRY,
         ERROR,
@@ -2443,7 +2889,32 @@ data class GhostSerialResponse(
         WARDDRIVE_STATS,
         WDSTREAM_AP,
         WDSTREAM_BLE,
-        WDSTREAM_STATUS
+        WDSTREAM_STATUS,
+        ETH_INFO,
+        ETH_STATS,
+        ETH_ARP_RESULT,
+        ETH_PORT_RESULT,
+        ETH_PING_RESULT,
+        ETH_TRACE_HOP,
+        ADVERTISER_DEVICE,
+        ADVERTISER_DEVICE_DETAIL,
+        PINEAP_DETECTION,
+        FLOCK_DETECTION,
+        FLOCK_SCAN_COMPLETE,
+        NETBIOS_RESULT,
+        HTTP_BANNER_HIT,
+        HTTP_BANNER_SUMMARY,
+        SNMP_HIT,
+        SNMP_SUMMARY,
+        ENUM_HIT,
+        ENUM_SUMMARY,
+        WPA3_COMPLIANCE,
+        WPA3_REPORT_HEADER,
+        WPA3_REPORT_SUMMARY,
+        CSA_TARGETING,
+        CSA_TARGET,
+        CSA_RATE,
+        GTK_ABUSE_STATUS
     }
 
     // Lazy evaluation of type for performance
@@ -2461,19 +2932,70 @@ data class GhostSerialResponse(
 
             raw.startsWith("WD:BEGIN") || raw.startsWith("WD:STATUS ") || raw.startsWith("WD:END") -> ResponseType.WDSTREAM_STATUS
 
+            raw.startsWith("[FLOCK] Surveillance device detected!") -> ResponseType.FLOCK_DETECTION
+
+            raw.startsWith("[FLOCK] Scan stopped.") -> ResponseType.FLOCK_SCAN_COMPLETE
+
+            raw.startsWith("[NetBIOS] Host:") -> ResponseType.NETBIOS_RESULT
+
+            raw.startsWith("[SNMP-WALK]") || raw.startsWith("[SNMP]") -> ResponseType.SNMP_HIT
+
+            raw.startsWith("[Enum]") -> ResponseType.ENUM_HIT
+
+            Regex("^\\[\\S+:\\d+]\\s*\\(\\w+\\)\\s*(Server:|Status: OPEN, no banner)").containsMatchIn(raw) -> ResponseType.HTTP_BANNER_HIT
+
+            Regex("^\\[\\d+]\\s.+\\(Ch:\\d+\\)\\s[0-9A-Fa-f:]+$").matches(raw.trim()) -> ResponseType.CSA_TARGET
+
+            raw.contains("Pineapple detected!") || raw.contains("Pineapple OUI match!") -> ResponseType.PINEAP_DETECTION
+
+            raw.startsWith("--- WPA3 Compliance Report") -> ResponseType.WPA3_REPORT_HEADER
+
+            raw.startsWith("--- WPA3 Compliance ---") -> ResponseType.WPA3_COMPLIANCE
+
+            raw.startsWith("Summary:") && raw.contains("compliant") -> ResponseType.WPA3_REPORT_SUMMARY
+
+            raw.startsWith("HTTP Banner Scan:") -> ResponseType.HTTP_BANNER_SUMMARY
+
+            raw.startsWith("SNMP Scan:") -> ResponseType.SNMP_SUMMARY
+
+            raw.startsWith("Enum Scan:") -> ResponseType.ENUM_SUMMARY
+
+            raw.startsWith("CSA Attack: Targeting") -> ResponseType.CSA_TARGETING
+
+            raw.startsWith("CSA:") && raw.contains("pkts/sec") -> ResponseType.CSA_RATE
+
+            raw.startsWith("GTK") -> ResponseType.GTK_ABUSE_STATUS
+
+            // BLE advertiser live single-line format: "[N] Advertiser | MAC | RSSI dBm | AdvType | ..."
+            raw.startsWith("[") && Regex("^\\[\\d+]\\s*(Advertiser|iBeacon)\\s*\\|").containsMatchIn(raw) -> ResponseType.ADVERTISER_DEVICE
+
+            // BLE advertiser detail block (listadv): "[N] BLE Advertiser"/"[N] iBeacon" + "Adv Type:"/"MAC:" fields
+            raw.startsWith("[") && raw.contains("Adv Type:") && raw.contains("MAC:") -> ResponseType.ADVERTISER_DEVICE_DETAIL
+
             raw.contains("Flipper") && raw.contains("Found") -> ResponseType.FLIPPER_DEVICE
 
             raw.contains("AirTag") && raw.contains("Found") -> ResponseType.AIRTAG_DEVICE
 
+            // listflippers/listairtags static output: "[N] MAC: ..., Name: ..." (Flipper) or "[N] MAC: ..., RSSI: ... dBm (...)" (AirTag)
+            raw.startsWith("[") && raw.substringAfter("]").trimStart().startsWith("MAC:") && raw.contains("Name:") && raw.contains("RSSI:") -> ResponseType.FLIPPER_DEVICE
+
+            raw.startsWith("[") && raw.substringAfter("]").trimStart().startsWith("MAC:") && raw.contains("RSSI:") && !raw.contains("Name:") -> ResponseType.AIRTAG_DEVICE
+
             raw.startsWith("[") && raw.contains("Name:") && raw.contains("MAC:") && !raw.contains("SSID:") -> ResponseType.GATT_DEVICE
 
-            raw.startsWith("Service:") && raw.contains("handles") -> ResponseType.GATT_SERVICE
+            (raw.startsWith("Service:", ignoreCase = true) && raw.contains("handles", ignoreCase = true)) ||
+                (raw.startsWith("[") && raw.contains("] Service:", ignoreCase = true) &&
+                    raw.contains("UUID:", ignoreCase = true) && raw.contains("Handles:", ignoreCase = true)) -> ResponseType.GATT_SERVICE
 
             raw.startsWith("New Station:") || raw.contains("Station MAC:") || (raw.contains("Station:") && raw.contains("Associated AP:")) -> ResponseType.STATION
 
             raw.startsWith("BLE:") -> ResponseType.BLE_DEVICE
 
-            raw.contains("NFC Tag") -> ResponseType.NFC_TAG
+            raw.startsWith("NFC:") && raw.contains(" uid=") && raw.contains("atqa=") && !raw.contains("emulating") -> ResponseType.NFC_TAG
+
+            raw.startsWith("NFC:") -> ResponseType.NFC_MESSAGE
+
+            raw.trimStart().let { it.startsWith("PACS:") || it.startsWith("Encryption:") || it.startsWith("Auth failed") } -> ResponseType.NFC_MESSAGE
 
             raw.contains("Wardrive Info") && (raw.contains("APs:") || raw.contains("Logged:")) -> ResponseType.WARDDRIVE_STATS
 
@@ -2489,6 +3011,19 @@ data class GhostSerialResponse(
             raw.contains("Wardrive:") && raw.contains("ap=") -> ResponseType.WARDDRIVE_STATS
 
             raw.contains("GPS Info") || raw.contains("Acquiring GPS") -> ResponseType.GPS_POSITION
+
+            raw.startsWith("Status: UP") || raw.startsWith("Status: DOWN") -> ResponseType.ETH_INFO
+
+            raw.startsWith("=== Ethernet Statistics ===") -> ResponseType.ETH_STATS
+
+            // etharp entry: "192.168.1.5   aa:bb:cc:dd:ee:ff" (IP followed by a bare MAC, no other tokens)
+            raw.trim().let { t -> t.contains(".") && t.contains(":") && t.split(Regex("\\s+")).size == 2 && t.substringAfterLast(" ").count { it == ':' } == 5 } -> ResponseType.ETH_ARP_RESULT
+
+            raw.trim().endsWith("- OPEN") -> ResponseType.ETH_PORT_RESULT
+
+            raw.trim().endsWith("- ALIVE") -> ResponseType.ETH_PING_RESULT
+
+            raw.trim().let { t -> t.firstOrNull()?.isDigit() == true && (t.endsWith("ms") || t.endsWith("(timeout)")) } -> ResponseType.ETH_TRACE_HOP
 
             raw.startsWith("SD:") -> ResponseType.SD_ENTRY
 

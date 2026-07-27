@@ -44,12 +44,15 @@ fun FlipperDetectScreen(
     val flipperDevices by viewModel.flipperDevices.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val bleCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.BLE)
+    val commandsEnabled = isConnected && bleCapability.isUsable
     val privacyMode = appSettings.privacyMode
     
     // Start scan on launch if connected
-    LaunchedEffect(Unit) {
-        if (isConnected) {
+    LaunchedEffect(commandsEnabled) {
+        if (commandsEnabled) {
             viewModel.clearFlipperDevices()
             isScanning = true
             viewModel.scanBle(GhostCommand.BleScanMode.FLIPPER)
@@ -61,12 +64,12 @@ fun FlipperDetectScreen(
         title = stringResource(R.string.title_flipper_detection),
         actions = {
             IconButton(onClick = {
-                if (isConnected) {
+                if (commandsEnabled) {
                     viewModel.clearFlipperDevices()  // Clear previous results
                     isScanning = true
                     viewModel.scanBle(GhostCommand.BleScanMode.FLIPPER)
                 }
-            }) {
+            }, enabled = commandsEnabled) {
                 Icon(
                     Icons.Default.Refresh,
                     contentDescription = stringResource(R.string.action_refresh),
@@ -80,6 +83,7 @@ fun FlipperDetectScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            CapabilityNotice(bleCapability, "Firmware BLE", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             // Connection Status Banner
             BleConnectionBanner(
                 isConnected = isConnected,
@@ -140,7 +144,7 @@ fun FlipperDetectScreen(
                 BrutalistButton(
                     text = if (isScanning) stringResource(R.string.action_stop_scan) else stringResource(R.string.action_scan),
                     onClick = {
-                        if (isConnected) {
+                        if (commandsEnabled) {
                             if (isScanning) {
                                 viewModel.stopBleScan()
                                 isScanning = false
@@ -153,7 +157,7 @@ fun FlipperDetectScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     containerColor = if (isScanning) errorColor() else primaryColor(),
-                    enabled = isConnected,
+                    enabled = commandsEnabled,
                     leadingIcon = {
                         Icon(
                             if (isScanning) Icons.Default.Stop else Icons.Default.Search,
@@ -259,7 +263,7 @@ fun FlipperDetectScreen(
             onDismiss = { showFlipperDetailSheet = false },
             onTrack = {
                 showFlipperDetailSheet = false
-                onNavigateToTrackFlipper(selectedFlipperDevice!!.index)
+                if (bleCapability.isUsable) onNavigateToTrackFlipper(selectedFlipperDevice!!.index)
             }
         )
     }

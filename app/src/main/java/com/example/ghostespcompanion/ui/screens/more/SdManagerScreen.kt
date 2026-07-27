@@ -1,5 +1,9 @@
 package com.example.ghostespcompanion.ui.screens.more
 
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +30,9 @@ import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.components.*
 import com.example.ghostespcompanion.ui.theme.*
 import com.example.ghostespcompanion.ui.viewmodel.MainViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * SD Manager Screen - Browse and manage SD card files
@@ -44,8 +51,10 @@ fun SdManagerScreen(
     var selectedEntry by remember { mutableStateOf<GhostResponse.SdEntry?>(null) }
     var lastListedPath by remember { mutableStateOf<String?>(null) }
     var showOverlay by rememberSaveable { mutableStateOf(true) }
-    
+    var uploadError by remember { mutableStateOf<String?>(null) }
+
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val connectionState by viewModel.connectionState.collectAsState()
     val connectionTransport by viewModel.connectionTransport.collectAsState()
     val sdEntries by viewModel.sdEntries.collectAsState()
@@ -55,24 +64,65 @@ fun SdManagerScreen(
     val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
 
-    val isSdCardSupported = deviceInfo?.let {
-        it.hasFeature(GhostResponse.DeviceFeature.SD_CARD_SPI) ||
-        it.hasFeature(GhostResponse.DeviceFeature.SD_CARD_MMC)
-    } ?: true
-    val hasDeviceInfo = deviceInfo != null
+    val sdCapability = deviceInfo.resolve(GhostResponse.DeviceFeature.SD_CARD_SPI, GhostResponse.DeviceFeature.SD_CARD_MMC)
+    val commandsEnabled = isConnected && sdCapability.isUsable
     
     // Load files on initial composition and when path changes
     LaunchedEffect(currentPath, isConnected) {
-        if (isConnected && lastListedPath != currentPath) {
+        if (commandsEnabled && lastListedPath != currentPath) {
             lastListedPath = currentPath
             viewModel.listSdFiles(currentPath)
         }
     }
-    
+
+    // Refresh the listing once an upload finishes successfully
+    LaunchedEffect(transferProgress) {
+        val progress = transferProgress
+        if (progress is FileTransferProgress.Complete && progress.success && commandsEnabled) {
+            lastListedPath = null
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            uploadError = null
+            val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
+            } ?: uri.lastPathSegment?.substringAfterLast('/')
+                ?: context.getString(R.string.label_unknown)
+            val bytes = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }
+            if (bytes == null) {
+                uploadError = context.getString(R.string.msg_read_failed)
+                return@launch
+            }
+            if (bytes.isEmpty()) {
+                uploadError = context.getString(R.string.msg_upload_empty_file)
+                return@launch
+            }
+            val destinationPath = if (currentPath == "/") "/$fileName" else "$currentPath/$fileName"
+            viewModel.uploadSdFile(destinationPath, bytes, fileName)
+        }
+    }
+
     MainScreen(
         onBack = onBack,
         title = stringResource(R.string.title_sd_manager),
         actions = {
+            IconButton(onClick = {
+                if (commandsEnabled) filePickerLauncher.launch(arrayOf("*/*"))
+            }) {
+                Icon(
+                    Icons.Default.Upload,
+                    contentDescription = stringResource(R.string.action_upload),
+                    tint = primaryColor()
+                )
+            }
             IconButton(onClick = { viewModel.openDownloadsFolder(context) }) {
                 Icon(
                     Icons.Default.FolderOpen,
@@ -81,7 +131,7 @@ fun SdManagerScreen(
                 )
             }
             IconButton(onClick = {
-                if (isConnected && !isLoading) {
+                if (commandsEnabled && !isLoading) {
                     lastListedPath = currentPath
                     viewModel.listSdFiles(currentPath)
                 }
@@ -102,6 +152,7 @@ fun SdManagerScreen(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
+            CapabilityNotice(sdCapability, stringResource(R.string.label_sd), Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             // Connection Status Banner
             SdConnectionBanner(
                 isConnected = isConnected,
@@ -109,6 +160,33 @@ fun SdManagerScreen(
                 deviceName = stringResource(R.string.app_name_short),
                 onConnect = { viewModel.connectFirstAvailable() }
             )
+            
+            // SD insights row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BrutalistOutlinedButton(
+                    text = "Tree",
+                    onClick = { if (commandsEnabled) viewModel.sdTree(currentPath, 1) },
+                    enabled = commandsEnabled && !isLoading,
+                    modifier = Modifier.weight(1f)
+                )
+                BrutalistOutlinedButton(
+                    text = "Info",
+                    onClick = { if (commandsEnabled && currentPath.isNotBlank()) viewModel.sdInfo(currentPath) },
+                    enabled = commandsEnabled && currentPath.isNotBlank() && !isLoading,
+                    modifier = Modifier.weight(1f)
+                )
+                BrutalistOutlinedButton(
+                    text = "SD Config",
+                    onClick = { if (commandsEnabled) viewModel.sdConfig() },
+                    enabled = commandsEnabled && !isLoading,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             
             // Current path breadcrumb
             Card(
@@ -307,7 +385,31 @@ fun SdManagerScreen(
                     }
                 }
             }
-            
+
+            if (uploadError != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = errorColor().copy(alpha = 0.1f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Error, contentDescription = null, tint = errorColor())
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = uploadError!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = errorColor()
+                        )
+                    }
+                }
+            }
+
             if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -372,14 +474,16 @@ fun SdManagerScreen(
                                 }
                             },
                             onDownload = {
-                                if (!entry.isDirectory) {
+                                if (commandsEnabled && !entry.isDirectory) {
                                     val fullPath = if (currentPath == "/") "/${entry.name}" else "$currentPath/${entry.name}"
                                     viewModel.downloadSdFile(context, fullPath, entry.name)
                                 }
                             },
                             onDelete = {
-                                selectedEntry = entry
-                                showDeleteDialog = true
+                                if (commandsEnabled) {
+                                    selectedEntry = entry
+                                    showDeleteDialog = true
+                                }
                             }
                         )
                     }
@@ -407,7 +511,7 @@ fun SdManagerScreen(
         }
 
         // Feature Not Supported Overlay (only shown when we have device info and SD is absent)
-        if (hasDeviceInfo && !isSdCardSupported) {
+        if (sdCapability == GhostResponse.CapabilityResolution.UNSUPPORTED) {
             FeatureNotSupportedOverlay(
                 show = showOverlay,
                 onProceed = { showOverlay = false },
@@ -427,7 +531,7 @@ fun SdManagerScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (isConnected) {
+                        if (commandsEnabled) {
                             // Build full path
                             val fullPath = if (currentPath == "/") "/${selectedEntry!!.name}" else "$currentPath/${selectedEntry!!.name}"
                             viewModel.deleteSdEntry(fullPath)
@@ -468,7 +572,7 @@ fun SdManagerScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (folderName.isNotBlank() && isConnected) {
+                        if (folderName.isNotBlank() && commandsEnabled) {
                             val newPath = if (currentPath == "/") "/$folderName" else "$currentPath/$folderName"
                             viewModel.createSdDirectory(newPath)
                             lastListedPath = null // Force refresh

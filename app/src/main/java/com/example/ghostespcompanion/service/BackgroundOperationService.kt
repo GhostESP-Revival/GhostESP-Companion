@@ -249,6 +249,7 @@ class BackgroundOperationService : Service() {
         const val OP_AERIAL_TRACK = "aerial_track"
         const val OP_AERIAL_SPOOF = "aerial_spoof"
         const val OP_PORTAL = "portal"
+        const val OP_ETHERNET_POISON = "ethernet_poison"
 
         fun replaceOperation(context: Context, operation: String, title: String) {
             context.startForegroundIntent(ACTION_REPLACE, operation, title)

@@ -40,7 +40,10 @@ fun IrRemoteDetailScreen(
     val irButtons by viewModel.irButtons.collectAsState()
     val currentRemote by viewModel.currentIrRemote.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
+    val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val irTx = deviceInfo.resolve(GhostResponse.DeviceFeature.INFRARED_TX)
+    val irRx = deviceInfo.resolve(GhostResponse.DeviceFeature.INFRARED_RX)
     
     val irLearnedSignal by viewModel.irLearnedSignal.collectAsState()
     val irLearnSavedPath by viewModel.irLearnSavedPath.collectAsState()
@@ -51,7 +54,7 @@ fun IrRemoteDetailScreen(
     }
     
     LaunchedEffect(remoteIndex, isConnected) {
-        if (isConnected) {
+        if (isConnected && irTx.isUsable) {
             isLoadingButtons = true
             viewModel.clearIrButtons()
             viewModel.showIrRemote(remoteIndex)
@@ -102,7 +105,7 @@ fun IrRemoteDetailScreen(
         title = remoteName,
         actions = {
             IconButton(onClick = {
-                if (isConnected) {
+                if (isConnected && irTx.isUsable) {
                     isLoadingButtons = true
                     viewModel.clearIrButtons()
                     viewModel.showIrRemote(remoteIndex)
@@ -112,7 +115,7 @@ fun IrRemoteDetailScreen(
             }
         },
         floatingActionButton = {
-            if (isConnected && !isLearning && transmittingButtonIndex == null) {
+            if (isConnected && irRx.isUsable && !isLearning && transmittingButtonIndex == null) {
                 ExtendedFloatingActionButton(
                     onClick = {
                         viewModel.clearIrLearnState()
@@ -132,6 +135,7 @@ fun IrRemoteDetailScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            CapabilityNotice(irTx, "Infrared transmit")
             IrDetailConnectionBanner(
                 isConnected = isConnected,
                 deviceName = stringResource(R.string.app_name_short),
@@ -178,9 +182,9 @@ fun IrRemoteDetailScreen(
                                 IrButtonCard(
                                     button = button,
                                     isTransmitting = transmittingButtonIndex == button.index,
-                                    isEnabled = isConnected && transmittingButtonIndex == null && !isLearning,
+                                    isEnabled = isConnected && irTx.isUsable && transmittingButtonIndex == null && !isLearning,
                                     onClick = {
-                                        if (isConnected && transmittingButtonIndex == null) {
+                                        if (isConnected && irTx.isUsable && transmittingButtonIndex == null) {
                                             transmittingButtonIndex = button.index
                                             viewModel.sendIrButton(remoteIndex, button.index)
                                         }
@@ -223,7 +227,7 @@ fun IrRemoteDetailScreen(
         }
     }
     
-    if (showLearnDialog) {
+    if (showLearnDialog && irRx.isUsable) {
         IrLearnButtonDialog(
             isLearning = isLearning,
             learnedSignal = irLearnedSignal,
@@ -234,13 +238,14 @@ fun IrRemoteDetailScreen(
                     if (signalWasSaved) {
                         isLoadingButtons = true
                         viewModel.clearIrButtons()
-                        viewModel.showIrRemote(remoteIndex)
+                        if (irTx.isUsable) viewModel.showIrRemote(remoteIndex)
                     }
                     viewModel.clearIrLearnState()
                     signalWasSaved = false
                 }
             },
             onStartLearn = {
+                if (!irRx.isUsable) return@IrLearnButtonDialog
                 isLearning = true
                 viewModel.clearIrLearnState()
                 signalWasSaved = false
