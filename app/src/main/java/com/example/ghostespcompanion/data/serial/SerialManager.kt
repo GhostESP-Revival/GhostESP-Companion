@@ -54,6 +54,7 @@ import kotlin.coroutines.resume
 internal object BleBridgeProtocol {
     const val DEFAULT_MTU = 23
     const val MAX_COMMAND_BYTES = 250
+    const val MAX_FRAME_PAYLOAD_BYTES = 512
     const val HEADER_LENGTH = 12
     const val FLAG_FIRST = 0x01
     const val FLAG_MORE = 0x02
@@ -90,6 +91,16 @@ internal object BleBridgeProtocol {
 
                 val payloadLength = (input[offset + 10].toInt() and 0xFF) or
                     ((input[offset + 11].toInt() and 0xFF) shl 8)
+                val type = input[offset + 3].toInt() and 0xFF
+                if (type !in 1..7 || payloadLength > MAX_FRAME_PAYLOAD_BYTES) {
+                    val corruptLength = HEADER_LENGTH + payloadLength
+                    offset += if (payloadLength <= MAX_FRAME_PAYLOAD_BYTES && input.size - offset >= corruptLength) {
+                        corruptLength
+                    } else {
+                        HEADER_LENGTH
+                    }
+                    continue
+                }
                 val frameLength = HEADER_LENGTH + payloadLength
                 if (input.size - offset < frameLength) break
 
@@ -98,7 +109,7 @@ internal object BleBridgeProtocol {
                     ((input[offset + 8].toInt() and 0xFF) shl 16) or
                     ((input[offset + 9].toInt() and 0xFF) shl 24)
                 frames += DecodedFrame(
-                    type = input[offset + 3].toInt() and 0xFF,
+                    type = type,
                     status = input[offset + 4].toInt() and 0xFF,
                     commandId = commandId,
                     payload = input.copyOfRange(offset + HEADER_LENGTH, offset + frameLength)
@@ -397,6 +408,7 @@ class SerialManager @Inject constructor(
     private var readLoopBytes = 0L
     private var readLoopStartTime = 0L
     @Volatile private var lastIncomingDataAtMs = 0L
+    @Volatile private var lastTextDataAtMs = 0L
     private var bleHeartbeatWatchdog: Job? = null
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -1941,15 +1953,14 @@ class SerialManager @Inject constructor(
             processIncomingDataFast(decoded.fallback, decoded.fallback.size)
         }
         for (frame in decoded.frames) {
-            processBleBridgeFrame(
-                BleBridgeFrame(
-                    type = frame.type,
-                    status = frame.status,
-                    commandId = frame.commandId,
-                    payload = frame.payload,
-                    pendingBytes = if (frame.type == BLE_BRIDGE_FRAME_TYPE_ACK) frame.payload.size else 0
-                )
+            val bridgeFrame = BleBridgeFrame(
+                type = frame.type,
+                status = frame.status,
+                commandId = frame.commandId,
+                payload = frame.payload,
+                pendingBytes = if (frame.type == BLE_BRIDGE_FRAME_TYPE_ACK) frame.payload.size else 0
             )
+            processBleBridgeFrame(bridgeFrame)
         }
     }
 
@@ -2011,16 +2022,10 @@ class SerialManager @Inject constructor(
                 }
             }
             BLE_BRIDGE_FRAME_TYPE_END -> {
-                android.util.Log.d("SerialManager", "BLE frame END id=${frame.commandId}")
+                android.util.Log.d("SerialManager", "BLE frame END id=${frame.commandId} (dispatch complete)")
                 val isCurrentCommand = bleActiveCmdId == frame.commandId
-                if (isCurrentCommand && frame.commandId != bleWdStreamCmdId && !isBinaryMode && lineBuffer.isNotEmpty()) {
-                    val finalLine = lineBuffer.toString()
-                    lineBuffer.clear()
-                    processLine(finalLine)
-                }
                 if (isCurrentCommand) flushMultilineBuffer()
-                cmdIdLastDataMs.remove(frame.commandId)
-                if (isCurrentCommand) bleActiveCmdId = 0
+                cmdIdLastDataMs[frame.commandId] = System.currentTimeMillis()
                 synchronized(bleBridgeStateLock) {
                     blePendingCommandEnds.remove(frame.commandId)?.complete(Unit)
                 }
@@ -2061,6 +2066,9 @@ class SerialManager @Inject constructor(
         flushJob = scope.launch {
             while (isActive && isConnectedFlag.get()) {
                 delay(500)
+                if (!isBinaryMode && System.currentTimeMillis() - lastTextDataAtMs >= 750) {
+                    takeBufferedLine()?.let(::processLine)
+                }
                 // Flush normal multiline buffer
                 if (isAccumulatingMultiline && multilineBuffer.isNotEmpty()) {
                     val elapsed = System.currentTimeMillis() - lastLineTime
@@ -2158,6 +2166,7 @@ class SerialManager @Inject constructor(
     private fun processIncomingDataFast(buffer: ByteArray, length: Int) {
         val startNanos = System.nanoTime()
         lastIncomingDataAtMs = System.currentTimeMillis()
+        lastTextDataAtMs = lastIncomingDataAtMs
         
         if (isBinaryMode) {
             processBinaryData(buffer, length)
@@ -2170,10 +2179,7 @@ class SerialManager @Inject constructor(
 
             when (byte) {
                 '\r'.code.toByte(), '\n'.code.toByte() -> {
-                    if (lineBuffer.isNotEmpty()) {
-                        val line = lineBuffer.toString()
-                        lineBuffer.clear()
-                        
+                    takeBufferedLine()?.let { line ->
                         // App downloads request --base64, so their SD data stays line-oriented.
                         if (line.startsWith("SD:READ:LENGTH:") && !currentSdReadIsBase64) {
                             processLine(line)
@@ -2194,11 +2200,21 @@ class SerialManager @Inject constructor(
                     }
                 }
                 else -> {
-                    lineBuffer.append(byte.toInt().toChar())
+                    synchronized(lineBuffer) {
+                        lineBuffer.append(byte.toInt().toChar())
+                    }
                 }
             }
         }
         perfLog("processIncomingDataFast", System.nanoTime() - startNanos, "bytes=$length")
+    }
+
+    private fun takeBufferedLine(): String? = synchronized(lineBuffer) {
+        if (lineBuffer.isEmpty()) {
+            null
+        } else {
+            lineBuffer.toString().also { lineBuffer.clear() }
+        }
     }
 
     /**
@@ -2902,6 +2918,7 @@ data class GhostSerialResponse(
         FLOCK_DETECTION,
         FLOCK_SCAN_COMPLETE,
         NETBIOS_RESULT,
+        NETBIOS_COMPLETE,
         HTTP_BANNER_HIT,
         HTTP_BANNER_SUMMARY,
         SNMP_HIT,
@@ -2914,7 +2931,37 @@ data class GhostSerialResponse(
         CSA_TARGETING,
         CSA_TARGET,
         CSA_RATE,
-        GTK_ABUSE_STATUS
+        GTK_ABUSE_STATUS,
+        PROBE_REQUEST,
+        CONGESTION_HEADER,
+        CONGESTION_ROW,
+        PORT_SCAN_HOST,
+        OPEN_PORT,
+        SSH_BANNER,
+        SSH_BANNER_BANNER,
+        ARP_HOST,
+        ARP_SCAN_HEADER,
+        ARP_SCAN_SUMMARY,
+        SWEEP_PHASE,
+        SWEEP_SUMMARY,
+        DHCP_STARVE_STATS,
+        IP_LOOKUP_DEVICE,
+        IP_LOOKUP_DONE,
+        SCAN_COMPLETION,
+        SSH_SCAN_SUMMARY,
+        CAPTURE_LIST_HEADER,
+        CAPTURE_LIST_ENTRY,
+        CAPTURE_LIST_EMPTY,
+        CAPTURE_EXPORT_RESULT,
+        CAPTURE_EXPORT_METRICS,
+        ETH_POISON_STATUS,
+        ETH_POISON_ITEM_HEADER,
+        ETH_POISON_ITEM,
+        SINKHOLE_STATUS_HEADER,
+        SINKHOLE_STATUS_LINE,
+        SINKHOLE_LIVE,
+        WEBUI_AP_STATE,
+        WEB_AUTH_RESULT
     }
 
     // Lazy evaluation of type for performance
@@ -2938,11 +2985,14 @@ data class GhostSerialResponse(
 
             raw.startsWith("[NetBIOS] Host:") -> ResponseType.NETBIOS_RESULT
 
+            Regex("^NetBIOS Scan: Subnet scan complete$").containsMatchIn(raw.trim()) ||
+                Regex("^NetBIOS scan completed on \\S+$").containsMatchIn(raw.trim()) -> ResponseType.NETBIOS_COMPLETE
+
             raw.startsWith("[SNMP-WALK]") || raw.startsWith("[SNMP]") -> ResponseType.SNMP_HIT
 
             raw.startsWith("[Enum]") -> ResponseType.ENUM_HIT
 
-            Regex("^\\[\\S+:\\d+]\\s*\\(\\w+\\)\\s*(Server:|Status: OPEN, no banner)").containsMatchIn(raw) -> ResponseType.HTTP_BANNER_HIT
+            Regex("^\\[\\S+:\\d+]\\s*\\(\\w+\\)\\s*(Server:|Response:|Status: OPEN, no banner|Status: OPEN, TLS banner requires handshake)").containsMatchIn(raw) -> ResponseType.HTTP_BANNER_HIT
 
             Regex("^\\[\\d+]\\s.+\\(Ch:\\d+\\)\\s[0-9A-Fa-f:]+$").matches(raw.trim()) -> ResponseType.CSA_TARGET
 
@@ -2965,6 +3015,95 @@ data class GhostSerialResponse(
             raw.startsWith("CSA:") && raw.contains("pkts/sec") -> ResponseType.CSA_RATE
 
             raw.startsWith("GTK") -> ResponseType.GTK_ABUSE_STATUS
+
+            // ---- WiFi network scans / advanced attacks ----
+
+            raw.startsWith("Probe Req:") -> ResponseType.PROBE_REQUEST
+
+            // congestion table row: "|  6 |   123 | ######## |" (header checked first so rows don't collide)
+            raw.trim().startsWith("| CH |") -> ResponseType.CONGESTION_HEADER
+
+            raw.trim().startsWith("|") && raw.trim().endsWith("|") && raw.contains("|") &&
+                Regex("^\\|\\s*\\d+\\s*\\|\\s*\\d+\\s*\\|").containsMatchIn(raw) -> ResponseType.CONGESTION_ROW
+
+            // scanports host header: "Found 5 open ports on 192.168.1.1:" / "Host 1.2.3.4 has 3 open ports" /
+            // subnet scan: "[Host 1] Found active host: 192.168.1.5" / "UDP ports on 192.168.1.5:"
+            Regex("^Found \\d+ (?:open ports|udp ports(?: responding)?) on \\S+:", RegexOption.IGNORE_CASE).containsMatchIn(raw.trim()) ||
+                Regex("^Host \\S+ has \\d+ (?:open ports|UDP ports responding)").containsMatchIn(raw.trim()) ||
+                Regex("^\\[Host \\d+\\] Found active host: \\S+$").containsMatchIn(raw.trim()) ||
+                Regex("^UDP ports on \\S+:$").containsMatchIn(raw.trim()) -> ResponseType.PORT_SCAN_HOST
+
+            // scanports port line: "  Port 80" / "  UDP 53" / "  Port 80: OPEN" / "  UDP 53: OPEN"
+            Regex("^Port \\d+(?::\\s*OPEN)?$").matches(raw.trim()) || Regex("^UDP \\d+(?::\\s*OPEN)?$").matches(raw.trim()) -> ResponseType.OPEN_PORT
+
+            // scanports/scanlocal completion: "Scan completed. Found 3 active hosts." / "Scan cancelled. Found 1 active hosts."
+            Regex("^Scan (?:completed|cancelled)\\. Found \\d+ active hosts\\.$").containsMatchIn(raw.trim()) -> ResponseType.SCAN_COMPLETION
+
+            // scanlocal (mDNS IP lookup): "Device at: 1.2.3.4" + "  Name:/Type:/Port:" + "IP Scan Done. Found N devices."
+            Regex("^Device at:\\s*\\S+$").containsMatchIn(raw.trim()) ||
+                Regex("^\\s*Name:\\s*\\S+").containsMatchIn(raw) && raw.trim().startsWith("Name:") ||
+                Regex("^\\s*Type:\\s*\\S+").containsMatchIn(raw) && raw.trim().startsWith("Type:") ||
+                Regex("^\\s*Port:\\s*\\d+$").containsMatchIn(raw) && raw.trim().startsWith("Port:") -> ResponseType.IP_LOOKUP_DEVICE
+
+            Regex("^IP Scan Done\\. Found \\d+ devices\\.$").containsMatchIn(raw.trim()) -> ResponseType.IP_LOOKUP_DONE
+
+            // scanssh open line: "[1.2.3.4:22] Status: OPEN," (must precede the generic "[..." IR_BUTTON rule)
+            Regex("^\\[[\\d.]+:\\d+]\\s*Status: OPEN,?").containsMatchIn(raw.trim()) -> ResponseType.SSH_BANNER
+
+            Regex("^Banner:\\s*").containsMatchIn(raw.trim()) -> ResponseType.SSH_BANNER_BANNER
+
+            // scanssh completion: "SSH scan completed on 1.2.3.4 - found 2 open ports" / "SSH Scan: Subnet scan complete - found 3 hosts with 5 open SSH ports"
+            Regex("^SSH scan completed on \\S+ - found \\d+ open ports", RegexOption.IGNORE_CASE).containsMatchIn(raw.trim()) ||
+                Regex("^SSH Scan: .*found \\d+ hosts with \\d+ open SSH ports", RegexOption.IGNORE_CASE).containsMatchIn(raw.trim()) -> ResponseType.SSH_SCAN_SUMMARY
+
+            // scanarp entry: " 1. 192.168.1.5 [AA:BB:CC:DD:EE:FF]"
+            Regex("^\\d+\\.\\s+\\S+\\s+\\[[0-9A-Fa-f:]{17}]$").matches(raw.trim()) -> ResponseType.ARP_HOST
+
+            raw.trim().startsWith("=== ARP Scan Results ===") -> ResponseType.ARP_SCAN_HEADER
+
+            Regex("^Found \\d+ active hosts on \\S+/\\d+ \\(\\d+ passes\\):").containsMatchIn(raw.trim()) -> ResponseType.ARP_SCAN_SUMMARY
+
+            // sweep phase/progress markers and final summary
+            Regex("^--- Phase \\d+:").containsMatchIn(raw) ||
+                raw.startsWith("=== Starting Full Environment Sweep ===") ||
+                raw.startsWith("=== Sweep Complete ===") ||
+                raw.startsWith("Saving report to:") ||
+                raw.startsWith("Report saved to:") -> ResponseType.SWEEP_PHASE
+
+            Regex("^WiFi: \\d+ APs, \\d+ stations \\| Security:").containsMatchIn(raw.trim()) -> ResponseType.SWEEP_SUMMARY
+
+            raw.startsWith("DHCP-Starve:") -> ResponseType.DHCP_STARVE_STATS
+
+            raw.trim() == "On-device captures:" -> ResponseType.CAPTURE_LIST_HEADER
+
+            Regex("^\\[\\+|-]\\s+\\S+\\.pcap$").containsMatchIn(raw.trim()) -> ResponseType.CAPTURE_LIST_ENTRY
+
+            raw.contains("No .pcap files found") -> ResponseType.CAPTURE_LIST_EMPTY
+
+            Regex("^Exported\\s+\\S+$").containsMatchIn(raw.trim()) -> ResponseType.CAPTURE_EXPORT_RESULT
+
+            Regex("^PMKID: \\d+\\s+M2/M3: \\d+$").matches(raw.trim()) -> ResponseType.CAPTURE_EXPORT_METRICS
+
+            raw.startsWith("No PMKID or M2/M3 handshakes found") || raw.contains("hc22000 export failed") -> ResponseType.CAPTURE_EXPORT_RESULT
+
+            raw.startsWith("[ARP Poison] State:") || raw.startsWith("[ARP Poison] Not running") ||
+                raw.startsWith("[ARP Poison] Stopped.") -> ResponseType.ETH_POISON_STATUS
+
+            Regex("^\\[ARP Poison] Captured (domains|cookies|credentials) \\(\\d+\\):").containsMatchIn(raw.trim()) -> ResponseType.ETH_POISON_ITEM_HEADER
+
+            // ethpoison item: "1. ad.com" (numbered list entry)
+            Regex("^\\d+\\.\\s+\\S+").containsMatchIn(raw) && raw.split(" ").size >= 2 -> ResponseType.ETH_POISON_ITEM
+
+            raw == "=== DNS Sinkhole Status ===" -> ResponseType.SINKHOLE_STATUS_HEADER
+
+            Regex("^(State|Queries|Blocked|Block %|Logging|Blocklist):").containsMatchIn(raw) ||
+                Regex("^IP: .*:53$").containsMatchIn(raw) -> ResponseType.SINKHOLE_STATUS_LINE
+
+            Regex("^Sinkhole: \\d+ queries, \\d+ blocked, \\d+ dropped").containsMatchIn(raw.trim()) -> ResponseType.SINKHOLE_LIVE
+
+            raw.startsWith("WebUI AP-only restriction") -> ResponseType.WEBUI_AP_STATE
+
+            raw.startsWith("Web authentication") -> ResponseType.WEB_AUTH_RESULT
 
             // BLE advertiser live single-line format: "[N] Advertiser | MAC | RSSI dBm | AdvType | ..."
             raw.startsWith("[") && Regex("^\\[\\d+]\\s*(Advertiser|iBeacon)\\s*\\|").containsMatchIn(raw) -> ResponseType.ADVERTISER_DEVICE

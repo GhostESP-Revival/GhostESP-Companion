@@ -218,6 +218,17 @@ fun SdManagerScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.weight(1f))
+                    if (commandsEnabled && !isLoading) {
+                        TextButton(onClick = { showNewFolderDialog = true }) {
+                            Icon(
+                                Icons.Default.CreateNewFolder,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.action_new_folder))
+                        }
+                    }
                     if (currentPath != "/" && currentPath != "/mnt/ghostesp") {
                         TextButton(
                             onClick = {

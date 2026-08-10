@@ -125,6 +125,9 @@ class GhostRepository @Inject constructor(
     private val _netBiosResults = MutableStateFlow<List<GhostResponse.NetBiosResult>>(emptyList())
     val netBiosResults: StateFlow<List<GhostResponse.NetBiosResult>> = _netBiosResults.asStateFlow()
 
+    private val _netBiosScanComplete = MutableStateFlow<GhostResponse.NetBiosScanComplete?>(null)
+    val netBiosScanComplete: StateFlow<GhostResponse.NetBiosScanComplete?> = _netBiosScanComplete.asStateFlow()
+
     private val _httpBannerHits = MutableStateFlow<List<GhostResponse.HttpBannerHit>>(emptyList())
     val httpBannerHits: StateFlow<List<GhostResponse.HttpBannerHit>> = _httpBannerHits.asStateFlow()
 
@@ -151,18 +154,97 @@ class GhostRepository @Inject constructor(
 
     private var pendingWpa3ReportApCount: Int = 0
 
+    // Pending-state for per-line scan parsers (ports without an explicit IP in the header, export metrics)
+    private var pendingSshBanner: GhostResponse.SshBanner? = null
+    private var pendingExportPath: String? = null
+    private var pendingEthPoisonKind: GhostResponse.EthPoisonItem.EthPoisonKind? = null
+
     private val _csaAttackStatus = MutableStateFlow(GhostResponse.CsaAttackStatus(targetCount = 0))
     val csaAttackStatus: StateFlow<GhostResponse.CsaAttackStatus> = _csaAttackStatus.asStateFlow()
 
     private val _gtkAbuseLog = MutableStateFlow<List<GhostResponse.GtkAbuseStatus>>(emptyList())
     val gtkAbuseLog: StateFlow<List<GhostResponse.GtkAbuseStatus>> = _gtkAbuseLog.asStateFlow()
 
+    private val _probeRequests = MutableStateFlow<List<GhostResponse.ProbeRequest>>(emptyList())
+    val probeRequests: StateFlow<List<GhostResponse.ProbeRequest>> = _probeRequests.asStateFlow()
+
+    private val _congestionRows = MutableStateFlow<List<GhostResponse.CongestionRow>>(emptyList())
+    val congestionRows: StateFlow<List<GhostResponse.CongestionRow>> = _congestionRows.asStateFlow()
+
+    private val _openPorts = MutableStateFlow<List<GhostResponse.OpenPort>>(emptyList())
+    val openPorts: StateFlow<List<GhostResponse.OpenPort>> = _openPorts.asStateFlow()
+
+    private val _portScanHost = MutableStateFlow<String?>(null)
+    val portScanHost: StateFlow<String?> = _portScanHost.asStateFlow()
+
+    private val _sshBanners = MutableStateFlow<List<GhostResponse.SshBanner>>(emptyList())
+    val sshBanners: StateFlow<List<GhostResponse.SshBanner>> = _sshBanners.asStateFlow()
+
+    private val _sshScanSummary = MutableStateFlow<GhostResponse.SshScanSummary?>(null)
+    val sshScanSummary: StateFlow<GhostResponse.SshScanSummary?> = _sshScanSummary.asStateFlow()
+
+    private val _ipLookupDevices = MutableStateFlow<List<GhostResponse.IpLookupDevice>>(emptyList())
+    val ipLookupDevices: StateFlow<List<GhostResponse.IpLookupDevice>> = _ipLookupDevices.asStateFlow()
+
+    private val _ipLookupDone = MutableStateFlow<Int?>(null)
+    val ipLookupDone: StateFlow<Int?> = _ipLookupDone.asStateFlow()
+
+    private val _scanCompletion = MutableStateFlow<GhostResponse.ScanCompletion?>(null)
+    val scanCompletion: StateFlow<GhostResponse.ScanCompletion?> = _scanCompletion.asStateFlow()
+
+    private var pendingIpLookupDevice: GhostResponse.IpLookupDevice? = null
+
+    private val _arpHosts = MutableStateFlow<List<GhostResponse.ArpHostEntry>>(emptyList())
+    val arpHosts: StateFlow<List<GhostResponse.ArpHostEntry>> = _arpHosts.asStateFlow()
+
+    private val _arpScanSummary = MutableStateFlow<GhostResponse.ArpScanSummary?>(null)
+    val arpScanSummary: StateFlow<GhostResponse.ArpScanSummary?> = _arpScanSummary.asStateFlow()
+
+    private val _sweepPhases = MutableStateFlow<List<GhostResponse.SweepPhase>>(emptyList())
+    val sweepPhases: StateFlow<List<GhostResponse.SweepPhase>> = _sweepPhases.asStateFlow()
+
+    private val _sweepSummary = MutableStateFlow<GhostResponse.SweepSummary?>(null)
+    val sweepSummary: StateFlow<GhostResponse.SweepSummary?> = _sweepSummary.asStateFlow()
+
+    private val _dhcpStarveStats = MutableStateFlow<GhostResponse.DhcpStarveStats?>(null)
+    val dhcpStarveStats: StateFlow<GhostResponse.DhcpStarveStats?> = _dhcpStarveStats.asStateFlow()
+
+    private val _captureFiles = MutableStateFlow<List<GhostResponse.CaptureListEntry>>(emptyList())
+    val captureFiles: StateFlow<List<GhostResponse.CaptureListEntry>> = _captureFiles.asStateFlow()
+
+    private val _captureExportResult = MutableStateFlow<GhostResponse.CaptureExportResult?>(null)
+    val captureExportResult: StateFlow<GhostResponse.CaptureExportResult?> = _captureExportResult.asStateFlow()
+
+    private val _ethPoisonStatus = MutableStateFlow<GhostResponse.EthPoisonStatus?>(null)
+    val ethPoisonStatus: StateFlow<GhostResponse.EthPoisonStatus?> = _ethPoisonStatus.asStateFlow()
+
+    private val _ethPoisonDomains = MutableStateFlow<List<String>>(emptyList())
+    val ethPoisonDomains: StateFlow<List<String>> = _ethPoisonDomains.asStateFlow()
+
+    private val _ethPoisonCookies = MutableStateFlow<List<String>>(emptyList())
+    val ethPoisonCookies: StateFlow<List<String>> = _ethPoisonCookies.asStateFlow()
+
+    private val _ethPoisonCreds = MutableStateFlow<List<String>>(emptyList())
+    val ethPoisonCreds: StateFlow<List<String>> = _ethPoisonCreds.asStateFlow()
+
+    private val _sinkholeStatus = MutableStateFlow<GhostResponse.SinkholeStatus?>(null)
+    val sinkholeStatus: StateFlow<GhostResponse.SinkholeStatus?> = _sinkholeStatus.asStateFlow()
+
+    private val _webUiApState = MutableStateFlow<GhostResponse.WebUiApState?>(null)
+    val webUiApState: StateFlow<GhostResponse.WebUiApState?> = _webUiApState.asStateFlow()
+
+    private val _webAuthResult = MutableStateFlow<GhostResponse.WebAuthResult?>(null)
+    val webAuthResult: StateFlow<GhostResponse.WebAuthResult?> = _webAuthResult.asStateFlow()
+
     fun clearPineapDetections() { _pineapDetections.value = emptyList() }
     fun clearFlockScan() {
         _flockDetections.value = emptyList()
         _flockScanComplete.value = null
     }
-    fun clearNetBiosResults() { _netBiosResults.value = emptyList() }
+    fun clearNetBiosResults() {
+        _netBiosResults.value = emptyList()
+        _netBiosScanComplete.value = null
+    }
     fun clearHttpBannerResults() {
         _httpBannerHits.value = emptyList()
         _httpBannerSummary.value = null
@@ -181,6 +263,35 @@ class GhostRepository @Inject constructor(
     }
     fun clearCsaAttackStatus() { _csaAttackStatus.value = GhostResponse.CsaAttackStatus(targetCount = 0) }
     fun clearGtkAbuseLog() { _gtkAbuseLog.value = emptyList() }
+    fun clearProbeRequests() { _probeRequests.value = emptyList() }
+    fun clearCongestionRows() { _congestionRows.value = emptyList() }
+    fun clearOpenPorts() { _openPorts.value = emptyList(); _portScanHost.value = null }
+    fun clearSshBanners() { _sshBanners.value = emptyList() }
+    fun clearSshScanSummary() { _sshScanSummary.value = null }
+    fun clearIpLookup() {
+        _ipLookupDevices.value = emptyList()
+        _ipLookupDone.value = null
+        pendingIpLookupDevice = null
+    }
+    fun clearScanCompletion() { _scanCompletion.value = null }
+    fun clearArpScan() {
+        _arpHosts.value = emptyList()
+        _arpScanSummary.value = null
+    }
+    fun clearSweep() {
+        _sweepPhases.value = emptyList()
+        _sweepSummary.value = null
+    }
+    fun clearDhcpStarveStats() { _dhcpStarveStats.value = null }
+    fun clearCaptureFiles() { _captureFiles.value = emptyList() }
+    fun clearCaptureExportResult() { _captureExportResult.value = null }
+    fun clearEthPoison() {
+        _ethPoisonStatus.value = null
+        _ethPoisonDomains.value = emptyList()
+        _ethPoisonCookies.value = emptyList()
+        _ethPoisonCreds.value = emptyList()
+    }
+    fun clearSinkholeStatus() { _sinkholeStatus.value = null }
 
     private val _nfcTags = MutableStateFlow<List<GhostResponse.NfcTag>>(emptyList())
     val nfcTags: StateFlow<List<GhostResponse.NfcTag>> = _nfcTags.asStateFlow()
@@ -575,7 +686,7 @@ class GhostRepository @Inject constructor(
      * Stop WiFi scan
      */
     suspend fun stopWifiScan() {
-        sendCommand(GhostCommand.ScanAp(stop = true))
+        sendCommand(GhostCommand.Stop)
     }
 
     /**
@@ -693,10 +804,12 @@ class GhostRepository @Inject constructor(
     }
 
     suspend fun captureList() {
+        clearCaptureFiles()
         sendCommand(GhostCommand.CaptureList)
     }
 
     suspend fun captureExport(pcapFile: String) {
+        _captureExportResult.value = null
         sendCommand(GhostCommand.CaptureExport(pcapFile))
     }
 
@@ -706,6 +819,73 @@ class GhostRepository @Inject constructor(
 
     suspend fun startWiresharkBleCapture() {
         sendCommand(GhostCommand.CaptureWiresharkBle)
+    }
+
+    // ==================== WiFi Network Scans / Advanced Attacks ====================
+
+    suspend fun runSweep() {
+        clearSweep()
+        sendCommand(GhostCommand.Sweep())
+    }
+
+    suspend fun stopSweep() {
+        sendCommand(GhostCommand.Sweep(stop = true))
+    }
+
+    suspend fun scanLocal() {
+        clearOpenPorts()
+        clearIpLookup()
+        clearScanCompletion()
+        sendCommand(GhostCommand.ScanLocal)
+    }
+
+    suspend fun scanArp() {
+        clearArpScan()
+        sendCommand(GhostCommand.ScanArp)
+    }
+
+suspend fun scanPorts(target: String?, startPort: Int? = null, endPort: Int? = null) {
+        clearOpenPorts()
+        clearScanCompletion()
+        sendCommand(GhostCommand.ScanPorts(target, startPort, endPort))
+    }
+
+suspend fun scanSsh(target: String?) {
+        clearSshBanners()
+        clearSshScanSummary()
+        sendCommand(GhostCommand.ScanSsh(target))
+    }
+
+    suspend fun runCongestion() {
+        clearCongestionRows()
+        sendCommand(GhostCommand.Congestion)
+    }
+
+    suspend fun startListenProbes() {
+        clearProbeRequests()
+        sendCommand(GhostCommand.ListenProbes())
+    }
+
+    suspend fun stopListenProbes() {
+        sendCommand(GhostCommand.ListenProbes(stop = true))
+    }
+
+    suspend fun dhcpStarveDisplay() {
+        _dhcpStarveStats.value = null
+        sendCommand(GhostCommand.DhcpStarve(display = true))
+    }
+
+    suspend fun sinkhole(action: GhostCommand.SinkholeAction, arg: String? = null) {
+        if (action == GhostCommand.SinkholeAction.START) clearSinkholeStatus()
+        sendCommand(GhostCommand.Sinkhole(action, arg))
+    }
+
+    suspend fun webUiAp(action: GhostCommand.WebUiApAction) {
+        sendCommand(GhostCommand.WebUiAp(action))
+    }
+
+    suspend fun webAuth(enable: Boolean) {
+        sendCommand(GhostCommand.WebAuth(enable))
     }
 
     // ==================== BLE Commands ====================
@@ -2071,6 +2251,10 @@ class GhostRepository @Inject constructor(
         sendCommand(GhostCommand.EthArp)
     }
 
+    fun clearEthArpResults() {
+        _arpScanResults.value = emptyList()
+    }
+
     suspend fun ethPorts(ip: String, startPort: Int? = null, endPort: Int? = null) {
         _portScanResults.value = emptyList()
         sendCommand(GhostCommand.EthPorts(ip, startPort, endPort))
@@ -2087,6 +2271,22 @@ class GhostRepository @Inject constructor(
     }
 
     suspend fun ethPoison(action: GhostCommand.EthPoisonAction) {
+        when (action) {
+            GhostCommand.EthPoisonAction.START -> clearEthPoison()
+            GhostCommand.EthPoisonAction.LIST -> {
+                _ethPoisonDomains.value = emptyList()
+                pendingEthPoisonKind = null
+            }
+            GhostCommand.EthPoisonAction.COOKIES -> {
+                _ethPoisonCookies.value = emptyList()
+                pendingEthPoisonKind = null
+            }
+            GhostCommand.EthPoisonAction.CREDS -> {
+                _ethPoisonCreds.value = emptyList()
+                pendingEthPoisonKind = null
+            }
+            GhostCommand.EthPoisonAction.STATUS, GhostCommand.EthPoisonAction.STOP -> Unit
+        }
         sendCommand(GhostCommand.EthPoison(action))
     }
 
@@ -2537,6 +2737,9 @@ class GhostRepository @Inject constructor(
                     _netBiosResults.update { it + result }
                 }
             }
+            GhostSerialResponse.ResponseType.NETBIOS_COMPLETE -> {
+                GhostResponse.NetBiosScanComplete.parse(response.raw)?.let { _netBiosScanComplete.value = it }
+            }
             GhostSerialResponse.ResponseType.HTTP_BANNER_HIT -> {
                 GhostResponse.HttpBannerHit.parse(response.raw)?.let { hit ->
                     _httpBannerHits.update { it + hit }
@@ -2590,6 +2793,183 @@ class GhostRepository @Inject constructor(
             GhostSerialResponse.ResponseType.GTK_ABUSE_STATUS -> {
                 GhostResponse.GtkAbuseStatus.parse(response.raw)?.let { status ->
                     _gtkAbuseLog.update { it + status }
+                }
+            }
+            GhostSerialResponse.ResponseType.PROBE_REQUEST -> {
+                GhostResponse.ProbeRequest.parse(response.raw)?.let { probe ->
+                    _probeRequests.update { it + probe }
+                }
+            }
+            GhostSerialResponse.ResponseType.CONGESTION_HEADER -> {
+                _congestionRows.value = emptyList()
+            }
+            GhostSerialResponse.ResponseType.CONGESTION_ROW -> {
+                GhostResponse.CongestionRow.parse(response.raw)?.let { row ->
+                    _congestionRows.update { it + row }
+                }
+            }
+            GhostSerialResponse.ResponseType.PORT_SCAN_HOST -> {
+                _portScanHost.value = GhostResponse.OpenPort.parseHostHeader(response.raw)
+            }
+            GhostSerialResponse.ResponseType.OPEN_PORT -> {
+                GhostResponse.OpenPort.parsePort(response.raw)?.let { (port, udp) ->
+                    val host = _portScanHost.value
+                    _openPorts.update { it + GhostResponse.OpenPort(ip = host, port = port, udp = udp) }
+                }
+            }
+            GhostSerialResponse.ResponseType.SSH_BANNER -> {
+                GhostResponse.SshBanner.parseOpen(response.raw)?.let { banner ->
+                    pendingSshBanner = banner
+                    _sshBanners.update { it + banner }
+                }
+            }
+            GhostSerialResponse.ResponseType.SSH_BANNER_BANNER -> {
+                val banner = GhostResponse.SshBanner.parseBanner(response.raw)
+                pendingSshBanner?.let { pending ->
+                    val updated = pending.copy(banner = banner)
+                    pendingSshBanner = updated
+                    _sshBanners.update { list ->
+                        list.map { if (it === pending) updated else it }
+                    }
+                }
+            }
+            GhostSerialResponse.ResponseType.SSH_SCAN_SUMMARY -> {
+                GhostResponse.SshScanSummary.parse(response.raw)?.let { summary ->
+                    _sshScanSummary.value = summary
+                    _statusMessage.value = if (summary.target != null) {
+                        "SSH scan on ${summary.target}: ${summary.portCount} open port(s)"
+                    } else {
+                        "SSH scan: ${summary.hostCount} host(s), ${summary.portCount} open port(s)"
+                    }
+                }
+            }
+            GhostSerialResponse.ResponseType.IP_LOOKUP_DEVICE -> handleIpLookupLine(response.raw)
+            GhostSerialResponse.ResponseType.IP_LOOKUP_DONE -> {
+                GhostResponse.IpLookupDevice.parseDone(response.raw)?.let { count ->
+                    commitPendingIpLookupDevice()
+                    _ipLookupDone.value = count
+                    _statusMessage.value = "IP lookup done: $count device(s)"
+                }
+            }
+            GhostSerialResponse.ResponseType.SCAN_COMPLETION -> {
+                GhostResponse.ScanCompletion.parse(response.raw)?.let { completion ->
+                    _scanCompletion.value = completion
+                    _statusMessage.value = if (completion.cancelled) {
+                        "Port scan cancelled: ${completion.hostCount} active host(s)"
+                    } else {
+                        "Port scan completed: ${completion.hostCount} active host(s)"
+                    }
+                }
+            }
+            GhostSerialResponse.ResponseType.ARP_HOST -> {
+                GhostResponse.ArpHostEntry.parse(response.raw)?.let { host ->
+                    _arpHosts.update { it + host }
+                }
+            }
+            GhostSerialResponse.ResponseType.ARP_SCAN_HEADER -> {
+                _arpHosts.value = emptyList()
+                _arpScanSummary.value = null
+            }
+            GhostSerialResponse.ResponseType.ARP_SCAN_SUMMARY -> {
+                GhostResponse.ArpHostEntry.parseSummary(response.raw)?.let { summary ->
+                    _arpScanSummary.value = summary
+                }
+            }
+            GhostSerialResponse.ResponseType.SWEEP_PHASE -> {
+                GhostResponse.SweepPhase.parse(response.raw)?.let { phase ->
+                    _sweepPhases.update { it + phase }
+                    if (phase.message == "Sweep complete") _statusMessage.value = phase.message
+                }
+            }
+            GhostSerialResponse.ResponseType.SWEEP_SUMMARY -> {
+                GhostResponse.SweepSummary.parse(response.raw)?.let { summary ->
+                    _sweepSummary.value = summary
+                }
+            }
+            GhostSerialResponse.ResponseType.DHCP_STARVE_STATS -> {
+                GhostResponse.DhcpStarveStats.parse(response.raw)?.let { stats ->
+                    _dhcpStarveStats.value = stats
+                }
+            }
+            GhostSerialResponse.ResponseType.CAPTURE_LIST_HEADER -> {
+                _captureFiles.value = emptyList()
+            }
+            GhostSerialResponse.ResponseType.CAPTURE_LIST_ENTRY -> {
+                GhostResponse.CaptureListEntry.parse(response.raw)?.let { entry ->
+                    _captureFiles.update { it + entry }
+                }
+            }
+            GhostSerialResponse.ResponseType.CAPTURE_LIST_EMPTY -> {
+                _captureFiles.value = emptyList()
+            }
+            GhostSerialResponse.ResponseType.CAPTURE_EXPORT_RESULT -> {
+                val result = GhostResponse.CaptureExportResult.parseExported(response.raw)
+                    ?: GhostResponse.CaptureExportResult.parseFailure(response.raw)
+                result?.let { r ->
+                    if (r.path != null) pendingExportPath = r.path
+                    if (r.failure != null) {
+                        _captureExportResult.value = r
+                        _statusMessage.value = r.failure
+                    }
+                }
+            }
+            GhostSerialResponse.ResponseType.CAPTURE_EXPORT_METRICS -> {
+                GhostResponse.CaptureExportResult.parseMetrics(response.raw)?.let { metrics ->
+                    _captureExportResult.value = metrics.copy(path = pendingExportPath)
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_POISON_STATUS -> {
+                GhostResponse.EthPoisonStatus.parse(response.raw)?.let { status ->
+                    _ethPoisonStatus.value = status
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_POISON_ITEM_HEADER -> {
+                GhostResponse.EthPoisonItem.parseHeader(response.raw)?.let { header ->
+                    pendingEthPoisonKind = header.kind
+                    when (header.kind) {
+                        GhostResponse.EthPoisonItem.EthPoisonKind.DOMAINS -> _ethPoisonDomains.value = emptyList()
+                        GhostResponse.EthPoisonItem.EthPoisonKind.COOKIES -> _ethPoisonCookies.value = emptyList()
+                        GhostResponse.EthPoisonItem.EthPoisonKind.CREDS -> _ethPoisonCreds.value = emptyList()
+                    }
+                }
+            }
+            GhostSerialResponse.ResponseType.ETH_POISON_ITEM -> {
+                GhostResponse.EthPoisonItem.parseItem(response.raw)?.let { item ->
+                    when (pendingEthPoisonKind ?: GhostResponse.EthPoisonItem.EthPoisonKind.DOMAINS) {
+                        GhostResponse.EthPoisonItem.EthPoisonKind.DOMAINS -> _ethPoisonDomains.update { it + item.value }
+                        GhostResponse.EthPoisonItem.EthPoisonKind.COOKIES -> _ethPoisonCookies.update { it + item.value }
+                        GhostResponse.EthPoisonItem.EthPoisonKind.CREDS -> _ethPoisonCreds.update { it + item.value }
+                    }
+                }
+            }
+            GhostSerialResponse.ResponseType.SINKHOLE_STATUS_HEADER -> {
+                _sinkholeStatus.value = null
+            }
+            GhostSerialResponse.ResponseType.SINKHOLE_STATUS_LINE, GhostSerialResponse.ResponseType.SINKHOLE_LIVE -> {
+                GhostResponse.SinkholeStatus.parse(response.raw)?.let { line ->
+                    val current = _sinkholeStatus.value
+                    _sinkholeStatus.value = GhostResponse.SinkholeStatus(
+                        state = line.state ?: current?.state,
+                        ip = line.ip ?: current?.ip,
+                        queries = line.queries ?: current?.queries,
+                        blocked = line.blocked ?: current?.blocked,
+                        dropped = line.dropped ?: current?.dropped,
+                        blockPercent = line.blockPercent ?: current?.blockPercent,
+                        logging = line.logging ?: current?.logging,
+                        blocklist = line.blocklist ?: current?.blocklist
+                    )
+                }
+            }
+            GhostSerialResponse.ResponseType.WEBUI_AP_STATE -> {
+                GhostResponse.WebUiApState.parse(response.raw)?.let { state ->
+                    _webUiApState.value = state
+                    _statusMessage.value = "WebUI AP-only restriction: ${if (state.enabled) "on" else "off"}"
+                }
+            }
+            GhostSerialResponse.ResponseType.WEB_AUTH_RESULT -> {
+                GhostResponse.WebAuthResult.parse(response.raw)?.let { result ->
+                    _webAuthResult.value = result
+                    _statusMessage.value = "Web authentication: ${if (result.enabled) "on" else "off"}"
                 }
             }
             GhostSerialResponse.ResponseType.STATION -> {
@@ -2815,9 +3195,42 @@ class GhostRepository @Inject constructor(
         }
     }
 
+    /**
+     * Assemble scanlocal (mDNS IP lookup) device blocks from firmware lines:
+     * "Device at: IP" starts a block; indented "Name:"/"Type:"/"Port:" lines fill it.
+     */
+    private fun handleIpLookupLine(raw: String) {
+        GhostResponse.IpLookupDevice.parseDevice(raw)?.let { ip ->
+            commitPendingIpLookupDevice()
+            pendingIpLookupDevice = GhostResponse.IpLookupDevice(ip = ip)
+            return
+        }
+
+        val pending = pendingIpLookupDevice ?: return
+        GhostResponse.IpLookupDevice.parseName(raw)?.let { name ->
+            pendingIpLookupDevice = pending.copy(name = name)
+            return
+        }
+        GhostResponse.IpLookupDevice.parseType(raw)?.let { type ->
+            pendingIpLookupDevice = pending.copy(type = type)
+            return
+        }
+        GhostResponse.IpLookupDevice.parsePort(raw)?.let { port ->
+            pendingIpLookupDevice = pending.copy(port = port)
+        }
+    }
+
+    private fun commitPendingIpLookupDevice() {
+        pendingIpLookupDevice?.let { device ->
+            _ipLookupDevices.update { current ->
+                if (current.any { it.ip == device.ip }) current else current + device
+            }
+            pendingIpLookupDevice = null
+        }
+    }
+
     /** Dispatches non-tag "nfc" CLI response lines (backend/status/save/hardnested/picopass/emulate). */
-    private fun handleNfcMessage(raw: String) {
-        val trimmed = raw.trim()
+    private fun handleNfcMessage(raw: String) {        val trimmed = raw.trim()
 
         GhostResponse.NfcBackend.parse(trimmed)?.let {
             _nfcBackend.value = it
@@ -3021,6 +3434,23 @@ class GhostRepository @Inject constructor(
         _wifiConnection.value = null
         _wifiStatus.value = null
         pendingConnectionSsid = null
+
+        // Clear network-scan results
+        _openPorts.value = emptyList()
+        _portScanHost.value = null
+        _sshBanners.value = emptyList()
+        _sshScanSummary.value = null
+        _arpHosts.value = emptyList()
+        _arpScanSummary.value = null
+        _sweepPhases.value = emptyList()
+        _sweepSummary.value = null
+        _dhcpStarveStats.value = null
+        _congestionRows.value = emptyList()
+        _probeRequests.value = emptyList()
+        _scanCompletion.value = null
+        _netBiosResults.value = emptyList()
+        _netBiosScanComplete.value = null
+        clearIpLookup()
         
         // Clear status message
         _statusMessage.value = null

@@ -54,6 +54,8 @@ fun HandshakeCaptureScreen(
     val statusMessage by viewModel.statusMessage.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
     val pcapFilePath by viewModel.pcapFile.collectAsState()
+    val captureFiles by viewModel.captureFiles.collectAsState()
+    val captureExportResult by viewModel.captureExportResult.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val privacyMode = appSettings.privacyMode
     
@@ -254,6 +256,89 @@ fun HandshakeCaptureScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = OnSurfaceVariantDark
                                 )
+                            }
+                        }
+                    }
+                }
+
+                // On-device capture list + hc22000 export
+                BrutalistCard(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.label_on_device_captures),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryColor()
+                            )
+                            OutlinedButton(
+                                onClick = { viewModel.captureList() },
+                                enabled = isConnected
+                            ) {
+                                Text(stringResource(R.string.action_refresh))
+                            }
+                        }
+                        captureExportResult?.let { result ->
+                            val line = buildString {
+                                result.path?.let { append("Exported: $it\n") }
+                                if (result.pmkid != null && result.m2m3 != null) {
+                                    append("PMKID: ${result.pmkid}  M2/M3: ${result.m2m3}")
+                                }
+                            }
+                            if (line.isNotBlank()) {
+                                Text(
+                                    text = line,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = successColor()
+                                )
+                            }
+                        }
+                        if (captureFiles.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.msg_no_captures),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceVariantDark
+                            )
+                        } else {
+                            captureFiles.forEach { entry ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            if (entry.hasHashcatMaterial) Icons.Default.Key else Icons.Default.LockOpen,
+                                            contentDescription = null,
+                                            tint = if (entry.hasHashcatMaterial) successColor() else OnSurfaceVariantDark,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = entry.name,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = OnSurfaceDark
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = { viewModel.captureExport(entry.name) },
+                                        enabled = isConnected,
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
+                                    ) {
+                                        Text(stringResource(R.string.action_export_hc))
+                                    }
+                                }
                             }
                         }
                     }

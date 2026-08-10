@@ -13,8 +13,8 @@ class GhostCommandTest {
             GhostCommand.DhcpStarve(display = true) to "dhcpstarve display",
             GhostCommand.ListenProbes(stop = true) to "listenprobes stop",
             GhostCommand.Sweep(stop = true) to "stop",
-            GhostCommand.WebAuth(true) to "webauth enable",
-            GhostCommand.WebAuth(false) to "webauth disable",
+            GhostCommand.WebAuth(true) to "webauth on",
+            GhostCommand.WebAuth(false) to "webauth off",
             GhostCommand.ScanPorts("192.168.1.5", 80, 443) to "scanports 192.168.1.5 80-443",
             GhostCommand.EthPorts("192.168.1.5", 80, 443) to "ethports 192.168.1.5 80-443",
             GhostCommand.PowerPrinter("192.168.1.9", "hello world", 50, GhostCommand.PrinterAlignment.CENTER_MIDDLE) to

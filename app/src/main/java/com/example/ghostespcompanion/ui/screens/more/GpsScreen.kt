@@ -474,6 +474,108 @@ fun GpsScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        if (!usePhoneGps) {
+                            var showWardriveAdvanced by remember { mutableStateOf(false) }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showWardriveAdvanced = !showWardriveAdvanced }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.label_wardrive_advanced),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    if (showWardriveAdvanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (showWardriveAdvanced) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(R.string.label_wd_helper),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.msg_wd_helper_hint),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = wdHelper,
+                                        onCheckedChange = { wdHelper = it },
+                                        enabled = !isWardriving && !isBleWardriving,
+                                        colors = SwitchDefaults.colors(
+                                            checkedTrackColor = primaryColor(),
+                                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = wdChannels,
+                                    onValueChange = { wdChannels = it.filterNot(Char::isWhitespace) },
+                                    label = { Text(stringResource(R.string.label_wd_channels)) },
+                                    placeholder = { Text("1,6,11") },
+                                    singleLine = true,
+                                    enabled = !isWardriving && !isBleWardriving,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = wdHop,
+                                    onValueChange = { wdHop = it.filter(Char::isDigit) },
+                                    label = { Text(stringResource(R.string.label_wd_hop_ms)) },
+                                    placeholder = { Text("400") },
+                                    singleLine = true,
+                                    enabled = !isWardriving && !isBleWardriving,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(R.string.label_wd_weighted),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.msg_wd_weighted_hint),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = wdWeighted,
+                                        onCheckedChange = { wdWeighted = it },
+                                        enabled = !isWardriving && !isBleWardriving,
+                                        colors = SwitchDefaults.colors(
+                                            checkedTrackColor = primaryColor(),
+                                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)

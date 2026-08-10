@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
@@ -726,16 +727,32 @@ enum class BleDeviceCategory {
 
 /**
  * Map an [GhostResponse.AdvertiserDevice] to the shared [BleDevicePreview] shape so it
- * can reuse [BleDeviceCard].
+ * can reuse [BleDeviceCard]. Detail-only fields from the listadv block are carried
+ * through so the card can render them.
  */
-private fun GhostResponse.AdvertiserDevice.toPreview(): BleDevicePreview = BleDevicePreview(
-    name = name ?: if (isIBeacon) "iBeacon" else "Advertiser",
-    mac = mac,
-    rssi = rssi,
-    deviceType = if (isIBeacon) "iBeacon" else advType,
-    deviceCategory = BleDeviceCategory.ADVERTISER,
-    index = index
-)
+private fun GhostResponse.AdvertiserDevice.toPreview(): BleDevicePreview {
+    val details = buildList {
+        ouiVendor?.let { add("OUI $it") }
+        manufacturer?.let { add("MFG $it") }
+        services?.let { add("SVC $it") }
+        proximity?.let { add("Proximity $it") }
+        seenCount?.let { add("Seen $it") }
+        addressType?.let { add("Addr ${it}") }
+        txPower?.let { add("TX $it dBm") }
+        ibeaconUuid?.let { add("UUID $it") }
+        ibeaconMajor?.let { add("Major $it") }
+        ibeaconMinor?.let { add("Minor $it") }
+    }
+    return BleDevicePreview(
+        name = name ?: if (isIBeacon) "iBeacon" else "Advertiser",
+        mac = mac,
+        rssi = rssi,
+        deviceType = if (isIBeacon) "iBeacon" else advType,
+        deviceCategory = BleDeviceCategory.ADVERTISER,
+        index = index,
+        detailLines = details
+    )
+}
 
 /**
  * BLE Connection Banner
@@ -1051,6 +1068,24 @@ private fun BleDeviceCard(
                     )
                 }
             }
+
+            if (device.detailLines.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    device.detailLines.forEach { detail ->
+                        Text(
+                            text = detail,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1065,7 +1100,8 @@ data class BleDevicePreview(
     val rssi: Int,
     val deviceType: String?,
     val deviceCategory: BleDeviceCategory = BleDeviceCategory.GENERIC,
-    val index: Int = -1
+    val index: Int = -1,
+    val detailLines: List<String> = emptyList()
 )
 
 /**

@@ -3,6 +3,7 @@ package com.example.ghostespcompanion.data.serial
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BleBridgeProtocolTest {
@@ -103,6 +104,39 @@ class BleBridgeProtocolTest {
 
         assertEquals(1, second.frames.size)
         assertEquals(9, second.frames.single().commandId)
+    }
+
+    @Test
+    fun decoderResynchronizesAfterInvalidPayloadLength() {
+        val corrupt = ByteArray(BleBridgeProtocol.HEADER_LENGTH).apply {
+            this[0] = 0x47
+            this[1] = 0x42
+            this[2] = 0x01
+            this[3] = 3
+            this[10] = 0xFF.toByte()
+            this[11] = 0x7F
+        }
+        val valid = BleBridgeProtocol.commandFrames(11, "recovered".toByteArray(), 128).single()
+
+        val result = BleBridgeProtocol.Decoder().feed(corrupt + valid)
+
+        assertEquals(1, result.frames.size)
+        assertEquals(11, result.frames.single().commandId)
+        assertArrayEquals("recovered".toByteArray(), result.frames.single().payload)
+        assertTrue(result.fallback.isEmpty())
+    }
+
+    @Test
+    fun decoderResynchronizesAfterInvalidFrameType() {
+        val corrupt = BleBridgeProtocol.commandFrames(10, "bad".toByteArray(), 128).single().apply {
+            this[3] = 99
+        }
+        val valid = BleBridgeProtocol.commandFrames(12, "ok".toByteArray(), 128).single()
+
+        val result = BleBridgeProtocol.Decoder().feed(corrupt + valid)
+
+        assertEquals(listOf(12), result.frames.map { it.commandId })
+        assertTrue(result.fallback.isEmpty())
     }
 
     @Test

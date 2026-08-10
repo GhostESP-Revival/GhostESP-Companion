@@ -188,8 +188,9 @@ class GhostResponseParserRegressionTest {
     @Test
     fun `gatt service fixture file parses every service entry`() {
         val text = FixtureLoader.load("gatt_service.txt")
-        val services = text.split("\n\n").mapNotNull { block ->
-            GhostResponse.GattService.parse(block).also { println("block=$block -> $it") }
+        val blocks = text.split(Regex("(?=^\\[\\d+\\]\\s+Service:)", RegexOption.MULTILINE))
+        val services = blocks.mapNotNull { block ->
+            GhostResponse.GattService.parse(block)
         }
         assertEquals(3, services.size)
         assertEquals("0x1800", services[0].uuid)
@@ -347,7 +348,7 @@ class GhostResponseParserRegressionTest {
         assertNotNull(device)
         device!!
         assertEquals("ESP32-C6", device.model)
-        assertEquals("v1.0", device.revision)
+        assertEquals("1.0", device.revision)
         assertEquals(1, device.cores)
         assertEquals(234567L, device.freeHeap)
         assertEquals(198765L, device.minFreeHeap)
@@ -378,6 +379,301 @@ class GhostResponseParserRegressionTest {
         // Display explicitly listed
         assertTrue(device.hasFeature(GhostResponse.DeviceFeature.DISPLAY))
         assertTrue(device.hasFeature(GhostResponse.DeviceFeature.CHAMELEON))
+    }
+
+    @Test
+    fun `parses listenprobes probe request line`() {
+        val probe = GhostResponse.ProbeRequest.parse("Probe Req: AA:BB:CC:DD:EE:FF -> 11:22:33:44:55:66 for iPhone")
+        assertNotNull(probe)
+        probe!!
+        assertEquals("AA:BB:CC:DD:EE:FF", probe.srcMac)
+        assertEquals("11:22:33:44:55:66", probe.destMac)
+        assertEquals("iPhone", probe.ssid)
+
+        val broadcast = GhostResponse.ProbeRequest.parse("Probe Req: AA:BB:CC:DD:EE:FF -> FF:FF:FF:FF:FF:FF for Broadcast")
+        assertNotNull(broadcast)
+        assertEquals("Broadcast", broadcast!!.ssid)
+
+        assertNull(GhostResponse.ProbeRequest.parse("Starting to listen for probe requests (channel hopping)..."))
+    }
+
+    @Test
+    fun `parses congestion table rows`() {
+        assertTrue(GhostResponse.CongestionRow.isHeader("| CH | Count | Bar        |"))
+        val row = GhostResponse.CongestionRow.parse("|  6 |   123 | ######## |")
+        assertNotNull(row)
+        row!!
+        assertEquals(6, row.channel)
+        assertEquals(123, row.count)
+        assertEquals("########", row.bar)
+        assertNull(GhostResponse.CongestionRow.parse("| CH | Count | Bar        |"))
+    }
+
+    @Test
+    fun `parses scanports host headers and port lines`() {
+        assertEquals("192.168.1.1", GhostResponse.OpenPort.parseHostHeader("Found 3 open ports on 192.168.1.1:"))
+        assertEquals("192.168.1.5", GhostResponse.OpenPort.parseHostHeader("Host 192.168.1.5 has 3 open ports"))
+        assertEquals("192.168.1.1", GhostResponse.OpenPort.parseHostHeader("Found 2 udp ports responding on 192.168.1.1:"))
+        assertEquals(null, GhostResponse.OpenPort.parseHostHeader("No common open ports found."))
+
+        val (port, udp) = GhostResponse.OpenPort.parsePort("  Port 80")!!
+        assertEquals(80, port)
+        assertFalse(udp)
+        val (udpPort, isUdp) = GhostResponse.OpenPort.parsePort("  UDP 53")!!
+        assertEquals(53, udpPort)
+        assertTrue(isUdp)
+    }
+
+    @Test
+    fun `parses scanssh open line and banner continuation`() {
+        val open = GhostResponse.SshBanner.parseOpen("[192.168.1.5:22] Status: OPEN,")
+        assertNotNull(open)
+        open!!
+        assertEquals("192.168.1.5", open.ip)
+        assertEquals(22, open.port)
+        assertNull(open.banner)
+        assertEquals("SSH-2.0-OpenSSH_7.4", GhostResponse.SshBanner.parseBanner("Banner: SSH-2.0-OpenSSH_7.4"))
+        assertEquals("(none)", GhostResponse.SshBanner.parseBanner("Banner: (none)"))
+        assertNull(GhostResponse.SshBanner.parseOpen("SSH scan completed on 192.168.1.5 - found 1 open ports"))
+    }
+
+    @Test
+    fun `parses scanarp host entries and summary`() {
+        val host = GhostResponse.ArpHostEntry.parse(" 1. 192.168.1.5 [AA:BB:CC:DD:EE:FF]")
+        assertNotNull(host)
+        host!!
+        assertEquals(1, host.index)
+        assertEquals("192.168.1.5", host.ip)
+        assertEquals("AA:BB:CC:DD:EE:FF", host.mac)
+
+        val summary = GhostResponse.ArpHostEntry.parseSummary("Found 9 active hosts on 192.168.1.0/24 (3 passes):")
+        assertNotNull(summary)
+        summary!!
+        assertEquals(9, summary.hostCount)
+        assertEquals("192.168.1.0", summary.subnet)
+        assertEquals(24, summary.cidr)
+        assertEquals(3, summary.passes)
+    }
+
+    @Test
+    fun `parses sweep phase markers and final summary`() {
+        assertEquals("Phase 1: WiFi AP Scan (10s)", GhostResponse.SweepPhase.parse("--- Phase 1: WiFi AP Scan (10s) ---")?.message)
+        assertEquals("Sweep started", GhostResponse.SweepPhase.parse("=== Starting Full Environment Sweep ===")?.message)
+        assertEquals("Sweep complete", GhostResponse.SweepPhase.parse("=== Sweep Complete ===")?.message)
+        assertEquals("Report saved to: /mnt/ghostesp/reports/sweep.txt", GhostResponse.SweepPhase.parse("Report saved to: /mnt/ghostesp/reports/sweep.txt")?.message)
+        assertEquals("Saving report to: /mnt/ghostesp/sweeps/sweep_1.csv", GhostResponse.SweepPhase.parse("Saving report to: /mnt/ghostesp/sweeps/sweep_1.csv")?.message)
+
+        val summary = GhostResponse.SweepSummary.parse("WiFi: 9 APs, 3 stations | Security: 2 open, 1 weak, 6 secure")
+        assertNotNull(summary)
+        summary!!
+        assertEquals(9, summary.aps)
+        assertEquals(3, summary.stations)
+        assertEquals(2, summary.open)
+        assertEquals(1, summary.weak)
+        assertEquals(6, summary.secure)
+        assertNull(GhostResponse.SweepSummary.parse("Found 9 access points"))
+    }
+
+    @Test
+    fun `parses dhcp starve rate and total lines`() {
+        val rate = GhostResponse.DhcpStarveStats.parse("DHCP-Starve: 123/sec | Total: 456")!!
+        assertEquals(123L, rate.pps)
+        assertEquals(456L, rate.total)
+
+        val total = GhostResponse.DhcpStarveStats.parse("DHCP-Starve: Total: 456 packets")!!
+        assertNull(total.pps)
+        assertEquals(456L, total.total)
+
+        val stopped = GhostResponse.DhcpStarveStats.parse("DHCP-Starve stopped. Total: 456 packets")!!
+        assertNull(stopped.pps)
+        assertEquals(456L, stopped.total)
+    }
+
+    @Test
+    fun `parses capture list entries and export outcomes`() {
+        val entry = GhostResponse.CaptureListEntry.parse("  [+] handshake_wpa2.pcap")!!
+        assertTrue(entry.hasHashcatMaterial)
+        assertEquals("handshake_wpa2.pcap", entry.name)
+        assertFalse(GhostResponse.CaptureListEntry.parse("  [-] beacon_capture.pcap")!!.hasHashcatMaterial)
+        assertTrue(GhostResponse.CaptureListEntry.isEmptyMarker("  No .pcap files found."))
+        assertNull(GhostResponse.CaptureListEntry.parse("On-device captures:"))
+
+        val exported = GhostResponse.CaptureExportResult.parseExported("Exported /mnt/ghostesp/pcaps/handshake_wpa2.hc22000")!!
+        assertEquals("/mnt/ghostesp/pcaps/handshake_wpa2.hc22000", exported.path)
+        val metrics = GhostResponse.CaptureExportResult.parseMetrics("PMKID: 2  M2/M3: 3")!!
+        assertEquals(2, metrics.pmkid)
+        assertEquals(3, metrics.m2m3)
+        assertEquals("No PMKID or handshakes found", GhostResponse.CaptureExportResult.parseFailure("No PMKID or M2/M3 handshakes found in handshake.pcap")!!.failure)
+        assertEquals("hc22000 export failed (err=-1)", GhostResponse.CaptureExportResult.parseFailure("hc22000 export failed for x.pcap (err=-1)")!!.failure)
+    }
+
+    @Test
+    fun `parses ethpoison status and captured items`() {
+        val status = GhostResponse.EthPoisonStatus.parse("[ARP Poison] State: RUNNING | Hosts: 4 | Domains: 2 | Cookies: 5 | Creds: 3")!!
+        assertEquals("RUNNING", status.state)
+        assertEquals(4, status.hosts)
+        assertEquals(2, status.domains)
+        assertEquals(5, status.cookies)
+        assertEquals(3, status.creds)
+        assertEquals("STOPPED", GhostResponse.EthPoisonStatus.parse("[ARP Poison] Not running")!!.state)
+        val stopped = GhostResponse.EthPoisonStatus.parse("[ARP Poison] Stopped. 1 domains, 2 cookies, 3 creds captured.")!!
+        assertEquals("STOPPED", stopped.state)
+        assertEquals(2, stopped.cookies)
+
+        val header = GhostResponse.EthPoisonItem.parseHeader("[ARP Poison] Captured domains (2):")!!
+        assertEquals(GhostResponse.EthPoisonItem.EthPoisonKind.DOMAINS, header.kind)
+        assertEquals(2, header.total)
+        assertEquals("ad.doubleclick.net", GhostResponse.EthPoisonItem.parseItem("  1. ad.doubleclick.net")!!.value)
+    }
+
+    @Test
+    fun `parses sinkhole status lines and live stats`() {
+        val running = GhostResponse.SinkholeStatus.parse("  State:    RUNNING")!!
+        assertEquals("RUNNING", running.state)
+        val queries = GhostResponse.SinkholeStatus.parse("  Queries:  123")!!
+        assertEquals(123L, queries.queries)
+        val blocked = GhostResponse.SinkholeStatus.parse("  Blocked:  12")!!
+        assertEquals(12L, blocked.blocked)
+        val pct = GhostResponse.SinkholeStatus.parse("  Block %:  9.8%")!!
+        assertEquals(9.8, pct.blockPercent!!, 0.001)
+        assertEquals(true, GhostResponse.SinkholeStatus.parse("  Logging:  ON")!!.logging)
+        assertEquals("present", GhostResponse.SinkholeStatus.parse("  Blocklist: present")!!.blocklist)
+        assertTrue(GhostResponse.SinkholeStatus.isHeader("=== DNS Sinkhole Status ==="))
+
+        val live = GhostResponse.SinkholeStatus.parse("Sinkhole: 5 queries, 1 blocked, 0 dropped")!!
+        assertEquals(5L, live.queries)
+        assertEquals(1L, live.blocked)
+        assertEquals(0L, live.dropped)
+        assertNull(GhostResponse.SinkholeStatus.parse("DNS sinkhole: ready"))
+    }
+
+    @Test
+    fun `parses netbios scan completion markers`() {
+        val subnet = GhostResponse.NetBiosScanComplete.parse("NetBIOS Scan: Subnet scan complete")!!
+        assertNull(subnet.target)
+
+        val host = GhostResponse.NetBiosScanComplete.parse("NetBIOS scan completed on 192.168.1.5")!!
+        assertEquals("192.168.1.5", host.target)
+
+        assertNull(GhostResponse.NetBiosScanComplete.parse("[NetBIOS] Host: 192.168.1.5  Names: none"))
+        assertNull(GhostResponse.NetBiosScanComplete.parse("NetBIOS Scan: Scanning 254 hosts..."))
+    }
+
+    @Test
+    fun `parses webui ap and webauth toggles`() {
+        assertEquals(true, GhostResponse.WebUiApState.parse("WebUI AP-only restriction is enabled.")!!.enabled)
+        assertEquals(false, GhostResponse.WebUiApState.parse("WebUI AP-only restriction disabled.")!!.enabled)
+        assertEquals(true, GhostResponse.WebAuthResult.parse("Web authentication enabled.")!!.enabled)
+        assertEquals(false, GhostResponse.WebAuthResult.parse("Web authentication disabled.")!!.enabled)
+    }
+
+    @Test
+    fun `parses current firmware wardrive heartbeat - primary variant`() {
+        val line = "Wardrive: ap=123 logged=45/67 gpsrej=3 helper=1/2 peergps(rx/fix tx_ok/fail)=0/0 0/0 ch=1 up=0m42s gps=No Fix/0 q=0/64 hi=0 drop=0/0/0 pending=12B heap=345/456B"
+        val stats = GhostResponse.WardriveStats.parse(line)
+        assertNotNull(stats)
+        stats!!
+        assertEquals(123, stats.accessPoints)
+        assertEquals(45, stats.loggedOk)
+        assertEquals(67, stats.logAttempts)
+        assertEquals(3, stats.gpsRejected)
+        assertEquals(1, stats.channel)
+        assertEquals(0, stats.uptimeMinutes)
+        assertEquals(42, stats.uptimeSeconds)
+        assertEquals("No Fix", stats.gpsFixStatus)
+        assertEquals(0, stats.gpsSatellites)
+        assertEquals(12, stats.pendingBytes)
+    }
+
+    @Test
+    fun `parses current firmware wardrive heartbeat - helper variant`() {
+        val line = "Wardrive: ap=9 logged=2/4 gpsrej=0 helper=2/10 tx(n/p/r/t/s)=1/2/3/4/5 send(ok/fail)=6/7 peergps(rx/fix tx_ok/fail)=1/1 1/1 ch=6 up=1m05s gps=3D/8 q=1/64 hi=2 drop=0/0/0 pending=0B heap=200/300B"
+        val stats = GhostResponse.WardriveStats.parse(line)
+        assertNotNull(stats)
+        stats!!
+        assertEquals(9, stats.accessPoints)
+        assertEquals(2, stats.loggedOk)
+        assertEquals(6, stats.channel)
+        assertEquals(1, stats.uptimeMinutes)
+        assertEquals(5, stats.uptimeSeconds)
+        assertEquals("3D", stats.gpsFixStatus)
+        assertEquals(8, stats.gpsSatellites)
+    }
+
+    @Test
+    fun `parses scanlocal ip lookup device lines`() {
+        assertEquals("192.168.1.5", GhostResponse.IpLookupDevice.parseDevice("Device at: 192.168.1.5"))
+        assertEquals("Living Room TV", GhostResponse.IpLookupDevice.parseName("  Name: Living Room TV"))
+        assertEquals("Media Streamer", GhostResponse.IpLookupDevice.parseType("  Type: Media Streamer"))
+        assertEquals(8080, GhostResponse.IpLookupDevice.parsePort("  Port: 8080"))
+        assertEquals(3, GhostResponse.IpLookupDevice.parseDone("IP Scan Done. Found 3 devices."))
+        assertNull(GhostResponse.IpLookupDevice.parseDevice("IP Scan Done. Found 3 devices."))
+    }
+
+    @Test
+    fun `parses scanports range and subnet output formats`() {
+        // range/all scan: "Port 80: OPEN" / "UDP 53: OPEN"
+        val (tcpPort, tcpUdp) = GhostResponse.OpenPort.parsePort("  Port 80: OPEN")!!
+        assertEquals(80, tcpPort)
+        assertFalse(tcpUdp)
+        val (udpPort, udp) = GhostResponse.OpenPort.parsePort("  UDP 53: OPEN")!!
+        assertEquals(53, udpPort)
+        assertTrue(udp)
+        // common scan still works
+        assertEquals(80 to false, GhostResponse.OpenPort.parsePort("  Port 80"))
+
+        // subnet scan host discovery + UDP block header
+        assertEquals("192.168.1.5", GhostResponse.OpenPort.parseHostHeader("[Host 1] Found active host: 192.168.1.5"))
+        assertEquals("192.168.1.5", GhostResponse.OpenPort.parseHostHeader("UDP ports on 192.168.1.5:"))
+    }
+
+    @Test
+    fun `parses scan completion lines`() {
+        val done = GhostResponse.ScanCompletion.parse("Scan completed. Found 3 active hosts.")!!
+        assertEquals(3, done.hostCount)
+        assertFalse(done.cancelled)
+        val cancelled = GhostResponse.ScanCompletion.parse("Scan cancelled. Found 1 active hosts.")!!
+        assertEquals(1, cancelled.hostCount)
+        assertTrue(cancelled.cancelled)
+        assertNull(GhostResponse.ScanCompletion.parse("Scanning 254 hosts..."))
+    }
+
+    @Test
+    fun `parses ssh scan completion summaries`() {
+        val host = GhostResponse.SshScanSummary.parse("SSH scan completed on 192.168.1.5 - found 2 open ports")!!
+        assertEquals("192.168.1.5", host.target)
+        assertEquals(2, host.portCount)
+        assertNull(host.hostCount)
+
+        val subnet = GhostResponse.SshScanSummary.parse("SSH Scan: Subnet scan complete - found 3 hosts with 5 open SSH ports")!!
+        assertEquals(3, subnet.hostCount)
+        assertEquals(5, subnet.portCount)
+
+        val cancelled = GhostResponse.SshScanSummary.parse("SSH Scan: Cancelled. Found 1 hosts with 1 open SSH ports")!!
+        assertEquals(1, cancelled.hostCount)
+        assertEquals(1, cancelled.portCount)
+    }
+
+    @Test
+    fun `parses http banner response and tls lines`() {
+        val response = GhostResponse.HttpBannerHit.parse("[192.168.1.5:80] (http) Response: <!DOCTYPE html><html>...")!!
+        assertEquals("192.168.1.5", response.ip)
+        assertEquals(80, response.port)
+        assertTrue(response.response!!.startsWith("<!DOCTYPE html>"))
+
+        val tls = GhostResponse.HttpBannerHit.parse("[192.168.1.5:443] (https) Status: OPEN, TLS banner requires handshake")!!
+        assertTrue(tls.tlsNoBanner)
+        assertNull(tls.server)
+    }
+
+    @Test
+    fun `wdstream status honors running field`() {
+        val running = GhostResponse.WdStreamStatus.parse("WD:STATUS running=1 type=wifi interval=2000 channel=auto aps=12 bles=0 scans=3 ch=6 uptime=5s")!!
+        assertTrue(running.running)
+        assertEquals(12, running.accessPoints)
+
+        val stopped = GhostResponse.WdStreamStatus.parse("WD:STATUS running=0 aps=12 bles=0")!!
+        assertFalse(stopped.running)
     }
 }
 

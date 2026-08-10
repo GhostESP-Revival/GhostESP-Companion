@@ -220,6 +220,32 @@ class MainViewModel @Inject constructor(
     val csaAttackStatus: StateFlow<GhostResponse.CsaAttackStatus> = ghostRepository.csaAttackStatus
     val gtkAbuseLog: StateFlow<List<GhostResponse.GtkAbuseStatus>> = ghostRepository.gtkAbuseLog
 
+    // WiFi network scans / advanced attacks
+    val probeRequests: StateFlow<List<GhostResponse.ProbeRequest>> = ghostRepository.probeRequests
+    val congestionRows: StateFlow<List<GhostResponse.CongestionRow>> = ghostRepository.congestionRows
+    val openPorts: StateFlow<List<GhostResponse.OpenPort>> = ghostRepository.openPorts
+    val portScanHost: StateFlow<String?> = ghostRepository.portScanHost
+    val sshBanners: StateFlow<List<GhostResponse.SshBanner>> = ghostRepository.sshBanners
+    val sshScanSummary: StateFlow<GhostResponse.SshScanSummary?> = ghostRepository.sshScanSummary
+    val netBiosScanComplete: StateFlow<GhostResponse.NetBiosScanComplete?> = ghostRepository.netBiosScanComplete
+    val ipLookupDevices: StateFlow<List<GhostResponse.IpLookupDevice>> = ghostRepository.ipLookupDevices
+    val ipLookupDone: StateFlow<Int?> = ghostRepository.ipLookupDone
+    val scanCompletion: StateFlow<GhostResponse.ScanCompletion?> = ghostRepository.scanCompletion
+    val arpHosts: StateFlow<List<GhostResponse.ArpHostEntry>> = ghostRepository.arpHosts
+    val arpScanSummary: StateFlow<GhostResponse.ArpScanSummary?> = ghostRepository.arpScanSummary
+    val sweepPhases: StateFlow<List<GhostResponse.SweepPhase>> = ghostRepository.sweepPhases
+    val sweepSummary: StateFlow<GhostResponse.SweepSummary?> = ghostRepository.sweepSummary
+    val dhcpStarveStats: StateFlow<GhostResponse.DhcpStarveStats?> = ghostRepository.dhcpStarveStats
+    val captureFiles: StateFlow<List<GhostResponse.CaptureListEntry>> = ghostRepository.captureFiles
+    val captureExportResult: StateFlow<GhostResponse.CaptureExportResult?> = ghostRepository.captureExportResult
+    val ethPoisonStatus: StateFlow<GhostResponse.EthPoisonStatus?> = ghostRepository.ethPoisonStatus
+    val ethPoisonDomains: StateFlow<List<String>> = ghostRepository.ethPoisonDomains
+    val ethPoisonCookies: StateFlow<List<String>> = ghostRepository.ethPoisonCookies
+    val ethPoisonCreds: StateFlow<List<String>> = ghostRepository.ethPoisonCreds
+    val sinkholeStatus: StateFlow<GhostResponse.SinkholeStatus?> = ghostRepository.sinkholeStatus
+    val webUiApState: StateFlow<GhostResponse.WebUiApState?> = ghostRepository.webUiApState
+    val webAuthResult: StateFlow<GhostResponse.WebAuthResult?> = ghostRepository.webAuthResult
+
     // IR Remotes
     val irRemotes: StateFlow<List<GhostResponse.IrRemote>> = ghostRepository.irRemotes
 
@@ -631,6 +657,7 @@ class MainViewModel @Inject constructor(
     }
 
     fun startDhcpStarve(threads: Int? = null) {
+        ghostRepository.clearDhcpStarveStats()
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.DhcpStarve(threads = threads)) }
     }
 
@@ -639,15 +666,15 @@ class MainViewModel @Inject constructor(
     }
 
     fun runCongestionScan() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.Congestion) }
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.runCongestion() }
     }
 
     fun startListenProbes() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.ListenProbes()) }
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.startListenProbes() }
     }
 
     fun stopListenProbes() {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.ListenProbes(stop = true)) }
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopListenProbes() }
     }
 
     fun startPineApDetection() {
@@ -683,12 +710,56 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.AttackGtkAbuse(ssid, password)) }
     }
 
-    fun runScanPorts(target: String) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.ScanPorts(target)) }
+    // Pending GTK abuse params set by the WiFi screen row before navigating to the full-screen view
+    private var pendingGtkSsid: String = ""
+    private var pendingGtkPassword: String = ""
+
+    fun setPendingGtkAbuse(ssid: String, password: String) {
+        pendingGtkSsid = ssid
+        pendingGtkPassword = password
     }
 
-    fun runScanSsh(target: String) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sendCommand(GhostCommand.ScanSsh(target)) }
+    fun consumePendingGtkAbuse(): Pair<String, String> = pendingGtkSsid to pendingGtkPassword
+
+    fun runScanPorts(target: String? = null, startPort: Int? = null, endPort: Int? = null) {
+        ghostRepository.clearOpenPorts()
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.scanPorts(target, startPort, endPort) }
+    }
+
+    fun runScanSsh(target: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.scanSsh(target) }
+    }
+
+    fun runSweep() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.runSweep() }
+    }
+
+    fun stopSweep() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.stopSweep() }
+    }
+
+    fun runScanLocal() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.scanLocal() }
+    }
+
+    fun runScanArp() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.scanArp() }
+    }
+
+    fun dhcpStarveDisplay() {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.dhcpStarveDisplay() }
+    }
+
+    fun sinkhole(action: GhostCommand.SinkholeAction, arg: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.sinkhole(action, arg) }
+    }
+
+    fun webUiAp(action: GhostCommand.WebUiApAction) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.webUiAp(action) }
+    }
+
+    fun webAuth(enable: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.webAuth(enable) }
     }
 
     fun runNetBiosScan(target: String) {
@@ -1272,6 +1343,10 @@ class MainViewModel @Inject constructor(
 
     fun ethArp() {
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.ethArp() }
+    }
+
+    fun clearEthArpResults() {
+        ghostRepository.clearEthArpResults()
     }
 
     fun ethPorts(ip: String, startPort: Int? = null, endPort: Int? = null) {

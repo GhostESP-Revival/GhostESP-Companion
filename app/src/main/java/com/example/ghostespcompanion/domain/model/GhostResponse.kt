@@ -31,7 +31,7 @@ private object ResponsePatterns {
     val AP_SECURITY = Regex("Security:\\s*(\\S+)")
     val AP_PMF = Regex("PMF:\\s*(\\S+)")
     val AP_VENDOR = Regex("Vendor:\\s*(.+?)(?:\\n|$)")
-    val AP_BAND = Regex("Band:\\s*(\\S+)")
+    val AP_BAND = Regex("Band:\\s*([^,\\s\\n]+)")
     
     // Flipper detection (multiline format from firmware):
     // [N] White/Black Flipper Found:
@@ -217,10 +217,15 @@ private object ResponsePatterns {
     val GPS_DIRECTION = Regex("Direction:\\s*(\\d+)°\\s*(\\S+)")
     val GPS_HDOP = Regex("HDOP:\\s*([\\d.]+)")
     
-    // Wardrive heartbeat - firmware output format:
-    // Wardrive: ap=123 logged=45/67 gpsrej=3 ch=1 up=0m42s gps=No Fix/3 pending=0B
+    // Wardrive heartbeat - current firmware output format (callbacks.c), two variants:
+    // helper:  Wardrive: ap=123 logged=45/67 gpsrej=3 helper=1/2 tx(n/p/r/t/s)=... send(ok/fail)=... peergps(rx/fix tx_ok/fail)=... ch=1 up=0m42s gps=No Fix/0 q=0/64 hi=0 drop=0/0/0 pending=0B heap=123/456B
+    // primary: Wardrive: ap=123 logged=45/67 gpsrej=3 helper=1/2 peergps(rx/fix tx_ok/fail)=... ch=1 up=0m42s gps=No Fix/0 q=0/64 hi=0 drop=0/0/0 pending=0B heap=123/456B
     val WARDDRIVE_HEARTBEAT = Regex(
-        "Wardrive:\\s*ap=(\\d+)\\s+logged=(\\d+)/(\\d+)\\s+gpsrej=(\\d+)\\s+ch=(\\d+)\\s+up=(\\d+)m(\\d+)s\\s+gps=([^/]+)/(\\d+)(?:\\s+sats=(\\d+))?\\s+pending=(\\d+)B"
+        "Wardrive:\\s*ap=(\\d+)\\s+logged=(\\d+)/(\\d+)\\s+gpsrej=(\\d+)\\s+helper=(\\d+)/(\\d+)" +
+            "(?:\\s+tx\\(n/p/r/t/s\\)=\\d+/\\d+/\\d+/\\d+/\\d+\\s+send\\(ok/fail\\)=\\d+/\\d+)?" +
+            "\\s+peergps\\(rx/fix tx_ok/fail\\)=\\d+/\\d+\\s+\\d+/\\d+" +
+            "\\s+ch=(\\d+)\\s+up=(\\d+)m(\\d+)s\\s+gps=([^/]+)/(\\d+)" +
+            "\\s+q=\\d+/\\d+\\s+hi=\\d+\\s+drop=\\d+/\\d+/\\d+\\s+pending=(\\d+)B"
     )
     
     // Wardrive multiline info - firmware output format (like GPS):
@@ -297,7 +302,7 @@ private object ResponsePatterns {
     val ERROR_PREFIX = Regex("^error\\b\\s*[:\\-]?\\s*(.*)$", RegexOption.IGNORE_CASE)
     val ERROR_FAILED = Regex("^failed\\b\\s*[:\\-]?\\s*(.*)$", RegexOption.IGNORE_CASE)
     val ERROR_INVALID = Regex("^invalid\\b\\s*[:\\-]?\\s*(.*)$", RegexOption.IGNORE_CASE)
-    val NON_ERROR_METRIC = Regex("^(?:failed|invalid)\\s+\\w+:\\s*\\d+(?:\\s|$)", RegexOption.IGNORE_CASE)
+    val NON_ERROR_METRIC = Regex("^(?:failed|invalid)\\s+\\w+(?:\\s*\\([^)]*\\))?\\s*:\\s*\\d+(?:\\s|$)", RegexOption.IGNORE_CASE)
     val ERROR_UNKNOWN = Regex("^unknown\\s+(?:command|subcommand|option|argument|mode|capture type)\\b.*$", RegexOption.IGNORE_CASE)
     val ERROR_TIMEOUT = Regex(
         "^(?:timed?\\s+out\\b.*|timeout(?!\\s*:\\s*\\d+\\s*(?:seconds?|ms)\\b)\\b.*)$",
@@ -597,7 +602,7 @@ sealed class GhostResponse {
                     if (separator > 0) token.substring(0, separator) to token.substring(separator + 1) else null
                 }.toMap()
                 return WdStreamStatus(
-                    running = true,
+                    running = fields["running"]?.toIntOrNull()?.let { it != 0 } ?: true,
                     accessPoints = fields["aps"]?.toIntOrNull() ?: 0,
                     channel = fields["ch"]?.toIntOrNull(),
                     message = line
@@ -2061,18 +2066,18 @@ data class Handshake(
                 if (!line.contains("Wardrive:") || !line.contains("ap=")) return null
                 
                 val match = ResponsePatterns.WARDDRIVE_HEARTBEAT.find(line) ?: return null
-                
+
                 return WardriveStats(
                     accessPoints = match.groupValues[1].toIntOrNull() ?: 0,
                     loggedOk = match.groupValues[2].toIntOrNull() ?: 0,
                     logAttempts = match.groupValues[3].toIntOrNull() ?: 0,
                     gpsRejected = match.groupValues[4].toIntOrNull() ?: 0,
-                    channel = match.groupValues[5].toIntOrNull() ?: 1,
-                    uptimeMinutes = match.groupValues[6].toIntOrNull() ?: 0,
-                    uptimeSeconds = match.groupValues[7].toIntOrNull() ?: 0,
-                    gpsFixStatus = match.groupValues[8],
-                    gpsSatellites = match.groupValues[9].toIntOrNull() ?: 0,
-                    pendingBytes = match.groupValues[11].toIntOrNull() ?: 0,
+                    channel = match.groupValues[7].toIntOrNull() ?: 1,
+                    uptimeMinutes = match.groupValues[8].toIntOrNull() ?: 0,
+                    uptimeSeconds = match.groupValues[9].toIntOrNull() ?: 0,
+                    gpsFixStatus = match.groupValues[10],
+                    gpsSatellites = match.groupValues[11].toIntOrNull() ?: 0,
+                    pendingBytes = match.groupValues[12].toIntOrNull() ?: 0,
                     bleDevices = 0
                 )
             }
@@ -2139,6 +2144,11 @@ data class Handshake(
         companion object {
             fun parse(line: String): SdOperationResult? {
                 if (!line.startsWith("SD:")) return null
+
+                // Stream end marker (SD:READ:END:bytes=N) is a successful read result
+                ResponsePatterns.SD_READ_END.find(line)?.let { result ->
+                    return SdOperationResult(success = true, operation = "read_end", bytes = result.groupValues[1].toLongOrNull())
+                }
                 
                 // Handle OK responses
                 ResponsePatterns.SD_OK.find(line)?.let {
@@ -2165,9 +2175,6 @@ data class Handshake(
                     }
                     ResponsePatterns.SD_APPEND.find(line)?.let { result ->
                         return SdOperationResult(success = true, operation = "append", bytes = result.groupValues[1].toLongOrNull())
-                    }
-                    ResponsePatterns.SD_READ_END.find(line)?.let { result ->
-                        return SdOperationResult(success = true, operation = "read_end", bytes = result.groupValues[1].toLongOrNull())
                     }
                     
                     // Generic OK
@@ -2589,6 +2596,24 @@ data class Handshake(
         }
     }
 
+    /** NetBIOS scan completion marker: "NetBIOS Scan: Subnet scan complete" (subnet) or "NetBIOS scan completed on X" (host) */
+    @Immutable
+    data class NetBiosScanComplete(
+        val target: String? = null
+    ) : GhostResponse() {
+        companion object {
+            private val SUBNET = Regex("^NetBIOS Scan: Subnet scan complete$")
+            private val HOST = Regex("^NetBIOS scan completed on (\\S+)$")
+
+            fun parse(line: String): NetBiosScanComplete? {
+                val t = line.trim()
+                if (SUBNET.matches(t)) return NetBiosScanComplete(target = null)
+                HOST.find(t)?.let { return NetBiosScanComplete(target = it.groupValues[1]) }
+                return null
+            }
+        }
+    }
+
     /** NetBIOS host result (netbiosscan): either a Names line or an IP/Flags line for a host */
     @Immutable
     data class NetBiosResult(
@@ -2623,18 +2648,28 @@ data class Handshake(
         val ip: String,
         val port: Int,
         val scheme: String,
-        val server: String?
+        val server: String? = null,
+        val response: String? = null,
+        val tlsNoBanner: Boolean = false
     ) : GhostResponse() {
         companion object {
             private val SERVER = Regex("^\\[(\\S+):(\\d+)] \\((\\w+)\\) Server:\\s*(.+)$")
+            private val RESPONSE = Regex("^\\[(\\S+):(\\d+)] \\((\\w+)\\) Response:\\s*(.+)$")
             private val NO_BANNER = Regex("^\\[(\\S+):(\\d+)] \\((\\w+)\\) Status: OPEN, no banner$")
+            private val TLS_NO_BANNER = Regex("^\\[(\\S+):(\\d+)] \\((\\w+)\\) Status: OPEN, TLS banner requires handshake$")
 
             fun parse(line: String): HttpBannerHit? {
                 SERVER.find(line)?.let { m ->
-                    return HttpBannerHit(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: 0, m.groupValues[3], m.groupValues[4].trim())
+                    return HttpBannerHit(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: 0, m.groupValues[3], server = m.groupValues[4].trim())
+                }
+                RESPONSE.find(line)?.let { m ->
+                    return HttpBannerHit(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: 0, m.groupValues[3], response = m.groupValues[4].trim())
                 }
                 NO_BANNER.find(line)?.let { m ->
                     return HttpBannerHit(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: 0, m.groupValues[3], null)
+                }
+                TLS_NO_BANNER.find(line)?.let { m ->
+                    return HttpBannerHit(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: 0, m.groupValues[3], null, tlsNoBanner = true)
                 }
                 return null
             }
@@ -2813,6 +2848,505 @@ data class Handshake(
             fun parse(line: String): GtkAbuseStatus? {
                 if (!line.startsWith("GTK")) return null
                 return GtkAbuseStatus(line.trim())
+            }
+        }
+    }
+
+    // ==================== WiFi Network Scans / Advanced Attacks ====================
+
+    /** Probe request heard by listenprobes: "Probe Req: AA:BB:.. -> CC:DD:.. for SSID" */
+    @Immutable
+    data class ProbeRequest(
+        val srcMac: String,
+        val destMac: String,
+        val ssid: String
+    ) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("Probe Req: ([0-9A-Fa-f:]+) -> ([0-9A-Fa-f:]+) for (.+)")
+
+            fun parse(line: String): ProbeRequest? {
+                val m = PATTERN.find(line.trim()) ?: return null
+                return ProbeRequest(
+                    srcMac = m.groupValues[1].uppercase(),
+                    destMac = m.groupValues[2].uppercase(),
+                    ssid = m.groupValues[3]
+                )
+            }
+        }
+    }
+
+    /** One line of the congestion table: "|  6 |   123 | ######## |" */
+    @Immutable
+    data class CongestionRow(
+        val channel: Int,
+        val count: Int,
+        val bar: String
+    ) : GhostResponse() {
+        companion object {
+            private val HEADER = Regex("^\\|\\s*CH\\s*\\|")
+            private val ROW = Regex("^\\|\\s*(\\d+)\\s*\\|\\s*(\\d+)\\s*\\|\\s*([^|]*?)\\s*\\|$")
+
+            fun isHeader(line: String): Boolean = HEADER.containsMatchIn(line)
+
+            fun parse(line: String): CongestionRow? {
+                val m = ROW.find(line.trim()) ?: return null
+                val channel = m.groupValues[1].toIntOrNull() ?: return null
+                val count = m.groupValues[2].toIntOrNull() ?: return null
+                return CongestionRow(channel, count, m.groupValues[3].trim())
+            }
+        }
+    }
+
+    /** Open port entry from scanports: "  Port 80" or "  UDP 53" (context ip held by the repository) */
+    @Immutable
+    data class OpenPort(
+        val ip: String?,
+        val port: Int,
+        val udp: Boolean
+    ) : GhostResponse() {
+        companion object {
+            // Single-host common scan: "  Port 80" / "  UDP 53"
+            private val TCP = Regex("^Port\\s+(\\d+)(?::\\s*OPEN)?$")
+            private val UDP = Regex("^UDP\\s+(\\d+)(?::\\s*OPEN)?$")
+            // Range/all scan: "  Port 80: OPEN" / "  UDP 53: OPEN"
+            private val TCP_OPEN = Regex("^Port\\s+(\\d+):\\s*OPEN$")
+            private val UDP_OPEN = Regex("^UDP\\s+(\\d+):\\s*OPEN$")
+            // Subnet scan host discovery: "[Host 1] Found active host: 192.168.1.5"
+            private val SUBNET_HOST = Regex("^\\[Host \\d+\\] Found active host:\\s*(\\S+)$")
+            // Subnet scan UDP block header: "UDP ports on 192.168.1.5:"
+            private val UDP_PORTS_ON = Regex("^UDP ports on\\s*(\\S+):$")
+
+            /** Parses a host header line, returning the target IP: "Found 5 open ports on 192.168.1.1:" / "Host 192.168.1.5 has 3 open ports" / "Found 2 udp ports responding on 192.168.1.1:" / "[Host 1] Found active host: ..." / "UDP ports on ...:" */
+            fun parseHostHeader(line: String): String? {
+                val t = line.trim()
+                Regex("^Found \\d+ (?:open|udp) ports (?:responding )?on (\\S+):").find(t)?.let { return it.groupValues[1] }
+                Regex("^Host (\\S+) has \\d+ (?:open ports|UDP ports responding)").find(t)?.let { return it.groupValues[1] }
+                SUBNET_HOST.find(t)?.let { return it.groupValues[1] }
+                UDP_PORTS_ON.find(t)?.let { return it.groupValues[1] }
+                return null
+            }
+
+            fun parsePort(line: String): Pair<Int, Boolean>? {
+                val t = line.trim()
+                TCP.find(t)?.let { return (it.groupValues[1].toIntOrNull() ?: return null) to false }
+                UDP.find(t)?.let { return (it.groupValues[1].toIntOrNull() ?: return null) to true }
+                TCP_OPEN.find(t)?.let { return (it.groupValues[1].toIntOrNull() ?: return null) to false }
+                UDP_OPEN.find(t)?.let { return (it.groupValues[1].toIntOrNull() ?: return null) to true }
+                return null
+            }
+        }
+    }
+
+    /** mDNS/IP lookup result from scanlocal (wifi_manager_start_ip_lookup):
+     * "Device at: 192.168.1.5" followed by indented "Name:", "Type:", "Port:" lines,
+     * terminated by "IP Scan Done. Found N devices." */
+    @Immutable
+    data class IpLookupDevice(
+        val ip: String,
+        val name: String? = null,
+        val type: String? = null,
+        val port: Int? = null
+    ) : GhostResponse() {
+        companion object {
+            private val DEVICE = Regex("^Device at:\\s*(\\S+)$")
+            private val NAME = Regex("^\\s*Name:\\s*(.+)$")
+            private val TYPE = Regex("^\\s*Type:\\s*(.+)$")
+            private val PORT = Regex("^\\s*Port:\\s*(\\d+)$")
+            private val DONE = Regex("^IP Scan Done\\. Found (\\d+) devices\\.$")
+
+            fun parseDevice(line: String): String? = DEVICE.find(line.trim())?.groupValues?.get(1)
+            fun parseName(line: String): String? = NAME.find(line)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+            fun parseType(line: String): String? = TYPE.find(line)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+            fun parsePort(line: String): Int? = PORT.find(line)?.groupValues?.get(1)?.toIntOrNull()
+            fun parseDone(line: String): Int? = DONE.find(line.trim())?.groupValues?.get(1)?.toIntOrNull()
+        }
+    }
+
+    /** scanports/scanlocal completion line: "Scan completed. Found 3 active hosts." / "Scan cancelled. Found 1 active hosts." */
+    @Immutable
+    data class ScanCompletion(
+        val hostCount: Int,
+        val cancelled: Boolean
+    ) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("^Scan (completed|cancelled)\\. Found (\\d+) active hosts\\.$")
+
+            fun parse(line: String): ScanCompletion? {
+                val m = PATTERN.find(line.trim()) ?: return null
+                return ScanCompletion(
+                    hostCount = m.groupValues[2].toIntOrNull() ?: 0,
+                    cancelled = m.groupValues[1] == "cancelled"
+                )
+            }
+        }
+    }
+
+    /** SSH scan completion: "SSH scan completed on 1.2.3.4 - found 2 open ports" (host) or
+     * "SSH Scan: Subnet scan complete - found 3 hosts with 5 open SSH ports" (subnet) */
+    @Immutable
+    data class SshScanSummary(
+        val hostCount: Int?,
+        val portCount: Int,
+        val target: String?
+    ) : GhostResponse() {
+        companion object {
+            private val HOST = Regex("^SSH scan completed on (\\S+) - found (\\d+) open ports$")
+            private val SUBNET = Regex("^SSH Scan: (?:Subnet scan complete - found|Cancelled\\. Found|Done\\. Found) (\\d+) hosts with (\\d+) open SSH ports$")
+
+            fun parse(line: String): SshScanSummary? {
+                val t = line.trim()
+                HOST.find(t)?.let {
+                    return SshScanSummary(
+                        hostCount = null,
+                        portCount = it.groupValues[2].toIntOrNull() ?: 0,
+                        target = it.groupValues[1]
+                    )
+                }
+                SUBNET.find(t)?.let {
+                    return SshScanSummary(
+                        hostCount = it.groupValues[1].toIntOrNull() ?: 0,
+                        portCount = it.groupValues[2].toIntOrNull() ?: 0,
+                        target = null
+                    )
+                }
+                return null
+            }
+        }
+    }
+
+    /** SSH open port + banner from scanssh: "[1.2.3.4:22] Status: OPEN," followed by "  Banner: xyz" */
+    @Immutable
+    data class SshBanner(
+        val ip: String,
+        val port: Int,
+        val banner: String? = null
+    ) : GhostResponse() {
+        companion object {
+            private val OPEN = Regex("^\\[([\\d.]+):(\\d+)]\\s*Status: OPEN,?")
+            private val BANNER = Regex("^Banner:\\s*(.*)$")
+
+            fun parseOpen(line: String): SshBanner? {
+                val m = OPEN.find(line.trim()) ?: return null
+                return SshBanner(m.groupValues[1], m.groupValues[2].toIntOrNull() ?: return null)
+            }
+
+            fun parseBanner(line: String): String? {
+                val m = BANNER.find(line.trim()) ?: return null
+                return m.groupValues[1].trim().ifEmpty { null }
+            }
+        }
+    }
+
+    /** ARP scan host entry from scanarp: " 1. 192.168.1.5 [AA:BB:CC:DD:EE:FF]" */
+    @Immutable
+    data class ArpHostEntry(
+        val index: Int,
+        val ip: String,
+        val mac: String
+    ) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("^(\\d+)\\.\\s+(\\S+)\\s+\\[([0-9A-Fa-f:]+)]$")
+            private val SUMMARY = Regex("^Found (\\d+) active hosts on (\\S+)/(\\d+) \\((\\d+) passes\\):")
+
+            fun parse(line: String): ArpHostEntry? {
+                val m = PATTERN.find(line.trim()) ?: return null
+                return ArpHostEntry(
+                    index = m.groupValues[1].toIntOrNull() ?: return null,
+                    ip = m.groupValues[2],
+                    mac = m.groupValues[3].uppercase()
+                )
+            }
+
+            fun parseSummary(line: String): ArpScanSummary? {
+                val m = SUMMARY.find(line.trim()) ?: return null
+                return ArpScanSummary(
+                    hostCount = m.groupValues[1].toIntOrNull() ?: 0,
+                    subnet = m.groupValues[2],
+                    cidr = m.groupValues[3].toIntOrNull(),
+                    passes = m.groupValues[4].toIntOrNull()
+                )
+            }
+        }
+    }
+
+    /** ARP scan summary line: "Found 9 active hosts on 192.168.1.0/24 (3 passes):" */
+    @Immutable
+    data class ArpScanSummary(
+        val hostCount: Int,
+        val subnet: String,
+        val cidr: Int?,
+        val passes: Int?
+    ) : GhostResponse()
+
+    /** Sweep phase line: "--- Phase 1: WiFi AP Scan (10s) ---" or progress markers */
+    @Immutable
+    data class SweepPhase(val message: String) : GhostResponse() {
+        companion object {
+            private val PHASE = Regex("^--- Phase (\\d+): (.*?) ---$")
+            private val START = Regex("^=== Starting Full Environment Sweep ===")
+            private val COMPLETE = Regex("^=== Sweep Complete ===")
+            private val REPORT = Regex("^Report saved to: (.+)$")
+            private val SAVING = Regex("^Saving report to: (.+)$")
+
+            fun parse(line: String): SweepPhase? {
+                val t = line.trim()
+                PHASE.find(t)?.let { return SweepPhase("Phase ${it.groupValues[1]}: ${it.groupValues[2]}") }
+                if (START.matches(t)) return SweepPhase("Sweep started")
+                if (COMPLETE.matches(t)) return SweepPhase("Sweep complete")
+                REPORT.find(t)?.let { return SweepPhase("Report saved to: ${it.groupValues[1]}") }
+                SAVING.find(t)?.let { return SweepPhase("Saving report to: ${it.groupValues[1]}") }
+                return null
+            }
+        }
+    }
+
+    /** Sweep final summary: "WiFi: 9 APs, 3 stations | Security: 2 open, 1 weak, 6 secure" */
+    @Immutable
+    data class SweepSummary(
+        val aps: Int,
+        val stations: Int,
+        val open: Int,
+        val weak: Int,
+        val secure: Int
+    ) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("^WiFi: (\\d+) APs, (\\d+) stations \\| Security: (\\d+) open, (\\d+) weak, (\\d+) secure")
+
+            fun parse(line: String): SweepSummary? {
+                val m = PATTERN.find(line.trim()) ?: return null
+                return SweepSummary(
+                    aps = m.groupValues[1].toIntOrNull() ?: return null,
+                    stations = m.groupValues[2].toIntOrNull() ?: return null,
+                    open = m.groupValues[3].toIntOrNull() ?: return null,
+                    weak = m.groupValues[4].toIntOrNull() ?: return null,
+                    secure = m.groupValues[5].toIntOrNull() ?: return null
+                )
+            }
+        }
+    }
+
+    /** DHCP starvation rate/total line: "DHCP-Starve: 123/sec | Total: 456" or "DHCP-Starve: Total: 456 packets" */
+    @Immutable
+    data class DhcpStarveStats(
+        val pps: Long?,
+        val total: Long
+    ) : GhostResponse() {
+        companion object {
+            private val RATE = Regex("DHCP-Starve: (\\d+)/sec \\| Total: (\\d+)")
+            private val TOTAL = Regex("DHCP-Starve.*Total: (\\d+)")
+
+            fun parse(line: String): DhcpStarveStats? {
+                val t = line.trim()
+                RATE.find(t)?.let {
+                    return DhcpStarveStats(
+                        pps = it.groupValues[1].toLongOrNull(),
+                        total = it.groupValues[2].toLongOrNull() ?: 0L
+                    )
+                }
+                TOTAL.find(t)?.let {
+                    return DhcpStarveStats(pps = null, total = it.groupValues[1].toLongOrNull() ?: 0L)
+                }
+                return null
+            }
+        }
+    }
+
+    /** Capture list entry: "  [-] handshake.pcap" ([-] no hashcat material, [+] has it) */
+    @Immutable
+    data class CaptureListEntry(
+        val name: String,
+        val hasHashcatMaterial: Boolean
+    ) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("^\\[([+-])]\\s+(.+)$")
+            private val EMPTY = Regex("No \\.pcap files found")
+
+            fun parse(line: String): CaptureListEntry? {
+                val m = PATTERN.find(line.trim()) ?: return null
+                return CaptureListEntry(name = m.groupValues[2].trim(), hasHashcatMaterial = m.groupValues[1] == "+")
+            }
+
+            fun isEmptyMarker(line: String): Boolean = EMPTY.containsMatchIn(line)
+        }
+    }
+
+    /** Capture export outcome: "Exported /path.pcap" (+ metrics line "PMKID: 2  M2/M3: 3" separately) */
+    @Immutable
+    data class CaptureExportResult(
+        val path: String? = null,
+        val pmkid: Int? = null,
+        val m2m3: Int? = null,
+        val failure: String? = null
+    ) : GhostResponse() {
+        companion object {
+            private val EXPORTED = Regex("^Exported\\s+(\\S+)$")
+            private val METRICS = Regex("^PMKID: (\\d+)\\s+M2/M3: (\\d+)$")
+            private val NO_MATERIAL = Regex("^No PMKID or M2/M3 handshakes found in (\\S+)")
+            private val FAILED = Regex("^hc22000 export failed for (\\S+) \\(err=(-?\\d+)\\)")
+
+            fun parseExported(line: String): CaptureExportResult? {
+                val m = EXPORTED.find(line.trim()) ?: return null
+                return CaptureExportResult(path = m.groupValues[1])
+            }
+
+            fun parseMetrics(line: String): CaptureExportResult? {
+                val m = METRICS.find(line.trim()) ?: return null
+                return CaptureExportResult(
+                    pmkid = m.groupValues[1].toIntOrNull(),
+                    m2m3 = m.groupValues[2].toIntOrNull()
+                )
+            }
+
+            fun parseFailure(line: String): CaptureExportResult? {
+                val t = line.trim()
+                NO_MATERIAL.find(t)?.let { return CaptureExportResult(failure = "No PMKID or handshakes found") }
+                FAILED.find(t)?.let { return CaptureExportResult(failure = "hc22000 export failed (err=${it.groupValues[2]})") }
+                return null
+            }
+        }
+    }
+
+    /** ethpoison status line: "[ARP Poison] State: RUNNING | Hosts: 4 | Domains: 2 | Cookies: 5 | Creds: 3" */
+    @Immutable
+    data class EthPoisonStatus(
+        val state: String,
+        val hosts: Int? = null,
+        val domains: Int? = null,
+        val cookies: Int? = null,
+        val creds: Int? = null
+    ) : GhostResponse() {
+        companion object {
+            private val STATE = Regex("^\\[ARP Poison] State: (\\S+) \\| Hosts: (\\d+) \\| Domains: (\\d+) \\| Cookies: (\\d+) \\| Creds: (\\d+)")
+            private val NOT_RUNNING = Regex("^\\[ARP Poison] Not running")
+            private val STOPPED = Regex("^\\[ARP Poison] Stopped\\. (\\d+) domains, (\\d+) cookies, (\\d+) creds captured\\.")
+
+            fun parse(line: String): EthPoisonStatus? {
+                val t = line.trim()
+                STATE.find(t)?.let {
+                    return EthPoisonStatus(
+                        state = it.groupValues[1],
+                        hosts = it.groupValues[2].toIntOrNull(),
+                        domains = it.groupValues[3].toIntOrNull(),
+                        cookies = it.groupValues[4].toIntOrNull(),
+                        creds = it.groupValues[5].toIntOrNull()
+                    )
+                }
+                if (NOT_RUNNING.matches(t)) return EthPoisonStatus(state = "STOPPED")
+                STOPPED.find(t)?.let {
+                    return EthPoisonStatus(
+                        state = "STOPPED",
+                        domains = it.groupValues[1].toIntOrNull(),
+                        cookies = it.groupValues[2].toIntOrNull(),
+                        creds = it.groupValues[3].toIntOrNull()
+                    )
+                }
+                return null
+            }
+        }
+    }
+
+    /** ethpoison captured item: header "[ARP Poison] Captured domains (2):" or entry "  1. ad.com" */
+    @Immutable
+    data class EthPoisonItem(
+        val kind: EthPoisonKind,
+        val value: String,
+        val total: Int? = null
+    ) : GhostResponse() {
+        enum class EthPoisonKind { DOMAINS, COOKIES, CREDS }
+
+        companion object {
+            private val HEADER = Regex("^\\[ARP Poison] Captured (domains|cookies|credentials) \\((\\d+)\\):")
+            private val ITEM = Regex("^(\\d+)\\.\\s+(.*)$")
+
+            fun parseHeader(line: String): EthPoisonItem? {
+                val m = HEADER.find(line.trim()) ?: return null
+                return EthPoisonItem(
+                    kind = when (m.groupValues[1]) {
+                        "domains" -> EthPoisonKind.DOMAINS
+                        "cookies" -> EthPoisonKind.COOKIES
+                        else -> EthPoisonKind.CREDS
+                    },
+                    value = "",
+                    total = m.groupValues[2].toIntOrNull()
+                )
+            }
+
+            fun parseItem(line: String): EthPoisonItem? {
+                val m = ITEM.find(line.trim()) ?: return null
+                m.groupValues[1].toIntOrNull() ?: return null
+                return EthPoisonItem(kind = EthPoisonKind.DOMAINS, value = m.groupValues[2].trim())
+            }
+        }
+    }
+
+    /** sinkhole status field lines: "  State:    RUNNING" / "  Queries:  123" / live "Sinkhole: 5 queries, 1 blocked, 0 dropped" */
+    @Immutable
+    data class SinkholeStatus(
+        val state: String? = null,
+        val ip: String? = null,
+        val queries: Long? = null,
+        val blocked: Long? = null,
+        val dropped: Long? = null,
+        val blockPercent: Double? = null,
+        val logging: Boolean? = null,
+        val blocklist: String? = null
+    ) : GhostResponse() {
+        companion object {
+            private val STATE = Regex("^State:\\s*(\\w+)")
+            private val IP = Regex("^IP:\\s*(.*)")
+            private val QUERIES = Regex("^Queries:\\s*(\\d+)")
+            private val BLOCKED = Regex("^Blocked:\\s*(\\d+)")
+            private val BLOCK_PCT = Regex("^Block %:\\s*([\\d.]+)%")
+            private val LOGGING = Regex("^Logging:\\s*(ON|OFF)")
+            private val BLOCKLIST = Regex("^Blocklist:\\s*(\\S+)")
+            private val LIVE = Regex("^Sinkhole: (\\d+) queries, (\\d+) blocked, (\\d+) dropped")
+            private val HEADER = Regex("^=== DNS Sinkhole Status ===")
+
+            fun isHeader(line: String): Boolean = HEADER.matches(line.trim())
+
+            fun parse(line: String): SinkholeStatus? {
+                val t = line.trim()
+                STATE.find(t)?.let { return SinkholeStatus(state = it.groupValues[1]) }
+                IP.find(t)?.let { return SinkholeStatus(ip = it.groupValues[1].trim()) }
+                QUERIES.find(t)?.let { return SinkholeStatus(queries = it.groupValues[1].toLongOrNull()) }
+                BLOCKED.find(t)?.let { return SinkholeStatus(blocked = it.groupValues[1].toLongOrNull()) }
+                BLOCK_PCT.find(t)?.let { return SinkholeStatus(blockPercent = it.groupValues[1].toDoubleOrNull()) }
+                LOGGING.find(t)?.let { return SinkholeStatus(logging = it.groupValues[1] == "ON") }
+                BLOCKLIST.find(t)?.let { return SinkholeStatus(blocklist = it.groupValues[1]) }
+                LIVE.find(t)?.let {
+                    return SinkholeStatus(
+                        queries = it.groupValues[1].toLongOrNull(),
+                        blocked = it.groupValues[2].toLongOrNull(),
+                        dropped = it.groupValues[3].toLongOrNull()
+                    )
+                }
+                return null
+            }
+        }
+    }
+
+    /** WebUI AP-only restriction state: "WebUI AP-only restriction is enabled." */
+    @Immutable
+    data class WebUiApState(val enabled: Boolean) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("^WebUI AP-only restriction (?:is )?(enabled|disabled)\\.")
+
+            fun parse(line: String): WebUiApState? {
+                val m = PATTERN.find(line.trim()) ?: return null
+                return WebUiApState(enabled = m.groupValues[1] == "enabled")
+            }
+        }
+    }
+
+    /** webauth toggle result: "Web authentication enabled." */
+    @Immutable
+    data class WebAuthResult(val enabled: Boolean) : GhostResponse() {
+        companion object {
+            private val PATTERN = Regex("^Web authentication (enabled|disabled)\\.")
+
+            fun parse(line: String): WebAuthResult? {
+                val m = PATTERN.find(line.trim()) ?: return null
+                return WebAuthResult(enabled = m.groupValues[1] == "enabled")
             }
         }
     }

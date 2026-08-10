@@ -87,6 +87,14 @@ sealed class Screen(
         titleRes = R.string.title_evil_portal,
         icon = "router"
     )
+
+    data object AttackRun : Screen(
+        route = "wifi/attack/{attackType}",
+        titleRes = R.string.title_attack_run,
+        icon = "play_circle"
+    ) {
+        fun createRoute(attackType: String) = "wifi/attack/$attackType"
+    }
     
     // BLE sub-screens
     data object BleScan : Screen(

@@ -41,7 +41,7 @@ fun EthernetScreen(
     var showOverlay by rememberSaveable { mutableStateOf(true) }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
-val connectionState by viewModel.connectionState.collectAsState()
+    val connectionState by viewModel.connectionState.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
     val deviceInfo by viewModel.deviceInfo.collectAsState()
@@ -57,6 +57,15 @@ val connectionState by viewModel.connectionState.collectAsState()
     val livePortResults by viewModel.portScanResults.collectAsState()
     val livePingResults by viewModel.pingScanResults.collectAsState()
     val liveTraceHops by viewModel.traceHops.collectAsState()
+    val livePoisonStatus by viewModel.ethPoisonStatus.collectAsState()
+    val livePoisonDomains by viewModel.ethPoisonDomains.collectAsState()
+    val livePoisonCookies by viewModel.ethPoisonCookies.collectAsState()
+    val livePoisonCreds by viewModel.ethPoisonCreds.collectAsState()
+
+    // eth_scan / etharp discovered hosts (firmware emits the same "ip  mac" lines for both)
+    LaunchedEffect(liveArpResults) {
+        scanResults = liveArpResults.map { NetworkDevice(ip = it.ip, mac = it.mac, hostname = null, vendor = null) }
+    }
 
     // Tool-specific state variables
     var dnsQuery by rememberSaveable { mutableStateOf("") }
@@ -269,6 +278,7 @@ val connectionState by viewModel.connectionState.collectAsState()
                                                     viewModel.stopAll()
                                                     isScanning = false
                                                 } else {
+                                                    viewModel.clearEthArpResults()
                                                     viewModel.sendRaw("eth_scan ${targetIp.ifEmpty { "local" }}")
                                                     isScanning = true
                                                 }
@@ -705,6 +715,22 @@ val connectionState by viewModel.connectionState.collectAsState()
                                         enabled = commandsEnabled,
                                         modifier = Modifier.fillMaxWidth()
                                     )
+                                    livePoisonStatus?.let { status ->
+                                        BrutalistDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                        Text(
+                                            text = "State: ${status.state}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryColor()
+                                        )
+                                        status.hosts?.let { NetworkInfoRow("Hosts", it.toString()) }
+                                        status.domains?.let { NetworkInfoRow("Domains", it.toString()) }
+                                        status.cookies?.let { NetworkInfoRow("Cookies", it.toString()) }
+                                        status.creds?.let { NetworkInfoRow("Creds", it.toString()) }
+                                    }
+                                    livePoisonDomains.forEach { domain -> NetworkInfoRow("Domain", domain) }
+                                    livePoisonCookies.forEach { cookie -> NetworkInfoRow("Cookie", cookie) }
+                                    livePoisonCreds.forEach { cred -> NetworkInfoRow("Cred", cred) }
                                 }
                             }
                         }

@@ -51,17 +51,15 @@ sealed class GhostCommand {
     /** Run WiFi AP scan */
     data class ScanAp(
         val duration: Int? = null,
-        val live: Boolean = false,
-        val stop: Boolean = false
+        val live: Boolean = false
     ) : GhostCommand() {
-        override val requiresStopFirst: Boolean get() = !stop
+        override val requiresStopFirst: Boolean = true
         override val commandString: String = when {
-            stop -> "scanap -stop"
             live -> "scanap -live"
             duration != null -> "scanap $duration"
             else -> "scanap"
         }
-        override val timeoutMs: Long = if (stop) 5000 else (duration?.times(1000L) ?: 30000L) + 5000
+        override val timeoutMs: Long = (duration?.times(1000L) ?: 30000L) + 5000
     }
     
     /** Run WiFi station scan */
@@ -925,7 +923,7 @@ sealed class GhostCommand {
         override val commandString: String = buildString {
             append("sd read $path")
             offset?.let { append(" $it") }
-            length?.let { append(" $it") }
+            this@SdRead.length?.let { append(" $it") }
             if (base64) append(" --base64")
         }
         override val timeoutMs: Long = 10000
@@ -1287,6 +1285,29 @@ sealed class GhostCommand {
         override val timeoutMs: Long = if (stop) 5000 else Long.MAX_VALUE
     }
 
+    /** DNS sinkhole (blocklist DNS proxy) */
+    data class Sinkhole(val action: SinkholeAction, val arg: String? = null) : GhostCommand() {
+        override val requiresStopFirst: Boolean get() = action == SinkholeAction.START
+        override val commandString: String = buildString {
+            append("sinkhole ${action.value}")
+            arg?.let { append(" $it") }
+        }
+        override val timeoutMs: Long = if (action == SinkholeAction.START) Long.MAX_VALUE else 10000
+    }
+
+    enum class SinkholeAction(val value: String) {
+        START("start"),
+        STOP("stop"),
+        STATUS("status"),
+        STATS("stats"),
+        RELOAD("reload"),
+        LOG_ON("log on"),
+        LOG_OFF("log off"),
+        ADD("add"),
+        REMOVE("remove"),
+        DOWNLOAD("download")
+    }
+
     /** WPA3 compliance check - requires a prior scanap + select -a <index> */
     data object Wpa3Check : GhostCommand() {
         override val commandString: String = "wpa3check"
@@ -1574,10 +1595,10 @@ sealed class GhostCommand {
     }
     
     /** Scan ports */
-    data class ScanPorts(val target: String, val startPort: Int? = null, val endPort: Int? = null) : GhostCommand() {
+    data class ScanPorts(val target: String? = null, val startPort: Int? = null, val endPort: Int? = null) : GhostCommand() {
         override val commandString: String = buildString {
-            append("scanports $target")
-            startPort?.let { append(" $it-${endPort ?: it}") }
+            append("scanports ${target ?: "local"}")
+            if (target != null) startPort?.let { append(" $it-${endPort ?: it}") }
         }
         override val timeoutMs: Long = 60000
     }
@@ -1589,8 +1610,8 @@ sealed class GhostCommand {
     }
     
     /** Scan SSH */
-    data class ScanSsh(val target: String) : GhostCommand() {
-        override val commandString: String = "scanssh $target"
+    data class ScanSsh(val target: String? = null) : GhostCommand() {
+        override val commandString: String = target?.let { "scanssh $it" } ?: "scanssh"
         override val timeoutMs: Long = 30000
     }
 

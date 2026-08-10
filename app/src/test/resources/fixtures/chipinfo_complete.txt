@@ -11,6 +11,7 @@ IDF Version: v5.5.1
 Enabled Features:
   Display
   Chameleon Ultra
+  NFC
   OTA Updates
   Camera
   Microphone

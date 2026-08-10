@@ -225,6 +225,13 @@
     <string name="msg_sd_required_wardrive">Wardriving requires an SD card in the GhostESP device. CSV files are saved to ghostesp/gps on the device SD card.</string>
     <string name="label_gps_ready">GPS ready</string>
     <string name="label_phone_gps_mode">Phone GPS Mode</string>
+    <string name="label_wardrive_advanced">Advanced Wardrive Options</string>
+    <string name="label_wd_helper">Helper mode</string>
+    <string name="msg_wd_helper_hint">Broadcast observations to a peer GhostESP via --helper</string>
+    <string name="label_wd_channels">Channels</string>
+    <string name="label_wd_hop_ms">Hop interval (ms)</string>
+    <string name="label_wd_weighted">Weighted hopping</string>
+    <string name="msg_wd_weighted_hint">Stay longer on channels with more activity (--weighted)</string>
     <string name="msg_phone_gps_hint">Wardrive buttons use phone GPS</string>
     <string name="msg_device_gps_hint">Wardrive buttons use device GPS</string>
     <string name="action_stop_wardrive">Stop Wardrive</string>
@@ -278,6 +285,10 @@
     <string name="preset_ports_top_100">Top 100</string>
     <string name="preset_ports_common_web">Common Web</string>
     <string name="preset_ports_all">All 1-1024</string>
+    <string name="preset_ports_default">Default (common)</string>
+    <string name="label_port_range_start">Start port</string>
+    <string name="label_port_range_end">End port</string>
+    <string name="msg_range_requires_target">Port ranges need a target IP — with no target the scan runs on the local subnet without a range.</string>
     <string name="msg_no_live_network_info">No live network info yet. Tap Refresh Info once connected.</string>
     <string name="title_sd_manager">SD Manager</string>
     <string name="action_open_downloads">Open Downloads Folder</string>
@@ -289,6 +300,7 @@
     <string name="msg_upload_empty_file">Selected file is empty</string>
     <string name="action_open">Open</string>
     <string name="label_folder">Folder</string>
+    <string name="action_new_folder">New Folder</string>
     <string name="msg_transfer_failed">Transfer failed: %1$s</string>
     <string name="msg_transfer_cancelled">Transfer cancelled</string>
     <string name="msg_loading_files">Loading files&#8230;</string>
@@ -461,6 +473,13 @@
     <string name="label_start">START</string>
     <string name="label_status_idle">IDLE</string>
     <string name="label_status_running">RUNNING</string>
+    <string name="label_status_completed">COMPLETED</string>
+    <string name="action_launch">LAUNCH</string>
+    <string name="action_run_again">RUN AGAIN</string>
+    <string name="action_show_stats">SHOW STATS</string>
+    <string name="title_attack_run">Attack Live View</string>
+    <string name="hint_no_device_response">No response from device yet - still waiting…</string>
+    <string name="msg_waiting_for_results">Waiting for device output…</string>
     <string name="label_select_target_ap">Target AP</string>
     <string name="msg_no_ap_selected">No AP selected - scan and pick one first</string>
     <string name="msg_target_ap_selected">%1$s (%2$d dBm)</string>
@@ -476,8 +495,9 @@
     <string name="label_congestion_scan">Congestion Scan</string>
     <string name="desc_congestion_scan">Scan nearby channels for congestion</string>
     <string name="action_run_scan">Run Scan</string>
-    <string name="label_listen_probes">Listen Probes</string>
-    <string name="desc_listen_probes">Passively log probe requests from nearby clients</string>
+    <string name="label_listen_probes">Listen Probes</string>    <string name="desc_listen_probes">Passively log probe requests from nearby clients</string>
+    <string name="label_display_only_features">On-device display only</string>
+    <string name="msg_display_only_features">Airspace Monitor and Packet Visualizer render only on the device screen and have no CLI equivalent, so they can\'t be remote-controlled from the app.</string>
     <string name="label_pineap_detection">PineAP Detection</string>
     <string name="desc_pineap_detection">Detect WiFi Pineapple rogue access points nearby</string>
     <string name="label_flock_detection">Flock Detection</string>
@@ -486,6 +506,16 @@
     <string name="desc_open_ports_scan">Scan a host for open TCP ports</string>
     <string name="label_ssh_scan">SSH Scan</string>
     <string name="desc_ssh_scan">Scan a host or subnet for open SSH servers</string>
+    <string name="label_sweep">Full Environment Sweep</string>
+    <string name="desc_sweep">Sweep WiFi APs, stations, BLE and 802.15.4, saving a report to SD</string>
+    <string name="label_scan_local">Local Port Scan</string>
+    <string name="desc_scan_local">Scan all hosts on the local subnet for open ports</string>
+    <string name="label_scan_arp">ARP Scan</string>
+    <string name="desc_scan_arp">Discover active hosts on the local network via ARP</string>
+    <string name="action_dhcp_display">Show DHCP Stats</string>
+    <string name="label_on_device_captures">On-device captures</string>
+    <string name="msg_no_captures">No .pcap files on device</string>
+    <string name="action_export_hc">Export .hc22000</string>
     <string name="label_netbios_scan">NetBIOS Scan</string>
     <string name="desc_netbios_scan">Scan for NetBIOS hosts on the local network</string>
     <string name="label_http_banner_scan">HTTP Banner Scan</string>
@@ -531,6 +561,9 @@
     <string name="capture_mode_ble">BLE</string>
     <string name="capture_mode_skimmer">Skimmer BLE</string>
     <string name="capture_mode_802154">802.15.4</string>
+    <string name="capture_mode_wireshark">Wireshark WiFi</string>
+    <string name="capture_mode_wireshark_ble">Wireshark BLE</string>
+    <string name="label_wireshark_capture">Stream to Wireshark</string>
     <string name="label_auto">Auto</string>
     <string name="label_custom_channel">Custom channel</string>
     <string name="placeholder_custom_channel">36, 149, 26&#8230;</string>

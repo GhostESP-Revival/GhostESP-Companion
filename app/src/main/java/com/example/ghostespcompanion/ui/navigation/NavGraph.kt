@@ -10,14 +10,17 @@ import androidx.compose.runtime.remember
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.example.ghostespcompanion.ui.screens.dashboard.DashboardScreen
 import com.example.ghostespcompanion.ui.screens.wifi.WifiScreen
 import com.example.ghostespcompanion.ui.screens.wifi.EvilPortalScreen
 import com.example.ghostespcompanion.ui.screens.wifi.ApDetailScreen
 import com.example.ghostespcompanion.ui.screens.wifi.TrackApScreen
 import com.example.ghostespcompanion.ui.screens.wifi.HandshakeCaptureScreen
+import com.example.ghostespcompanion.ui.screens.wifi.AttackRunScreen
 import com.example.ghostespcompanion.ui.screens.ble.BleScreen
 import com.example.ghostespcompanion.ui.screens.ble.FlipperDetectScreen
 import com.example.ghostespcompanion.ui.screens.ble.TrackGattScreen
@@ -140,12 +143,30 @@ fun GhostESPNavGraph(
             val onNavigateToApDetail = remember { { apIndex: Int -> navController.navigate(Screen.WifiApDetail.createRoute(apIndex)) } }
             val onNavigateToPortal = remember { { navController.navigate(Screen.EvilPortal.route) } }
             val onNavigateToTrack = remember { { apIndex: Int -> navController.navigate(Screen.TrackAp.createRoute(apIndex)) } }
+            val onNavigateToAttackRun = remember { { attackType: String -> navController.navigate(Screen.AttackRun.createRoute(attackType)) } }
 
             WifiScreen(
                 viewModel = sharedViewModel,
                 onNavigateToApDetail = onNavigateToApDetail,
                 onNavigateToPortal = onNavigateToPortal,
-                onNavigateToTrack = onNavigateToTrack
+                onNavigateToTrack = onNavigateToTrack,
+                onNavigateToAttackRun = onNavigateToAttackRun
+            )
+        }
+
+        composable(
+            route = Screen.AttackRun.route,
+            arguments = listOf(navArgument("attackType") { type = NavType.StringType }),
+            enterTransition = { subScreenEnter },
+            exitTransition = { subScreenExit },
+            popEnterTransition = { subScreenPopEnter },
+            popExitTransition = { subScreenPopExit }
+        ) {
+            val attackType = it.arguments?.getString("attackType") ?: "sweep"
+            AttackRunScreen(
+                attackType = attackType,
+                viewModel = sharedViewModel,
+                onBack = { navController.navigateUp() }
             )
         }
 

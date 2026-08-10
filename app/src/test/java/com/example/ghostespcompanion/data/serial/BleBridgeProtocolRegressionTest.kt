@@ -121,12 +121,14 @@ class BleBridgeProtocolRegressionTest {
     }
 
     @Test
-    fun `decoder reassembles fragment stream as independent frames`() {
+    fun `decoder splits fragment stream into independent frames`() {
         val big = ByteArray(BleBridgeProtocol.MAX_COMMAND_BYTES) { it.toByte() }
         val frames = BleBridgeProtocol.commandFrames(0x77, big, BleBridgeProtocol.DEFAULT_MTU)
+        assertTrue(frames.size > 1)
         val decoder = BleBridgeProtocol.Decoder()
         val decoded = frames.flatMap { decoder.feed(it).frames }
-        assertEquals(0x77, decoded.single().commandId)
+        assertEquals(frames.size, decoded.size)
+        assertTrue(decoded.all { it.commandId == 0x77 })
         assertArrayEquals(big, decoded.flatMap { it.payload.toList() }.toByteArray())
     }
 

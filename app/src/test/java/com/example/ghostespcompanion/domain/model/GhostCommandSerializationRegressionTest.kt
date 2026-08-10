@@ -35,7 +35,6 @@ class GhostCommandSerializationRegressionTest {
             GhostCommand.ScanAp() to "scanap",
             GhostCommand.ScanAp(duration = 5) to "scanap 5",
             GhostCommand.ScanAp(live = true) to "scanap -live",
-            GhostCommand.ScanAp(stop = true) to "scanap -stop",
             GhostCommand.ScanSta to "scansta",
             GhostCommand.ScanAll() to "scanall",
             GhostCommand.ScanAll(duration = 10) to "scanall 10",
@@ -282,7 +281,7 @@ class GhostCommandSerializationRegressionTest {
             GhostCommand.StartWardrive(hopMs = 250) to "startwd --hop 250",
             GhostCommand.StartWardrive(weighted = true) to "startwd --weighted",
             GhostCommand.WdStream() to "wdstream start -wifi -i 2000 -ch auto",
-            GhostCommand.WdStream(includeBle = true) to "wdstream start -wifi -ble -i 2000 -ch auto",
+            GhostCommand.WdStream(includeBle = true) to "wdstream start -ble -i 2000 -ch auto",
             GhostCommand.WdStream(stop = true) to "wdstream stop",
             GhostCommand.WdStream(status = true) to "wdstream status",
             GhostCommand.GpsPin(4321) to "gpspin 4321"
@@ -385,7 +384,7 @@ class GhostCommandSerializationRegressionTest {
             GhostCommand.EthUp to "ethup",
             GhostCommand.EthDown to "ethdown",
             GhostCommand.EthInfo to "ethinfo",
-            GhostCommand.EthFingerprint("192.168.1.1") to "ethfp 192.168.1.1",
+            GhostCommand.EthFingerprint to "ethfp",
             GhostCommand.EthArp to "etharp",
             GhostCommand.EthPorts("192.168.1.1") to "ethports 192.168.1.1",
             GhostCommand.EthPorts("192.168.1.1", 80, 443) to "ethports 192.168.1.1 80-443",
@@ -437,7 +436,8 @@ class GhostCommandSerializationRegressionTest {
             GhostCommand.ApCred(ssid = "MyAP") to "apcred \"MyAP\"",
             GhostCommand.ApCred(ssid = "MyAP", password = "secret") to "apcred \"MyAP\" \"secret\"",
             GhostCommand.ApCred(reset = true) to "apcred -r",
-            GhostCommand.PineAp to "pineap",
+            GhostCommand.PineAp() to "pineap",
+            GhostCommand.PineAp(stop = true) to "pineap -s",
             GhostCommand.ApEnable(true) to "apenable on",
             GhostCommand.ApEnable(false) to "apenable off"
         )
@@ -476,8 +476,8 @@ class GhostCommandSerializationRegressionTest {
             GhostCommand.Timezone("UTC") to "timezone UTC",
             GhostCommand.SetTime("2024-01-01 00:00:00") to "settime 2024-01-01 00:00:00",
             GhostCommand.Time to "time",
-            GhostCommand.WebAuth(true) to "webauth enable",
-            GhostCommand.WebAuth(false) to "webauth disable",
+            GhostCommand.WebAuth(true) to "webauth on",
+            GhostCommand.WebAuth(false) to "webauth off",
             GhostCommand.WebUiAp(GhostCommand.WebUiApAction.ON) to "webuiap on",
             GhostCommand.WebUiAp(GhostCommand.WebUiApAction.OFF) to "webuiap off",
             GhostCommand.WebUiAp(GhostCommand.WebUiApAction.TOGGLE) to "webuiap toggle",
@@ -533,8 +533,10 @@ class GhostCommandSerializationRegressionTest {
             GhostCommand.Congestion to "congestion",
             GhostCommand.ScanPorts("192.168.1.5") to "scanports 192.168.1.5",
             GhostCommand.ScanPorts("192.168.1.5", 80, 443) to "scanports 192.168.1.5 80-443",
+            GhostCommand.ScanPorts() to "scanports local",
             GhostCommand.ScanArp to "scanarp",
             GhostCommand.ScanSsh("192.168.1.5") to "scanssh 192.168.1.5",
+            GhostCommand.ScanSsh() to "scanssh",
             GhostCommand.Raw("custom command") to "custom command"
         )
         cases.forEach { (cmd, expected) ->
@@ -595,7 +597,6 @@ class GhostCommandSerializationRegressionTest {
             GhostCommand.ListResults(),
             GhostCommand.WifiStatus,
             GhostCommand.Disconnect,
-            GhostCommand.ScanAp(stop = true),
             GhostCommand.BleScan(GhostCommand.BleScanMode.FLIPPER, stop = true),
             GhostCommand.BleWardrive(stop = true),
             GhostCommand.StartWardrive(stop = true),

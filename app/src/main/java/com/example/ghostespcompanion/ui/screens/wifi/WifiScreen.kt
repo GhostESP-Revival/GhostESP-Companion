@@ -63,6 +63,7 @@ fun WifiScreen(
     onNavigateToApDetail: (Int) -> Unit,
     onNavigateToPortal: () -> Unit,
     onNavigateToTrack: (Int) -> Unit,
+    onNavigateToAttackRun: (String) -> Unit,
     viewModel: MainViewModel
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -90,21 +91,9 @@ fun WifiScreen(
     var beaconSpamRickroll by remember { mutableStateOf(false) }
     var saePassword by remember { mutableStateOf("") }
     var isSaeFloodRunning by remember { mutableStateOf(false) }
-    var dhcpThreads by remember { mutableStateOf("") }
-    var isDhcpStarveRunning by remember { mutableStateOf(false) }
-    var isListenProbesRunning by remember { mutableStateOf(false) }
-    var isPineApRunning by remember { mutableStateOf(false) }
-    var isFlockScanRunning by remember { mutableStateOf(false) }
-    var openPortsTarget by remember { mutableStateOf("") }
-    var sshScanTarget by remember { mutableStateOf("") }
-    var netBiosScanTarget by remember { mutableStateOf("") }
-    var httpBannerScanTarget by remember { mutableStateOf("") }
-    var snmpTarget by remember { mutableStateOf("") }
-    var snmpWalkMode by remember { mutableStateOf(false) }
-    var enumScanTarget by remember { mutableStateOf("") }
-    var isChannelSwitchRunning by remember { mutableStateOf(false) }
+var isDhcpStarveRunning by remember { mutableStateOf(false) }
+var isListenProbesRunning by remember { mutableStateOf(false) }
     var gtkAbusePassword by remember { mutableStateOf("") }
-    var isGtkAbuseRunning by remember { mutableStateOf(false) }
     
     // Station detail sheet states
     var selectedStation by remember { mutableStateOf<GhostResponse.Station?>(null) }
@@ -128,21 +117,8 @@ fun WifiScreen(
     val chipInfoDebugLog by viewModel.chipInfoDebugLog.collectAsState()
     val appSettings by viewModel.appSettings.collectAsState()
     val isScanning by viewModel.isWifiScanning.collectAsState()
+    val latestIsScanning by rememberUpdatedState(isScanning)
     val wifiConnection by viewModel.wifiConnection.collectAsState()
-    val pineapDetections by viewModel.pineapDetections.collectAsState()
-    val flockDetections by viewModel.flockDetections.collectAsState()
-    val flockScanComplete by viewModel.flockScanComplete.collectAsState()
-    val netBiosResults by viewModel.netBiosResults.collectAsState()
-    val httpBannerHits by viewModel.httpBannerHits.collectAsState()
-    val httpBannerSummary by viewModel.httpBannerSummary.collectAsState()
-    val snmpHits by viewModel.snmpHits.collectAsState()
-    val snmpSummary by viewModel.snmpSummary.collectAsState()
-    val enumHits by viewModel.enumHits.collectAsState()
-    val enumSummary by viewModel.enumSummary.collectAsState()
-    val wpa3Compliance by viewModel.wpa3Compliance.collectAsState()
-    val wpa3ReportSummary by viewModel.wpa3ReportSummary.collectAsState()
-    val csaAttackStatus by viewModel.csaAttackStatus.collectAsState()
-    val gtkAbuseLog by viewModel.gtkAbuseLog.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
     val privacyMode = appSettings.privacyMode
     val context = LocalContext.current
@@ -154,13 +130,15 @@ fun WifiScreen(
         }
     }
 
-    // Stop all WiFi operations when leaving this screen
+    // Read the latest scan state on disposal; capturing the initial value here
+    // would either leak a live scan or stop a scan that already completed.
     DisposableEffect(Unit) {
         onDispose {
-            viewModel.stopWifiScanAndReset()
+            if (latestIsScanning) {
+                viewModel.stopWifiScanAndReset()
+            }
             if (activeDeauthIndex != null || isBeaconSpamming || isRickRolling || isKarmaRunning ||
-                isSaeFloodRunning || isDhcpStarveRunning || isListenProbesRunning ||
-                isPineApRunning || isFlockScanRunning || isChannelSwitchRunning || isGtkAbuseRunning
+                isSaeFloodRunning || isDhcpStarveRunning || isListenProbesRunning
             ) {
                 viewModel.stopAll()
             }
@@ -219,15 +197,6 @@ fun WifiScreen(
         }
     }
 
-    // Pre-fill recon scan targets with the connected network's IP once known, without clobbering user edits
-    LaunchedEffect(wifiConnection?.ip) {
-        val ip = wifiConnection?.ip ?: return@LaunchedEffect
-        if (netBiosScanTarget.isBlank()) netBiosScanTarget = ip
-        if (httpBannerScanTarget.isBlank()) httpBannerScanTarget = ip
-        if (snmpTarget.isBlank()) snmpTarget = ip
-        if (enumScanTarget.isBlank()) enumScanTarget = ip
-    }
-    
     val tabTitles = listOf(
         stringResource(R.string.tab_wifi_access_points),
         stringResource(R.string.tab_wifi_attacks)
@@ -551,8 +520,7 @@ fun WifiScreen(
                         val gtkAbuseTargetSsid = displayAccessPoints.find { it.index == targetApIndex }?.ssid
                         val anyAttackRunning = activeDeauthIndex != null || isBeaconSpamming || isRickRolling ||
                             isKarmaRunning || activePacketCaptureMode != null || isSaeFloodRunning ||
-                            isDhcpStarveRunning || isListenProbesRunning || isScanningStations ||
-                            isPineApRunning || isFlockScanRunning || isChannelSwitchRunning || isGtkAbuseRunning
+                            isDhcpStarveRunning || isListenProbesRunning || isScanningStations
 
                         val stopAllRowState: () -> Unit = {
                             viewModel.stopAll()
@@ -566,10 +534,6 @@ fun WifiScreen(
                             isSaeFloodRunning = false
                             isDhcpStarveRunning = false
                             isListenProbesRunning = false
-                            isPineApRunning = false
-                            isFlockScanRunning = false
-                            isChannelSwitchRunning = false
-                            isGtkAbuseRunning = false
                         }
 
                         item {
@@ -734,27 +698,12 @@ fun WifiScreen(
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_dhcp_starvation),
                                 description = stringResource(R.string.desc_dhcp_starvation),
-                                isRunning = isDhcpStarveRunning,
+                                isRunning = false,
                                 startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.SettingsEthernet,
-                                onStart = {
-                                    viewModel.startDhcpStarve(dhcpThreads.toIntOrNull())
-                                    isDhcpStarveRunning = true
-                                },
-                                onStop = {
-                                    viewModel.stopDhcpStarve()
-                                    isDhcpStarveRunning = false
-                                },
-                                expandedContent = {
-                                    OutlinedTextField(
-                                        value = dhcpThreads,
-                                        onValueChange = { dhcpThreads = it.filter(Char::isDigit).take(3) },
-                                        label = { Text(stringResource(R.string.label_dhcp_threads)) },
-                                        singleLine = true,
-                                        enabled = isConnected && !isDhcpStarveRunning,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("dhcpstarve") },
+                                onStop = { }
                             )
                         }
 
@@ -764,9 +713,9 @@ fun WifiScreen(
                                 description = stringResource(R.string.desc_congestion_scan),
                                 isRunning = false,
                                 startEnabled = isConnected,
-                                startLabel = stringResource(R.string.action_run_scan),
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Radar,
-                                onStart = { viewModel.runCongestionScan() },
+                                onStart = { onNavigateToAttackRun("congestion") },
                                 onStop = { }
                             )
                         }
@@ -775,43 +724,46 @@ fun WifiScreen(
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_listen_probes),
                                 description = stringResource(R.string.desc_listen_probes),
-                                isRunning = isListenProbesRunning,
+                                isRunning = false,
                                 startEnabled = isConnected,
-                                icon = Icons.Default.Hearing,
-                                onStart = {
-                                    viewModel.startListenProbes()
-                                    isListenProbesRunning = true
-                                },
-                                onStop = {
-                                    viewModel.stopListenProbes()
-                                    isListenProbesRunning = false
-                                }
+                                startLabel = stringResource(R.string.action_launch),
+                                icon = Icons.Default.Radar,
+                                onStart = { onNavigateToAttackRun("listenprobes") },
+                                onStop = { }
                             )
+                        }
+
+                        item {
+                            BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.label_display_only_features),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.msg_display_only_features),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
 
                         item {
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_pineap_detection),
                                 description = stringResource(R.string.desc_pineap_detection),
-                                isRunning = isPineApRunning,
+                                isRunning = false,
                                 startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Radar,
-                                onStart = {
-                                    viewModel.startPineApDetection()
-                                    isPineApRunning = true
-                                },
-                                onStop = {
-                                    viewModel.stopPineApDetection()
-                                    isPineApRunning = false
-                                },
-                                resultsContent = {
-                                    ScanFindingsList(
-                                        count = pineapDetections.size,
-                                        lines = pineapDetections.map { d ->
-                                            "${d.heading} ${d.bssid} Ch:${d.channel} ${d.rssi}dBm SSIDs(${d.ssidCount}): ${d.ssids}"
-                                        }
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("pineap") },
+                                onStop = { }
                             )
                         }
 
@@ -819,25 +771,12 @@ fun WifiScreen(
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_flock_detection),
                                 description = stringResource(R.string.desc_flock_detection),
-                                isRunning = isFlockScanRunning,
+                                isRunning = false,
                                 startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.TravelExplore,
-                                onStart = {
-                                    viewModel.startFlockScan()
-                                    isFlockScanRunning = true
-                                },
-                                onStop = {
-                                    viewModel.stopFlockScan()
-                                    isFlockScanRunning = false
-                                },
-                                resultsContent = {
-                                    ScanFindingsList(
-                                        count = flockScanComplete?.count ?: flockDetections.size,
-                                        lines = flockDetections.map { d ->
-                                            "${d.method} ${d.mac} ${d.signalLabel}(${d.rssi}dBm) Ch:${d.channel}${d.ssid?.let { " SSID:$it" } ?: ""} Hits:${d.hits}"
-                                        }
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("flock") },
+                                onStop = { }
                             )
                         }
 
@@ -846,21 +785,11 @@ fun WifiScreen(
                                 title = stringResource(R.string.label_open_ports_scan),
                                 description = stringResource(R.string.desc_open_ports_scan),
                                 isRunning = false,
-                                startEnabled = isConnected && openPortsTarget.isNotBlank(),
-                                startLabel = stringResource(R.string.action_run_scan),
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Radar,
-                                onStart = { viewModel.runScanPorts(openPortsTarget) },
-                                onStop = { },
-                                expandedContent = {
-                                    OutlinedTextField(
-                                        value = openPortsTarget,
-                                        onValueChange = { openPortsTarget = it },
-                                        label = { Text(stringResource(R.string.label_scan_target)) },
-                                        singleLine = true,
-                                        enabled = isConnected,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("scanports") },
+                                onStop = { }
                             )
                         }
 
@@ -869,21 +798,50 @@ fun WifiScreen(
                                 title = stringResource(R.string.label_ssh_scan),
                                 description = stringResource(R.string.desc_ssh_scan),
                                 isRunning = false,
-                                startEnabled = isConnected && sshScanTarget.isNotBlank(),
-                                startLabel = stringResource(R.string.action_run_scan),
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Radar,
-                                onStart = { viewModel.runScanSsh(sshScanTarget) },
-                                onStop = { },
-                                expandedContent = {
-                                    OutlinedTextField(
-                                        value = sshScanTarget,
-                                        onValueChange = { sshScanTarget = it },
-                                        label = { Text(stringResource(R.string.label_scan_target)) },
-                                        singleLine = true,
-                                        enabled = isConnected,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("scanssh") },
+                                onStop = { }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_sweep),
+                                description = stringResource(R.string.desc_sweep),
+                                isRunning = false,
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
+                                icon = Icons.Default.AutoAwesome,
+                                onStart = { onNavigateToAttackRun("sweep") },
+                                onStop = { }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_scan_local),
+                                description = stringResource(R.string.desc_scan_local),
+                                isRunning = false,
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
+                                icon = Icons.Default.Radar,
+                                onStart = { onNavigateToAttackRun("scanlocal") },
+                                onStop = { }
+                            )
+                        }
+
+                        item {
+                            AttackLauncherRow(
+                                title = stringResource(R.string.label_scan_arp),
+                                description = stringResource(R.string.desc_scan_arp),
+                                isRunning = false,
+                                startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
+                                icon = Icons.Default.Radar,
+                                onStart = { onNavigateToAttackRun("scanarp") },
+                                onStop = { }
                             )
                         }
 
@@ -893,29 +851,10 @@ fun WifiScreen(
                                 description = stringResource(R.string.desc_netbios_scan),
                                 isRunning = false,
                                 startEnabled = isConnected,
-                                startLabel = stringResource(R.string.action_run_scan),
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Radar,
-                                onStart = { viewModel.runNetBiosScan(netBiosScanTarget) },
-                                onStop = { },
-                                expandedContent = {
-                                    OutlinedTextField(
-                                        value = netBiosScanTarget,
-                                        onValueChange = { netBiosScanTarget = it },
-                                        label = { Text(stringResource(R.string.label_scan_target_optional)) },
-                                        singleLine = true,
-                                        enabled = isConnected,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                resultsContent = {
-                                    ScanFindingsList(
-                                        count = netBiosResults.size,
-                                        lines = netBiosResults.map { r ->
-                                            if (r.remoteIp != null) "${r.host}  IP: ${r.remoteIp}  Flags: 0x${r.flags?.toString(16) ?: "?"}"
-                                            else "${r.host}  Names: ${r.names ?: "none"}"
-                                        }
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("netbios") },
+                                onStop = { }
                             )
                         }
 
@@ -925,72 +864,23 @@ fun WifiScreen(
                                 description = stringResource(R.string.desc_http_banner_scan),
                                 isRunning = false,
                                 startEnabled = isConnected,
-                                startLabel = stringResource(R.string.action_run_scan),
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Radar,
-                                onStart = { viewModel.runHttpBannerScan(httpBannerScanTarget) },
-                                onStop = { },
-                                expandedContent = {
-                                    OutlinedTextField(
-                                        value = httpBannerScanTarget,
-                                        onValueChange = { httpBannerScanTarget = it },
-                                        label = { Text(stringResource(R.string.label_scan_target_optional)) },
-                                        singleLine = true,
-                                        enabled = isConnected,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                resultsContent = {
-                                    ScanFindingsList(
-                                        count = httpBannerSummary?.hostsFound ?: httpBannerHits.size,
-                                        lines = httpBannerHits.map { h ->
-                                            "${h.ip}:${h.port} (${h.scheme}) ${h.server?.let { "Server: $it" } ?: "OPEN, no banner"}"
-                                        }
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("httpbanner") },
+                                onStop = { }
                             )
                         }
 
                         item {
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_snmp_probe),
-                                description = if (snmpWalkMode) stringResource(R.string.desc_snmp_walk) else stringResource(R.string.desc_snmp_probe),
+                                description = stringResource(R.string.desc_snmp_probe),
                                 isRunning = false,
                                 startEnabled = isConnected,
-                                startLabel = stringResource(R.string.action_run_scan),
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Radar,
-                                onStart = { viewModel.runSnmpProbe(snmpTarget, snmpWalkMode) },
-                                onStop = { },
-                                expandedContent = {
-                                    OutlinedTextField(
-                                        value = snmpTarget,
-                                        onValueChange = { snmpTarget = it },
-                                        label = { Text(stringResource(R.string.label_scan_target_optional)) },
-                                        singleLine = true,
-                                        enabled = isConnected,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(
-                                            checked = snmpWalkMode,
-                                            onCheckedChange = { snmpWalkMode = it },
-                                            enabled = isConnected
-                                        )
-                                        Text(
-                                            text = stringResource(R.string.label_snmp_walk_mode),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                },
-                                resultsContent = {
-                                    ScanFindingsList(
-                                        count = snmpSummary?.hostsFound ?: snmpHits.size,
-                                        lines = snmpHits.map { h ->
-                                            if (h.oid != null) "${h.oid} = ${h.value} (${h.type})"
-                                            else "${h.ip} (community: ${h.community}) sysDescr: ${h.sysDescr}"
-                                        }
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("snmp") },
+                                onStop = { }
                             )
                         }
 
@@ -1000,26 +890,10 @@ fun WifiScreen(
                                 description = stringResource(R.string.desc_enum_scan),
                                 isRunning = false,
                                 startEnabled = isConnected,
-                                startLabel = stringResource(R.string.action_run_scan),
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Radar,
-                                onStart = { viewModel.runEnumScan(enumScanTarget) },
-                                onStop = { },
-                                expandedContent = {
-                                    OutlinedTextField(
-                                        value = enumScanTarget,
-                                        onValueChange = { enumScanTarget = it },
-                                        label = { Text(stringResource(R.string.label_scan_target_optional)) },
-                                        singleLine = true,
-                                        enabled = isConnected,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                resultsContent = {
-                                    ScanFindingsList(
-                                        count = enumSummary?.hostsFound ?: enumHits.size,
-                                        lines = enumHits.map { it.raw }
-                                    )
-                                }
+                                onStart = { onNavigateToAttackRun("enum") },
+                                onStop = { }
                             )
                         }
 
@@ -1029,50 +903,17 @@ fun WifiScreen(
                                 description = stringResource(R.string.desc_wpa3_check),
                                 isRunning = false,
                                 startEnabled = isConnected && targetApIndex != null,
-                                startLabel = stringResource(R.string.action_run_scan),
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.VerifiedUser,
                                 onStart = {
                                     val index = targetApIndex ?: return@AttackLauncherRow
                                     viewModel.selectAp(index.toString())
-                                    viewModel.runWpa3Check()
+                                    onNavigateToAttackRun("wpa3")
                                 },
                                 onStop = { },
                                 expandedContent = if (targetApIndex == null) {
                                     { TargetApHint() }
-                                } else null,
-                                resultsContent = {
-                                    val compliance = wpa3Compliance
-                                    val report = wpa3ReportSummary
-                                    if (compliance != null) {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            DetailRow(label = stringResource(R.string.label_scan_target), value = compliance.ssid)
-                                            DetailRow(label = "BSSID", value = compliance.bssid)
-                                            DetailRow(label = "Auth", value = compliance.auth)
-                                            DetailRow(label = "PMF", value = compliance.pmf)
-                                            DetailRow(
-                                                label = "WPA3",
-                                                value = if (compliance.wpa3Present) "Present${if (compliance.transitionMode) " (transition mode)" else ""}" else "Not present",
-                                                valueColor = if (compliance.wpa3Present && !compliance.transitionMode) successColor() else warningColor()
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = stringResource(R.string.label_wpa3_finding, compliance.finding),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Medium,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                    } else if (report != null) {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            DetailRow(label = "APs scanned", value = report.apCount.toString())
-                                            DetailRow(label = "Compliant", value = report.compliant.toString(), valueColor = successColor())
-                                            DetailRow(label = "Downgradable", value = report.downgradable.toString(), valueColor = warningColor())
-                                            DetailRow(label = "Legacy", value = report.legacy.toString(), valueColor = warningColor())
-                                            DetailRow(label = "Open", value = report.open.toString(), valueColor = errorColor())
-                                            DetailRow(label = "Other", value = report.other.toString())
-                                        }
-                                    }
-                                }
+                                } else null
                             )
                         }
 
@@ -1080,51 +921,19 @@ fun WifiScreen(
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_channel_switch_attack),
                                 description = stringResource(R.string.desc_channel_switch_attack),
-                                isRunning = isChannelSwitchRunning,
+                                isRunning = false,
                                 startEnabled = isConnected && targetApIndex != null,
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.SwapHoriz,
                                 onStart = {
                                     val index = targetApIndex ?: return@AttackLauncherRow
                                     viewModel.selectAp(index.toString())
-                                    viewModel.startChannelSwitchAttack()
-                                    isChannelSwitchRunning = true
+                                    onNavigateToAttackRun("csa")
                                 },
-                                onStop = {
-                                    viewModel.stopAll()
-                                    isChannelSwitchRunning = false
-                                },
+                                onStop = { },
                                 expandedContent = if (targetApIndex == null) {
                                     { TargetApHint() }
-                                } else null,
-                                resultsContent = {
-                                    if (csaAttackStatus.targetCount > 0) {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            Text(
-                                                text = stringResource(R.string.label_csa_targeting, csaAttackStatus.targetCount),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Medium,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            csaAttackStatus.targets.forEach { target ->
-                                                Text(
-                                                    text = target,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            csaAttackStatus.packetsPerSecond?.let { rate ->
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text(
-                                                    text = stringResource(R.string.label_csa_rate, rate),
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = errorColor()
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                                } else null
                             )
                         }
 
@@ -1132,18 +941,16 @@ fun WifiScreen(
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_gtk_abuse),
                                 description = stringResource(R.string.desc_gtk_abuse),
-                                isRunning = isGtkAbuseRunning,
+                                isRunning = false,
                                 startEnabled = isConnected && gtkAbuseTargetSsid != null && gtkAbusePassword.isNotBlank(),
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Lock,
                                 onStart = {
                                     val ssid = gtkAbuseTargetSsid ?: return@AttackLauncherRow
-                                    viewModel.startGtkAbuse(ssid, gtkAbusePassword)
-                                    isGtkAbuseRunning = true
+                                    viewModel.setPendingGtkAbuse(ssid, gtkAbusePassword)
+                                    onNavigateToAttackRun("gtk")
                                 },
-                                onStop = {
-                                    viewModel.stopAll()
-                                    isGtkAbuseRunning = false
-                                },
+                                onStop = { },
                                 expandedContent = {
                                     if (targetApIndex == null) {
                                         TargetApHint()
@@ -1154,42 +961,9 @@ fun WifiScreen(
                                         onValueChange = { gtkAbusePassword = it },
                                         label = { Text(stringResource(R.string.label_gtk_password)) },
                                         singleLine = true,
-                                        enabled = isConnected && !isGtkAbuseRunning,
+                                        enabled = isConnected,
                                         modifier = Modifier.fillMaxWidth()
                                     )
-                                },
-                                resultsContent = {
-                                    if (gtkAbuseLog.isNotEmpty()) {
-                                        val isolationBroken = gtkAbuseLog.any { it.message.contains("isolation is BROKEN", ignoreCase = true) }
-                                        val isolationOk = gtkAbuseLog.any { it.message.contains("No echo reply received", ignoreCase = true) }
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            if (isolationBroken || isolationOk) {
-                                                Text(
-                                                    text = if (isolationBroken) stringResource(R.string.label_gtk_isolation_broken) else stringResource(R.string.label_gtk_isolation_ok),
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = if (isolationBroken) errorColor() else successColor()
-                                                )
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                            }
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(max = 160.dp)
-                                                    .verticalScroll(rememberScrollState())
-                                            ) {
-                                                gtkAbuseLog.forEach { status ->
-                                                    Text(
-                                                        text = status.message,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        fontFamily = FontFamily.Monospace,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.padding(vertical = 2.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
                                 }
                             )
                         }
@@ -1327,6 +1101,15 @@ fun WifiScreen(
             onStart = { mode, channel ->
                 viewModel.startPacketCapture(mode, channel)
                 activePacketCaptureMode = mode
+                showPacketCaptureDialog = false
+            },
+            onStartWireshark = { ble ->
+                if (ble) {
+                    viewModel.startWiresharkBleCapture()
+                } else {
+                    viewModel.startWiresharkCapture()
+                }
+                activePacketCaptureMode = null
                 showPacketCaptureDialog = false
             },
             onStop = {
@@ -2646,6 +2429,7 @@ private fun PacketCaptureDialog(
     ieee802154Capability: GhostResponse.CapabilityResolution,
     onDismiss: () -> Unit,
     onStart: (GhostCommand.CaptureMode, Int?) -> Unit,
+    onStartWireshark: (Boolean) -> Unit,
     onStop: () -> Unit
 ) {
     val modes = listOf(
@@ -2734,6 +2518,32 @@ private fun PacketCaptureDialog(
                         Text(if (channelValid) stringResource(R.string.msg_custom_channel_hint) else stringResource(R.string.msg_custom_channel_error))
                     }
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Text(
+                    text = stringResource(R.string.label_wireshark_capture),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { onStartWireshark(false) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.capture_mode_wireshark))
+                    }
+                    OutlinedButton(
+                        onClick = { onStartWireshark(true) },
+                        enabled = bleCapability.isUsable,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.capture_mode_wireshark_ble))
+                    }
+                }
             }
         },
         confirmButton = {
@@ -2838,4 +2648,3 @@ private fun StationDetailSheet(
         }
     }
 }
-

@@ -115,6 +115,38 @@
 - Added capability resolution tests for BLE, IEEE 802.15.4, Chameleon, and NFC across complete/incomplete chipinfo.
 - Added parser fixture tests for AP, station, GATT device, multiline GATT service, handshakes, WiFi status, wdstream, base64 SD read, chipinfo.
 
+### WiFi network scans — structured results
+
+- Sweep (`sweep`): new row with start/stop, live phase markers (`--- Phase N: ... ---`, `=== Sweep Complete ===`, `Report saved to: ...`), and the final `WiFi: N APs, N stations | Security: ...` summary.
+- Local port scan (`scanlocal`), ARP scan (`scanarp`), port scan (`scanports`), SSH scan (`scanssh`): previously command-only rows with no output. Added parsers for `Host X has N open ports` / `Port N` / `UDP N` lines, ARP host entries (`N. IP [MAC]`) plus the `Found N active hosts on ...` summary, and SSH `[IP:port] Status: OPEN` + banner lines; each row now renders its results list.
+- Congestion scan and Listen Probes: added parsers for the `| CH | Count | Bar |` table and `Probe Req: SRC -> DST for SSID` lines; rows now show results instead of raw terminal text.
+- DHCP Starvation: added a "Show DHCP Stats" action wired to `dhcpstarve display` and a stats readout for `DHCP-Starve: N/sec | Total: N` lines.
+
+### Capture screen
+
+- On-device capture list (`capture -list`): new "On-device captures" card with refresh, per-file hashcat-material indicator (`[+]/[-]`), and an "Export .hc22000" button per file (`capture -export <name>`), with PMKID/M2-M3 metrics shown from the firmware result.
+
+### Ethernet
+
+- ARP Poisoning results are now parsed and shown in-line: status line (`State: X | Hosts: N | Domains: N | Cookies: N | Creds: N`), and structured domain/cookie/credential dumps for `ethpoison list/cookies/creds`.
+
+### DNS sinkhole
+
+- Added the `sinkhole` command family (start/stop/status/stats/reload/log/add/remove/download) under Settings → Device Web / DNS, with a live status readout (state, IP, queries/blocked/block %, logging, blocklist) fed by the `=== DNS Sinkhole Status ===` block and `Sinkhole: N queries, N blocked, N dropped` heartbeat lines.
+- WebUI AP-only restriction (`webuiap`) and web authentication (`webauth`) are now exposed as toggles instead of command-only entries.
+
+### Full-screen live attack views
+
+- Every new attack/scan row in the WiFi Attacks list now opens a dedicated full-screen live view instead of inline results: status header with IDLE/RUNNING/COMPLETED badge, elapsed timer, progress bar, live-updating auto-scrolling results, and Start/Stop/Run again controls.
+- Sweep view tracks phases until `=== Sweep Complete ===`, then flips to COMPLETED with the final `WiFi: N APs ... | Security: ...` summary.
+- One-shot scans (congestion, scanlocal, scanarp, scanports, scanssh) auto-flip to COMPLETED when their results arrive; a "no response from device yet" hint appears after a per-scan timeout.
+- Ongoing attacks (sweep, listenprobes, dhcpstarve) keep a Stop button; the DHCP starve view adds a "Show Stats" refresh action.
+- `scanports` with no target now sends `scanports local` (local subnet scan); `scanssh` with no target sends the bare subnet form.
+
+### Tests
+
+- Added parser regression tests for probe requests, congestion rows, port/SSH/ARP scan lines, sweep phases, DHCP starve stats, capture list/export, ethpoison status and items, sinkhole status, and webui/web-auth toggles (124 total, all passing).
+
 ### Firmware (Ghost_ESP) — coordinated changes
 
 - `main/managers/ble_bridge_manager.c`: added `GB_TYPE_END`, command fragmentation reassembly, terminal `ERR`+`END` on failure, reassembly cleanup on disconnect/stop.
