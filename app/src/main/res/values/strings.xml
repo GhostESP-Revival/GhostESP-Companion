@@ -24,6 +24,9 @@
     <string name="tab_wifi_attacks">Attacks</string>
     <string name="tab_gps_wardrive">Wardrive</string>
     <string name="tab_gps_saved_files">Saved Files</string>
+    <string name="action_recenter_map">Recenter map</string>
+    <string name="label_wifi_short">Wi-Fi</string>
+    <string name="label_signal_weak_to_strong">weak &#8594; strong</string>
     <string name="tab_ble_scan">Scan</string>
     <string name="tab_ble_spam">Attacks</string>
     <string name="title_terminal">Terminal</string>

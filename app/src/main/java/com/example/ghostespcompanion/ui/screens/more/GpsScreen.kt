@@ -3,7 +3,9 @@ package com.example.ghostespcompanion.ui.screens.more
 import android.Manifest
 import android.content.Intent
 import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Point
 import android.graphics.drawable.Drawable
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -56,6 +58,7 @@ import org.osmdroid.views.overlay.Overlay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * CARTO's basemap CDN, not OSMF's tile.openstreetmap.org. OSMF's tile usage policy
@@ -169,14 +172,40 @@ fun GpsScreen(
     val privacyMode = appSettings.privacyMode
     
     val mapView = remember { MapView(context) }
-    val phoneWardriveApOverlay = remember { PhoneWardriveApOverlay() }
+    val phoneWardriveApOverlay = remember { PhoneWardriveApOverlay(context.resources.displayMetrics.density) }
     
     val copyrightOverlay = remember { CopyrightOverlay(context) }
+    val phoneMarker = remember { Marker(mapView).apply { isEnabled = false } }
+    val deviceMarker = remember { Marker(mapView).apply { isEnabled = false } }
+    var hasCenteredMap by rememberSaveable { mutableStateOf(false) }
+
+    val defaultMarkerIcon = remember {
+        ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.marker_default)
+    }
+    val phoneIcon = remember(defaultMarkerIcon) {
+        defaultMarkerIcon?.constantState?.newDrawable()?.mutate()?.also {
+            DrawableCompat.setTint(it, AndroidColor.rgb(33, 150, 243))
+        }
+    }
+    val deviceIcon = remember(defaultMarkerIcon) {
+        defaultMarkerIcon?.constantState?.newDrawable()?.mutate()?.also {
+            DrawableCompat.setTint(it, AndroidColor.rgb(244, 67, 54))
+        }
+    }
+
+    val cameraTarget = if (gpsPosition?.fix == true) {
+        GeoPoint(gpsPosition!!.latitude, gpsPosition!!.longitude)
+    } else {
+        phoneLocation?.let { GeoPoint(it.latitude, it.longitude) }
+    }
 
     DisposableEffect(Unit) {
         mapView.setTileSource(CartoVoyagerTileSource)
         mapView.setMultiTouchControls(true)
         mapView.controller.setZoom(15.0)
+        mapView.overlays.add(phoneWardriveApOverlay)
+        mapView.overlays.add(phoneMarker)
+        mapView.overlays.add(deviceMarker)
         mapView.overlays.add(copyrightOverlay)
         mapView.onResume()
 
@@ -189,51 +218,33 @@ fun GpsScreen(
     LaunchedEffect(phoneLocation, gpsPosition, phoneWardriveAps) {
         withContext(Dispatchers.Main) {
             try {
-                mapView.overlays.clear()
-                mapView.overlays.add(copyrightOverlay)
-
                 phoneWardriveApOverlay.setAps(phoneWardriveAps)
-                if (phoneWardriveAps.isNotEmpty()) {
-                    mapView.overlays.add(phoneWardriveApOverlay)
-                }
-
-                // Create tinted marker icons
-                val defaultIcon = ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.marker_default)
-                val phoneIcon = defaultIcon?.constantState?.newDrawable()?.mutate()?.also {
-                    DrawableCompat.setTint(it, android.graphics.Color.rgb(33, 150, 243)) // Blue
-                }
-                val deviceIcon = defaultIcon?.constantState?.newDrawable()?.mutate()?.also {
-                    DrawableCompat.setTint(it, android.graphics.Color.rgb(244, 67, 54)) // Red
-                }
 
                 phoneLocation?.let { phone ->
-                    val phoneMarker = Marker(mapView).apply {
-                        position = GeoPoint(phone.latitude, phone.longitude)
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                        title = context.getString(R.string.label_phone_gps)
-                        snippet = context.getString(R.string.label_current_location)
-                        icon = phoneIcon
-                    }
-                    mapView.overlays.add(phoneMarker)
-
-                    if (gpsPosition?.fix == true) {
-                        mapView.controller.setCenter(GeoPoint(gpsPosition!!.latitude, gpsPosition!!.longitude))
-                    } else {
-                        mapView.controller.setCenter(GeoPoint(phone.latitude, phone.longitude))
-                    }
+                    phoneMarker.position = GeoPoint(phone.latitude, phone.longitude)
+                    phoneMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    phoneMarker.title = context.getString(R.string.label_phone_gps)
+                    phoneMarker.snippet = context.getString(R.string.label_current_location)
+                    phoneMarker.icon = phoneIcon
+                    phoneMarker.isEnabled = true
+                } ?: run {
+                    phoneMarker.isEnabled = false
                 }
 
-                gpsPosition?.let { gps ->
-                    if (gps.fix == true) {
-                        val ghostMarker = Marker(mapView).apply {
-                            position = GeoPoint(gps.latitude, gps.longitude)
-                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                            title = context.getString(R.string.label_ghostesp_gps)
-                            snippet = context.getString(R.string.label_device_location)
-                            icon = deviceIcon
-                        }
-                        mapView.overlays.add(ghostMarker)
-                    }
+                gpsPosition?.takeIf { it.fix == true }?.let { gps ->
+                    deviceMarker.position = GeoPoint(gps.latitude, gps.longitude)
+                    deviceMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    deviceMarker.title = context.getString(R.string.label_ghostesp_gps)
+                    deviceMarker.snippet = context.getString(R.string.label_device_location)
+                    deviceMarker.icon = deviceIcon
+                    deviceMarker.isEnabled = true
+                } ?: run {
+                    deviceMarker.isEnabled = false
+                }
+
+                if (!hasCenteredMap && cameraTarget != null) {
+                    mapView.controller.setCenter(cameraTarget)
+                    hasCenteredMap = true
                 }
 
                 mapView.invalidate()
@@ -272,6 +283,33 @@ fun GpsScreen(
                     .fillMaxSize()
                     .then(if (privacyMode) Modifier.blur(25.dp) else Modifier)
             )
+
+            if (!privacyMode && selectedTab == 0) {
+                WardriveMapLegend(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp)
+                )
+
+                SmallFloatingActionButton(
+                    onClick = {
+                        cameraTarget?.let {
+                            mapView.controller.animateTo(it)
+                            if (mapView.zoomLevelDouble < 15.0) mapView.controller.setZoom(15.0)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                    contentColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        Icons.Default.MyLocation,
+                        contentDescription = stringResource(R.string.action_recenter_map)
+                    )
+                }
+            }
 
             // Privacy overlay
             if (privacyMode) {
@@ -657,7 +695,7 @@ fun GpsScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = if (privacyMode) stringResource(R.string.label_unit_degrees, "**..**") else if (phoneLocation != null) stringResource(R.string.label_unit_degrees, String.format("%.5f", phoneLocation!!.latitude)) else "--",
+                                    text = if (privacyMode) stringResource(R.string.label_unit_degrees, "**..**") else if (phoneLocation != null) stringResource(R.string.label_unit_degrees, String.format("%.5f", phoneLocation!!.longitude)) else "--",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = if (phoneLocation != null) Success else MaterialTheme.colorScheme.onSurfaceVariant
@@ -961,7 +999,45 @@ private fun formatFileSize(bytes: Long): String {
     }
 }
 
-private class PhoneWardriveApOverlay : Overlay() {
+@Composable
+private fun WardriveMapLegend(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = 3.dp,
+        shadowElevation = 3.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            LegendDot(AndroidColor.rgb(38, 132, 255), stringResource(R.string.label_wifi_short))
+            LegendDot(AndroidColor.rgb(18, 184, 134), stringResource(R.string.title_ble))
+            Text(
+                text = stringResource(R.string.label_signal_weak_to_strong),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun LegendDot(color: Int, label: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(color))
+        )
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+private class PhoneWardriveApOverlay(private val density: Float) : Overlay() {
     @Volatile private var aps: List<PhoneWardriveAp> = emptyList()
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -969,27 +1045,33 @@ private class PhoneWardriveApOverlay : Overlay() {
     }
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 1.5f
+        strokeWidth = 1.5f * density
+    }
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = AndroidColor.argb(48, 15, 23, 42)
+    }
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE
+        textAlign = Paint.Align.CENTER
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
     private val point = Point()
+    private val markerPath = Path()
 
     fun setAps(newAps: List<PhoneWardriveAp>) {
         aps = newAps
     }
 
     private fun rssiColor(rssi: Int, isBle: Boolean): Int {
-        if (isBle) {
-            val t = ((rssi + 100).coerceIn(0, 60)).toFloat() / 60f
-            val r = (76f + (0f - 76f) * t).toInt()
-            val g = (175f + (200f - 175f) * t).toInt()
-            val b = (80f + (80f - 80f) * t).toInt()
-            return android.graphics.Color.rgb(r, g, b)
-        }
-        val t = ((rssi + 100).coerceIn(0, 60)).toFloat() / 60f
-        val r = (244f + (33f - 244f) * t).toInt()
-        val g = (67f + (150f - 67f) * t).toInt()
-        val b = (54f + (243f - 54f) * t).toInt()
-        return android.graphics.Color.rgb(r, g, b)
+        val t = wardriveSignalStrength(rssi)
+        val weak = intArrayOf(245, 158, 11)
+        val strong = if (isBle) intArrayOf(18, 184, 134) else intArrayOf(38, 132, 255)
+        return AndroidColor.rgb(
+            (weak[0] + (strong[0] - weak[0]) * t).roundToInt(),
+            (weak[1] + (strong[1] - weak[1]) * t).roundToInt(),
+            (weak[2] + (strong[2] - weak[2]) * t).roundToInt()
+        )
     }
 
     override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
@@ -1002,10 +1084,14 @@ private class PhoneWardriveApOverlay : Overlay() {
         val canvasWidth = canvas.width.toFloat()
         val canvasHeight = canvas.height.toFloat()
         val zoom = mapView.zoomLevelDouble
-        val radius = (4f + (zoom.toFloat() - 10f).coerceAtLeast(0f) * 1.5f).coerceIn(3f, 14f)
-        val drawStroke = zoom >= 15.0
+        val radius = wardriveMarkerRadius(zoom, density)
+        val clusterCellSize = 54f * density
+        val clusters = LinkedHashMap<Long, RenderCluster>()
 
         for (ap in snapshot) {
+            if (!ap.latitude.isFinite() || !ap.longitude.isFinite() ||
+                ap.latitude !in -90.0..90.0 || ap.longitude !in -180.0..180.0
+            ) continue
             projection.toPixels(GeoPoint(ap.latitude, ap.longitude), point)
 
             val px = point.x.toFloat()
@@ -1015,14 +1101,85 @@ private class PhoneWardriveApOverlay : Overlay() {
                 continue
             }
 
-            val baseColor = rssiColor(ap.rssi, ap.isBle)
-            fillPaint.color = android.graphics.Color.argb(180, android.graphics.Color.red(baseColor), android.graphics.Color.green(baseColor), android.graphics.Color.blue(baseColor))
-            canvas.drawCircle(px, py, radius, fillPaint)
+            if (shouldClusterWardriveAps(zoom)) {
+                val cellX = (px / clusterCellSize).toInt()
+                val cellY = (py / clusterCellSize).toInt()
+                val key = (cellX.toLong() shl 32) xor (cellY.toLong() and 0xffffffffL)
+                clusters.getOrPut(key) { RenderCluster() }.add(px, py, ap)
+            } else {
+                drawAp(canvas, px, py, radius, ap.rssi, ap.isBle)
+            }
+        }
 
-            if (drawStroke) {
-                strokePaint.color = android.graphics.Color.argb(220, android.graphics.Color.red(baseColor), android.graphics.Color.green(baseColor), android.graphics.Color.blue(baseColor))
-                canvas.drawCircle(px, py, radius, strokePaint)
+        clusters.values.forEach { cluster ->
+            val x = cluster.x / cluster.count
+            val y = cluster.y / cluster.count
+            if (cluster.count == 1) {
+                drawAp(canvas, x, y, radius, cluster.rssiTotal, cluster.bleCount == 1)
+            } else {
+                drawCluster(canvas, x, y, cluster)
             }
         }
     }
+
+    private fun drawAp(canvas: Canvas, x: Float, y: Float, radius: Float, rssi: Int, isBle: Boolean) {
+        val color = rssiColor(rssi, isBle)
+        fillPaint.color = AndroidColor.argb(224, AndroidColor.red(color), AndroidColor.green(color), AndroidColor.blue(color))
+        strokePaint.color = AndroidColor.argb(238, 255, 255, 255)
+
+        canvas.drawCircle(x, y + density, radius + 2.5f * density, shadowPaint)
+        if (isBle) {
+            markerPath.reset()
+            markerPath.moveTo(x, y - radius)
+            markerPath.lineTo(x + radius, y)
+            markerPath.lineTo(x, y + radius)
+            markerPath.lineTo(x - radius, y)
+            markerPath.close()
+            canvas.drawPath(markerPath, fillPaint)
+            canvas.drawPath(markerPath, strokePaint)
+        } else {
+            canvas.drawCircle(x, y, radius, fillPaint)
+            canvas.drawCircle(x, y, radius, strokePaint)
+        }
+    }
+
+    private fun drawCluster(canvas: Canvas, x: Float, y: Float, cluster: RenderCluster) {
+        val radius = (14f + cluster.count.toString().length * 2f).coerceAtMost(22f) * density
+        val isMostlyBle = cluster.bleCount * 2 >= cluster.count
+        val color = rssiColor(cluster.rssiTotal / cluster.count, isMostlyBle)
+        canvas.drawCircle(x, y + 2f * density, radius + 3f * density, shadowPaint)
+        fillPaint.color = AndroidColor.argb(238, AndroidColor.red(color), AndroidColor.green(color), AndroidColor.blue(color))
+        strokePaint.color = AndroidColor.WHITE
+        strokePaint.strokeWidth = 2f * density
+        canvas.drawCircle(x, y, radius, fillPaint)
+        canvas.drawCircle(x, y, radius, strokePaint)
+        strokePaint.strokeWidth = 1.5f * density
+
+        textPaint.textSize = if (cluster.count < 100) 12f * density else 10f * density
+        val baseline = y - (textPaint.ascent() + textPaint.descent()) / 2f
+        canvas.drawText(cluster.count.toString(), x, baseline, textPaint)
+    }
+
+    private data class RenderCluster(
+        var x: Float = 0f,
+        var y: Float = 0f,
+        var count: Int = 0,
+        var rssiTotal: Int = 0,
+        var bleCount: Int = 0
+    ) {
+        fun add(px: Float, py: Float, ap: PhoneWardriveAp) {
+            x += px
+            y += py
+            count++
+            rssiTotal += ap.rssi
+            if (ap.isBle) bleCount++
+        }
+    }
 }
+
+internal fun wardriveSignalStrength(rssi: Int): Float = ((rssi + 100).coerceIn(0, 60)) / 60f
+
+internal fun shouldClusterWardriveAps(zoom: Double): Boolean = zoom < 16.0
+
+internal fun wardriveMarkerRadius(zoom: Double, density: Float): Float =
+    (4.5f + (zoom.toFloat() - 13f).coerceAtLeast(0f) * 1.25f).coerceIn(4.5f, 9f) * density

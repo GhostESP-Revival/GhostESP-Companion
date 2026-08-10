@@ -1,17 +1,17 @@
 # GhostESP: Companion Changelog
 
-## v0.5.0 — Firmware compatibility and BLE protocol overhaul
+## v0.5.0 - Firmware compatibility and BLE protocol overhaul
 
 ### BLE bridge transport
 
 - Added explicit BLE command completion via a new `END` frame (`PACKET_TYPE_COMMAND_END`), with an idle-timeout fallback for older peers.
-- Added two-way command fragmentation: firmware reassembles `FIRST`/`MORE`-flagged chunks keyed by command ID and rejects malformed sequences with `ERR`+`END`; Android fragments outbound commands to the negotiated MTU (250-byte limit) so SD uploads, long terminal input, BadUSB text, and portal content fit within GATT capacity.
+- Added two-way command fragmentation. Firmware reassembles `FIRST`/`MORE`-flagged chunks keyed by command ID and rejects malformed sequences with `ERR`+`END`. Android fragments outbound commands to the negotiated MTU (250-byte limit) so SD uploads, long terminal input, BadUSB text, and portal content fit within GATT capacity.
 - Fixed MTU negotiation: a failed MTU 128 request no longer tears down the connection; the app tracks the actual negotiated MTU and fragments accordingly, allowing MTU 23 devices to connect.
 - BLE `ERR` frames now surface as real errors in the terminal and parsed responses instead of being treated as status text.
 
 ### BLE connection reliability
 
-- `connectBle()` now reports success only after the full GATT handshake (connect → discovery → CCCD enable → MTU negotiation) completes, not immediately after `connectGatt()`.
+- `connectBle()` now reports success only after the full GATT handshake (connect, discovery, CCCD enable, and MTU negotiation) completes, not immediately after `connectGatt()`.
 - Added per-attempt tokens so stale callbacks from an old connection can't tear down a newer one.
 - Added handling for invalid MAC addresses, missing `BLUETOOTH_CONNECT` permission, disabled Bluetooth, `SecurityException`, and null/throwing `connectGatt`.
 - Saved devices now persist only after a successful connection; failed reconnects fall back to USB enumeration or the picker.
@@ -21,7 +21,7 @@
 
 - Fixed advertiser scanning (`blescan -adv/-oui/-vendor`, `listadv`): responses were never parsed, so results never appeared despite the command working. Added parsing for both the live per-device line and the `listadv` detail block.
 - Combined standard and advertiser scanning into one mode selector, one start/stop, one merged results list, replacing two separate cards.
-- Removed the "BLE Wardrive" toggle from the Attacks tab (duplicated GPS screen state, no map) — links to the GPS screen instead.
+- Removed the redundant "BLE Wardrive" toggle from the Attacks tab and linked to the GPS screen instead.
 
 ### Command syntax fixes
 
@@ -31,7 +31,7 @@
 - `webauth`: `on`/`off`, not `enable`/`disable`.
 - `scanports`/`ethports`: one `start-end` range token, not two arguments.
 - `powerprinter`: added required font-size and alignment arguments.
-- `ethfp`: dropped the IP argument — firmware always scans the local subnet regardless.
+- `ethfp`: dropped the IP argument because firmware always scans the local subnet.
 - `wdstream`: `-ble` is exclusive with WiFi capture in firmware, not additive; BLE-inclusive wardrive now sends `-ble` alone.
 - Split RGB semantics: `rgbmode` for immediate effects, `setrgbmode` for persistent modes, matching firmware.
 
@@ -39,11 +39,11 @@
 
 - Added parsing for the current multiline GATT service format (`[N] Service:`/`UUID:`/`Handles:`), preserving the legacy compact format.
 - Broadened error detection to current firmware phrasing (`Error`/`Failed`/`Invalid`/`Unknown ...`/`timed out`/`unsupported`) without misclassifying benign lines like `Failed attempts: 3`.
-- `chipinfo` collection now requires a complete `[CHIPINFO_START]`…`[CHIPINFO_END]` block before drawing UNSUPPORTED conclusions.
+- `chipinfo` collection now requires a complete `[CHIPINFO_START]` through `[CHIPINFO_END]` block before drawing `UNSUPPORTED` conclusions.
 - Extended `DeviceFeature` with BLE, IEEE 802.15.4, Chameleon, OTA, Camera, Microphone, GhostScript, NRF24, and Sub-GHz capability fields.
 - Fixed `listflippers`/`listairtags`: their static-list output uses a different line format than live-scan lines and was never parsed.
 - Implemented Ethernet response parsing (`ethinfo`, `ethstats`, `etharp`, `ethports`, `ethping`, `ethtrace`), previously raw text only.
-- Fixed response parsing for 9 new WiFi commands (below) that fired correctly but showed only a running/idle pill. WPA3 Check and GTK Abuse mattered most, since neither showed the actual verdict/outcome until fixed.
+- Fixed response parsing for nine new WiFi commands that previously showed only a running/idle indicator. WPA3 Check and GTK Abuse now display their verdicts and outcomes.
 
 ### Capability gating
 
@@ -80,42 +80,42 @@
 
 ### SD transfer robustness
 
-- Added chunked, verified upload (`uploadSdFile`): initial `sd write` plus `sd append` in ≤768-byte chunks, each verified against the firmware's reported byte count, followed by a final `sd size` check — replacing the prior single-shot write with no chunking or verification.
-- Wired an "Upload" action into SD Manager (file picker → chunked upload → progress → refreshed listing); previously had no UI trigger.
+- Added chunked, verified upload (`uploadSdFile`): an initial `sd write` followed by `sd append` chunks of up to 768 bytes, per-chunk byte-count verification, and a final `sd size` check. This replaces the previous unverified single-shot upload.
+- Wired an "Upload" action into SD Manager with file selection, chunked transfer, progress, and automatic list refresh.
 
 ### WiFi
 
 - Added rows for firmware commands with no prior app UI: PineAP Detection, Flock Detection, Open Ports/SSH/NetBIOS/HTTP Banner scans, SNMP Probe/Walk, Enum Scan, WPA3 Compliance Check, Channel Switch Attack, GTK Abuse.
-- Airspace Monitor and Packet Visualizer are on-device-display-only with no CLI equivalent — can't be exposed here regardless of UI work.
-- Added AP multi-select with bulk "Deauth Selected," after confirming firmware genuinely deauths every selected AP. Skipped station multi-select and "Track Selected" — firmware doesn't support either as multi-target.
+- Documented Airspace Monitor and Packet Visualizer as on-device-only features with no CLI equivalent.
+- Added AP multi-select with bulk "Deauth Selected" after confirming firmware deauths every selected AP. Station multi-select and "Track Selected" remain unavailable because firmware does not support multiple targets for those actions.
 - Deauth, EAPOL, WPA3 Check, Channel Switch, and SAE Flood now share one "Target AP" selector instead of five pickers; also fixed SAE Flood, which previously had no target selection despite implicitly using the last-selected AP. GTK Abuse's free-text SSID field was replaced by the same picker.
 - NetBIOS/HTTP Banner/SNMP/Enum scan targets pre-fill with the connected network's IP when known.
 
 ### Ethernet
 
-- Fixed the ping host field, which did nothing — `ethping` takes no argument and always sweeps the local subnet; replaced with a clear "Subnet Ping Sweep" label.
+- Replaced the nonfunctional ping host field with a clear "Subnet Ping Sweep" label because `ethping` takes no argument and always sweeps the local subnet.
 - Consolidated five separate target-IP fields (ARP, port scan, ping, traceroute, fingerprint) into one shared field defaulting to the known gateway/IP; tapping a discovered device sets it as the target.
 - "Network Information" now shows live parsed data instead of a hardcoded mock.
 - Added port-range presets (Top 20/100, Common Web, All 1-1024).
+- Parsed ARP Poisoning results inline, including status, domains, cookies, and credentials.
 
 ### Dashboard
 
 - Quick Links are now user-editable: a pencil icon opens a checklist of all 7 reachable destinations (WiFi, BLE, IR, NFC, GPS, BadUSB, SD), pick 2-6, persisted across sessions.
 
-### Map tile source
+### Wardrive map
 
-- Replaced the wardrive map's direct use of OSMF's `tile.openstreetmap.org` with CARTO's basemap CDN — OSMF's tile policy blocks distributed apps hitting their server directly.
-- Added the required `© OpenStreetMap contributors © CARTO` attribution overlay, previously missing.
-- Set a proper identifying User-Agent for tile requests.
+- Replaced direct use of OSMF's `tile.openstreetmap.org` with CARTO's basemap CDN to comply with OSMF's tile policy.
+- Added the required `© OpenStreetMap contributors © CARTO` attribution overlay and an identifying User-Agent for tile requests.
+- Added zoom-aware AP clustering with count badges, polished marker shadows and outlines, and density-aware sizing.
+- Added distinct WiFi circle and BLE diamond markers, an RSSI strength palette, and a compact map legend.
+- Reused stable map overlays and location markers instead of rebuilding every overlay after each update.
+- Added one-time initial centering and an explicit recenter control so location updates no longer interrupt manual map navigation.
+- Fixed the map failing to center when only the GhostESP device had a valid GPS fix.
+- Fixed the longitude readout incorrectly displaying the phone's latitude.
+- Added coordinate validation so invalid AP locations are skipped during rendering.
 
-### Tests
-
-- Added BLE protocol regression tests (single-frame, fragmented, oversized rejection, ERR/END decoding, split notification boundaries).
-- Added command serialization tests for every corrected command string.
-- Added capability resolution tests for BLE, IEEE 802.15.4, Chameleon, and NFC across complete/incomplete chipinfo.
-- Added parser fixture tests for AP, station, GATT device, multiline GATT service, handshakes, WiFi status, wdstream, base64 SD read, chipinfo.
-
-### WiFi network scans — structured results
+### WiFi network scans - structured results
 
 - Sweep (`sweep`): new row with start/stop, live phase markers (`--- Phase N: ... ---`, `=== Sweep Complete ===`, `Report saved to: ...`), and the final `WiFi: N APs, N stations | Security: ...` summary.
 - Local port scan (`scanlocal`), ARP scan (`scanarp`), port scan (`scanports`), SSH scan (`scanssh`): previously command-only rows with no output. Added parsers for `Host X has N open ports` / `Port N` / `UDP N` lines, ARP host entries (`N. IP [MAC]`) plus the `Found N active hosts on ...` summary, and SSH `[IP:port] Status: OPEN` + banner lines; each row now renders its results list.
@@ -126,13 +126,9 @@
 
 - On-device capture list (`capture -list`): new "On-device captures" card with refresh, per-file hashcat-material indicator (`[+]/[-]`), and an "Export .hc22000" button per file (`capture -export <name>`), with PMKID/M2-M3 metrics shown from the firmware result.
 
-### Ethernet
-
-- ARP Poisoning results are now parsed and shown in-line: status line (`State: X | Hosts: N | Domains: N | Cookies: N | Creds: N`), and structured domain/cookie/credential dumps for `ethpoison list/cookies/creds`.
-
 ### DNS sinkhole
 
-- Added the `sinkhole` command family (start/stop/status/stats/reload/log/add/remove/download) under Settings → Device Web / DNS, with a live status readout (state, IP, queries/blocked/block %, logging, blocklist) fed by the `=== DNS Sinkhole Status ===` block and `Sinkhole: N queries, N blocked, N dropped` heartbeat lines.
+- Added the `sinkhole` command family (start/stop/status/stats/reload/log/add/remove/download) under Settings > Device Web / DNS, with a live status readout (state, IP, queries/blocked/block %, logging, blocklist) fed by the `=== DNS Sinkhole Status ===` block and `Sinkhole: N queries, N blocked, N dropped` heartbeat lines.
 - WebUI AP-only restriction (`webuiap`) and web authentication (`webauth`) are now exposed as toggles instead of command-only entries.
 
 ### Full-screen live attack views
@@ -145,9 +141,14 @@
 
 ### Tests
 
-- Added parser regression tests for probe requests, congestion rows, port/SSH/ARP scan lines, sweep phases, DHCP starve stats, capture list/export, ethpoison status and items, sinkhole status, and webui/web-auth toggles (124 total, all passing).
+- Added BLE protocol regression tests for single-frame and fragmented messages, oversized payload rejection, `ERR`/`END` decoding, and split notification boundaries.
+- Added command serialization tests for every corrected command string.
+- Added capability resolution tests for BLE, IEEE 802.15.4, Chameleon, and NFC across complete and incomplete `chipinfo` responses.
+- Added parser fixture tests for APs, stations, GATT devices and services, handshakes, WiFi status, `wdstream`, base64 SD reads, and `chipinfo`.
+- Added wardrive map rendering tests for RSSI normalization, clustering thresholds, and marker scaling.
+- Added parser regression tests for probe requests, congestion rows, port/SSH/ARP scan lines, sweep phases, DHCP starve stats, capture list/export, ethpoison status and items, sinkhole status, and webui/web-auth toggles.
 
-### Firmware (Ghost_ESP) — coordinated changes
+### Firmware (Ghost_ESP): coordinated changes
 
 - `main/managers/ble_bridge_manager.c`: added `GB_TYPE_END`, command fragmentation reassembly, terminal `ERR`+`END` on failure, reassembly cleanup on disconnect/stop.
 - `main/core/esp_comm_manager.c` + header: added `PACKET_TYPE_COMMAND_END` and a completion callback so the bridge emits success `END` frames; older peers stay compatible.
