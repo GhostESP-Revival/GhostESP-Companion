@@ -53,7 +53,6 @@ sealed class GhostCommand {
         val duration: Int? = null,
         val live: Boolean = false
     ) : GhostCommand() {
-        override val requiresStopFirst: Boolean = true
         override val commandString: String = when {
             live -> "scanap -live"
             duration != null -> "scanap $duration"

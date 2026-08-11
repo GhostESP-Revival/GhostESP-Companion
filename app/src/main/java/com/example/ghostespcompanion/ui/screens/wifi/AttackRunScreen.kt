@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
@@ -33,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -44,16 +47,24 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ghostespcompanion.R
+import com.example.ghostespcompanion.domain.model.GhostCommand
 import com.example.ghostespcompanion.domain.model.GhostResponse
+import com.example.ghostespcompanion.ui.components.BarEntry
 import com.example.ghostespcompanion.ui.components.BrutalistButton
 import com.example.ghostespcompanion.ui.components.BrutalistCard
 import com.example.ghostespcompanion.ui.components.BrutalistOutlinedButton
 import com.example.ghostespcompanion.ui.components.BrutalistStatusBadge
+import com.example.ghostespcompanion.ui.components.DonutChart
+import com.example.ghostespcompanion.ui.components.DonutSlice
+import com.example.ghostespcompanion.ui.components.HorizontalBarChart
+import com.example.ghostespcompanion.ui.components.LiveRateChart
+import com.example.ghostespcompanion.ui.components.StatChip
 import com.example.ghostespcompanion.ui.screens.MainScreen
 import com.example.ghostespcompanion.ui.screens.more.PortRangePreset
 import com.example.ghostespcompanion.ui.theme.errorColor
 import com.example.ghostespcompanion.ui.theme.primaryColor
 import com.example.ghostespcompanion.ui.theme.successColor
+import com.example.ghostespcompanion.ui.theme.tertiaryColor
 import com.example.ghostespcompanion.ui.theme.warningColor
 import com.example.ghostespcompanion.ui.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
@@ -71,6 +82,13 @@ private data class AttackResultItem(
     val tone: ResultTone = ResultTone.DEFAULT
 )
 
+/** Summary stat shown in the strip under the run header (label / value / tone) */
+private data class StatItem(
+    val label: String,
+    val value: String,
+    val tone: ResultTone = ResultTone.DEFAULT
+)
+
 /**
  * Per-attack definition used by [AttackRunScreen].
  */
@@ -84,7 +102,17 @@ private data class AttackRunConfig(
     val onStop: (() -> Unit)? = null,
     val onRefresh: (() -> Unit)? = null,
     val timeoutSeconds: Long? = null,
-    val options: (@Composable () -> Unit)? = null
+    val options: (@Composable () -> Unit)? = null,
+    /** Summary stats rendered as chips under the header while results stream in */
+    val stats: (@Composable () -> List<StatItem>)? = null,
+    /** Charts (bar/donut/line) rendered under the header, above the results list */
+    val charts: (@Composable () -> Unit)? = null,
+    /** Show a live scrolling feed of firmware status messages instead of an empty results list */
+    val showStatusFeed: Boolean = false,
+    /** Launch automatically when the screen opens (false = wait for the user to press Launch) */
+    val autoStart: Boolean = true,
+    /** Enables/disables the Launch button when [autoStart] is false */
+    val optionsValid: () -> Boolean = { true }
 )
 
 /**
@@ -108,11 +136,32 @@ fun AttackRunScreen(
     var startRealtime by remember { mutableLongStateOf(0L) }
     var elapsedSeconds by remember { mutableLongStateOf(0L) }
 
+    // Live firmware feedback feed for attacks without structured results
+    val statusFeed = remember { mutableStateListOf<String>() }
+    val latestStatus by viewModel.statusMessage.collectAsState()
+    var latestFeedMessage by remember { mutableStateOf("") }
+
     LaunchedEffect(Unit) {
-        config.onStart()
-        running = true
-        completed = false
-        startRealtime = SystemClock.elapsedRealtime()
+        statusFeed.clear()
+        latestFeedMessage = ""
+        if (config.autoStart) {
+            config.onStart()
+            running = true
+            completed = false
+            startRealtime = SystemClock.elapsedRealtime()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.statusMessage.collect { message ->
+            if (message != null && message.isNotBlank()) {
+                latestFeedMessage = message
+                if (config.showStatusFeed) {
+                    statusFeed.add(message)
+                    if (statusFeed.size > 40) statusFeed.removeAt(0)
+                }
+            }
+        }
     }
 
     val runCompleted = config.completed()
@@ -142,6 +191,7 @@ fun AttackRunScreen(
     }
 
     val results = config.results()
+    val statItems = config.stats?.invoke().orEmpty()
     val status = when {
         running -> RunStatus.RUNNING
         completed -> RunStatus.COMPLETED
@@ -206,6 +256,29 @@ fun AttackRunScreen(
                         )
                     }
 
+                    // Live device feedback line (latest firmware status message)
+                    if (status == RunStatus.RUNNING && latestFeedMessage.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = primaryColor()
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = latestFeedMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
                     if (status == RunStatus.RUNNING) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
@@ -221,7 +294,7 @@ fun AttackRunScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    if (running && config.timeoutSeconds != null && elapsedSeconds > config.timeoutSeconds && results.isEmpty()) {
+                    if (running && config.timeoutSeconds != null && elapsedSeconds > config.timeoutSeconds && results.isEmpty() && statusFeed.isEmpty()) {
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = stringResource(R.string.hint_no_device_response),
@@ -264,6 +337,8 @@ fun AttackRunScreen(
                                     stringResource(R.string.action_launch)
                                 },
                                 onClick = {
+                                    statusFeed.clear()
+                                    latestFeedMessage = ""
                                     config.onStart()
                                     running = true
                                     completed = false
@@ -271,6 +346,11 @@ fun AttackRunScreen(
                                     elapsedSeconds = 0L
                                 },
                                 modifier = Modifier.weight(1f),
+                                enabled = if (status == RunStatus.IDLE && !config.autoStart) {
+                                    config.optionsValid()
+                                } else {
+                                    true
+                                },
                                 leadingIcon = {
                                     Icon(
                                         if (status == RunStatus.COMPLETED) Icons.Default.Refresh else Icons.Default.PlayArrow,
@@ -288,20 +368,64 @@ fun AttackRunScreen(
                         }
                     }
                 }
+
+                // Summary stats strip
+                if (statItems.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        statItems.forEach { stat ->
+                            StatChip(
+                                label = stat.label,
+                                value = stat.value,
+                                color = when (stat.tone) {
+                                    ResultTone.SUCCESS -> successColor()
+                                    ResultTone.WARNING -> warningColor()
+                                    ResultTone.ERROR -> errorColor()
+                                    ResultTone.DEFAULT -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+
+                // Charts section
+                if (config.charts != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    BrutalistCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            config.charts?.invoke()
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (results.isNotEmpty()) {
+            val feedResults = if (config.showStatusFeed) {
+                statusFeed.map { AttackResultItem(it) }
+            } else {
+                emptyList()
+            }
+            val displayResults = if (config.showStatusFeed) feedResults else results
+
+            if (displayResults.isNotEmpty()) {
                 Text(
-                    text = stringResource(R.string.label_scan_findings_count, results.size),
+                    text = if (config.showStatusFeed) {
+                        stringResource(R.string.label_device_feedback)
+                    } else {
+                        stringResource(R.string.label_scan_findings_count, displayResults.size)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 StructuredResultsList(
-                    results = results,
+                    results = displayResults,
                     running = running,
                     modifier = Modifier.weight(1f)
                 )
@@ -417,6 +541,19 @@ private fun rememberAttackRunConfig(
     val csaDesc = stringResource(R.string.desc_channel_switch_attack)
     val gtkTitle = stringResource(R.string.label_gtk_abuse)
     val gtkDesc = stringResource(R.string.desc_gtk_abuse)
+    val deauthTitle = stringResource(R.string.label_deauth_attack)
+    val deauthDesc = stringResource(R.string.desc_deauth_attack)
+    val eapolTitle = stringResource(R.string.label_eapol_capture)
+    val eapolDesc = stringResource(R.string.desc_eapol_capture)
+    val beaconTitle = stringResource(R.string.label_beacon_spam)
+    val beaconDesc = stringResource(R.string.desc_beacon_spam)
+    val beaconRickrollDesc = stringResource(R.string.desc_rick_roll)
+    val karmaTitle = stringResource(R.string.label_karma)
+    val karmaDesc = stringResource(R.string.desc_karma_attack)
+    val saeTitle = stringResource(R.string.label_sae_flood)
+    val saeDesc = stringResource(R.string.desc_sae_flood)
+    val captureTitle = stringResource(R.string.label_packet_capture)
+    val captureDesc = stringResource(R.string.msg_packet_capture_hint)
 
     val sweepPhases by viewModel.sweepPhases.collectAsState()
     val sweepSummary by viewModel.sweepSummary.collectAsState()
@@ -446,6 +583,13 @@ private fun rememberAttackRunConfig(
     val wpa3ReportSummary by viewModel.wpa3ReportSummary.collectAsState()
     val csaAttackStatus by viewModel.csaAttackStatus.collectAsState()
     val gtkAbuseLog by viewModel.gtkAbuseLog.collectAsState()
+    val dhcpStarveRateHistory by viewModel.dhcpStarveRateHistory.collectAsState()
+    val csaRateHistory by viewModel.csaRateHistory.collectAsState()
+    val pcapFile by viewModel.pcapFile.collectAsState()
+
+    // Beacon spam mode (consumed from the pending flag set before navigation, editable in the full screen)
+    val beaconRickroll = remember { mutableStateOf(viewModel.consumePendingBeaconRickroll()) }
+    val saePassword = remember { mutableStateOf("") }
 
     val scanPortsTarget = remember { mutableStateOf("") }
     val scanPortsPreset = remember { mutableStateOf<PortRangePreset?>(null) }
@@ -494,7 +638,28 @@ private fun rememberAttackRunConfig(
             },
             completed = { sweepPhases.any { it.message == "Sweep complete" } },
             onStart = { viewModel.runSweep() },
-            onStop = { viewModel.stopSweep() }
+            onStop = { viewModel.stopSweep() },
+            stats = {
+                sweepSummary?.let { summary ->
+                    listOf(
+                        StatItem(stringResource(R.string.label_aps), summary.aps.toString(), ResultTone.SUCCESS),
+                        StatItem(stringResource(R.string.label_stations), summary.stations.toString(), ResultTone.SUCCESS)
+                    )
+                } ?: emptyList()
+            },
+            charts = {
+                sweepSummary?.let { summary ->
+                    DonutChart(
+                        slices = listOf(
+                            DonutSlice(stringResource(R.string.label_open_network), summary.open, errorColor()),
+                            DonutSlice(stringResource(R.string.label_weak_network), summary.weak, warningColor()),
+                            DonutSlice(stringResource(R.string.label_secure_network), summary.secure, successColor())
+                        ),
+                        centerValue = summary.aps.toString(),
+                        centerLabel = stringResource(R.string.label_aps)
+                    )
+                }
+            }
         )
 
         "congestion" -> AttackRunConfig(
@@ -513,7 +678,36 @@ private fun rememberAttackRunConfig(
             },
             completed = { congestionRows.isNotEmpty() },
             onStart = { viewModel.runCongestionScan() },
-            timeoutSeconds = 90L
+            timeoutSeconds = 90L,
+            stats = {
+                if (congestionRows.isNotEmpty()) {
+                    val total = congestionRows.sumOf { it.count }
+                    val busiest = congestionRows.maxByOrNull { it.count }
+                    listOf(
+                        StatItem(stringResource(R.string.label_total_frames), total.toString(), ResultTone.WARNING),
+                        StatItem(
+                            stringResource(R.string.label_busiest_channel),
+                            busiest?.let { "${it.channel} (${it.count})" } ?: "—",
+                            ResultTone.WARNING
+                        )
+                    )
+                } else {
+                    emptyList()
+                }
+            },
+            charts = {
+                if (congestionRows.isNotEmpty()) {
+                    HorizontalBarChart(
+                        entries = congestionRows.map { row ->
+                            BarEntry(
+                                label = stringResource(R.string.label_channel_short, row.channel),
+                                value = row.count,
+                                color = if (row.count > 500) errorColor() else primaryColor()
+                            )
+                        }
+                    )
+                }
+            }
         )
 
         "listenprobes" -> AttackRunConfig(
@@ -732,7 +926,32 @@ private fun rememberAttackRunConfig(
             completed = { false },
             onStart = { viewModel.startDhcpStarve() },
             onStop = { viewModel.stopDhcpStarve() },
-            onRefresh = { viewModel.dhcpStarveDisplay() }
+            onRefresh = { viewModel.dhcpStarveDisplay() },
+            stats = {
+                dhcpStarveStats?.let { stats ->
+                    listOf(
+                        StatItem(
+                            stringResource(R.string.label_packets_per_sec),
+                            stats.pps?.let { "$it/sec" } ?: "—",
+                            ResultTone.WARNING
+                        ),
+                        StatItem(
+                            stringResource(R.string.label_total_requests),
+                            stats.total.toString(),
+                            ResultTone.WARNING
+                        )
+                    )
+                } ?: emptyList()
+            },
+            charts = {
+                if (dhcpStarveRateHistory.isNotEmpty()) {
+                    LiveRateChart(
+                        samples = dhcpStarveRateHistory,
+                        unit = stringResource(R.string.label_packets_per_sec_short),
+                        color = warningColor()
+                    )
+                }
+            }
         )
 
         "pineap" -> AttackRunConfig(
@@ -969,7 +1188,31 @@ private fun rememberAttackRunConfig(
             },
             completed = { wpa3Compliance != null || wpa3ReportSummary != null },
             onStart = { viewModel.runWpa3Check() },
-            timeoutSeconds = 120L
+            timeoutSeconds = 120L,
+            stats = {
+                wpa3ReportSummary?.let { r ->
+                    listOf(
+                        StatItem(stringResource(R.string.label_aps), r.apCount.toString(), ResultTone.SUCCESS),
+                        StatItem(stringResource(R.string.label_compliant), r.compliant.toString(), ResultTone.SUCCESS),
+                        StatItem(stringResource(R.string.label_downgradable), r.downgradable.toString(), ResultTone.WARNING)
+                    )
+                } ?: emptyList()
+            },
+            charts = {
+                wpa3ReportSummary?.let { r ->
+                    DonutChart(
+                        slices = listOf(
+                            DonutSlice(stringResource(R.string.label_compliant), r.compliant, successColor()),
+                            DonutSlice(stringResource(R.string.label_downgradable), r.downgradable, warningColor()),
+                            DonutSlice(stringResource(R.string.label_legacy), r.legacy, tertiaryColor()),
+                            DonutSlice(stringResource(R.string.label_open_network), r.open, errorColor()),
+                            DonutSlice(stringResource(R.string.label_other), r.other, MaterialTheme.colorScheme.outline)
+                        ),
+                        centerValue = r.apCount.toString(),
+                        centerLabel = stringResource(R.string.label_aps)
+                    )
+                }
+            }
         )
 
         "csa" -> AttackRunConfig(
@@ -993,7 +1236,30 @@ private fun rememberAttackRunConfig(
             },
             completed = { false },
             onStart = { viewModel.startChannelSwitchAttack() },
-            onStop = { viewModel.stopAll() }
+            onStop = { viewModel.stopAll() },
+            stats = {
+                buildList {
+                    if (csaAttackStatus.targetCount > 0) {
+                        add(StatItem(stringResource(R.string.label_targets), csaAttackStatus.targetCount.toString(), ResultTone.WARNING))
+                    }
+                    csaAttackStatus.packetsPerSecond?.let {
+                        add(StatItem(
+                            stringResource(R.string.label_packet_rate),
+                            "$it/sec",
+                            ResultTone.WARNING
+                        ))
+                    }
+                }
+            },
+            charts = {
+                if (csaRateHistory.isNotEmpty()) {
+                    LiveRateChart(
+                        samples = csaRateHistory,
+                        unit = stringResource(R.string.label_packets_per_sec_short),
+                        color = errorColor()
+                    )
+                }
+            }
         )
 
         "gtk" -> AttackRunConfig(
@@ -1022,6 +1288,116 @@ private fun rememberAttackRunConfig(
                 }
             },
             onStop = { viewModel.stopAll() }
+        )
+
+        "deauth" -> AttackRunConfig(
+            title = deauthTitle,
+            description = deauthDesc,
+            mode = RunMode.ONGOING,
+            results = { emptyList() },
+            completed = { false },
+            onStart = { viewModel.startDeauth() },
+            onStop = { viewModel.stopDeauth() },
+            timeoutSeconds = 15L,
+            showStatusFeed = true
+        )
+
+        "eapol" -> AttackRunConfig(
+            title = eapolTitle,
+            description = eapolDesc,
+            mode = RunMode.ONGOING,
+            results = {
+                buildList {
+                    pcapFile?.let { add(AttackResultItem(stringResource(R.string.label_pcap_file), it, tone = ResultTone.SUCCESS)) }
+                }
+            },
+            completed = { false },
+            onStart = { viewModel.startEapolCapture() },
+            onStop = { viewModel.stopPacketCapture() },
+            timeoutSeconds = 15L,
+            showStatusFeed = true
+        )
+
+        "beacon" -> AttackRunConfig(
+            title = beaconTitle,
+            description = if (beaconRickroll.value) beaconRickrollDesc else beaconDesc,
+            mode = RunMode.ONGOING,
+            results = { emptyList() },
+            completed = { false },
+            onStart = {
+                if (beaconRickroll.value) {
+                    viewModel.startBeaconSpam(GhostCommand.BeaconSpamMode.RICKROLL)
+                } else {
+                    viewModel.startBeaconSpam()
+                }
+            },
+            onStop = { viewModel.stopBeaconSpam() },
+            timeoutSeconds = 15L,
+            autoStart = false,
+            options = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = beaconRickroll.value,
+                        onCheckedChange = { beaconRickroll.value = it }
+                    )
+                    Text(
+                        text = stringResource(R.string.label_rick_roll),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            showStatusFeed = true
+        )
+
+        "karma" -> AttackRunConfig(
+            title = karmaTitle,
+            description = karmaDesc,
+            mode = RunMode.ONGOING,
+            results = { emptyList() },
+            completed = { false },
+            onStart = { viewModel.startKarma() },
+            onStop = { viewModel.stopKarma() },
+            timeoutSeconds = 15L,
+            showStatusFeed = true
+        )
+
+        "sae" -> AttackRunConfig(
+            title = saeTitle,
+            description = saeDesc,
+            mode = RunMode.ONGOING,
+            results = { emptyList() },
+            completed = { false },
+            onStart = { viewModel.startSaeFlood(saePassword.value) },
+            onStop = { viewModel.stopSaeFlood() },
+            timeoutSeconds = 15L,
+            autoStart = false,
+            options = {
+                OutlinedTextField(
+                    value = saePassword.value,
+                    onValueChange = { saePassword.value = it },
+                    label = { Text(stringResource(R.string.label_sae_password)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            optionsValid = { saePassword.value.isNotBlank() },
+            showStatusFeed = true
+        )
+
+        "capture" -> AttackRunConfig(
+            title = captureTitle,
+            description = captureDesc,
+            mode = RunMode.ONGOING,
+            results = { emptyList() },
+            completed = { false },
+            onStart = {
+                val (mode, channel) = viewModel.consumePendingPacketCapture()
+                mode?.let { viewModel.startPacketCapture(it, channel) }
+            },
+            onStop = { viewModel.stopPacketCapture() },
+            timeoutSeconds = 15L,
+            showStatusFeed = true
         )
 
         else -> AttackRunConfig(

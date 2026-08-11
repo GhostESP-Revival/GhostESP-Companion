@@ -236,6 +236,8 @@ class MainViewModel @Inject constructor(
     val sweepPhases: StateFlow<List<GhostResponse.SweepPhase>> = ghostRepository.sweepPhases
     val sweepSummary: StateFlow<GhostResponse.SweepSummary?> = ghostRepository.sweepSummary
     val dhcpStarveStats: StateFlow<GhostResponse.DhcpStarveStats?> = ghostRepository.dhcpStarveStats
+    val dhcpStarveRateHistory: StateFlow<List<Float>> = ghostRepository.dhcpStarveRateHistory
+    val csaRateHistory: StateFlow<List<Float>> = ghostRepository.csaRateHistory
     val captureFiles: StateFlow<List<GhostResponse.CaptureListEntry>> = ghostRepository.captureFiles
     val captureExportResult: StateFlow<GhostResponse.CaptureExportResult?> = ghostRepository.captureExportResult
     val ethPoisonStatus: StateFlow<GhostResponse.EthPoisonStatus?> = ghostRepository.ethPoisonStatus
@@ -720,6 +722,30 @@ class MainViewModel @Inject constructor(
     }
 
     fun consumePendingGtkAbuse(): Pair<String, String> = pendingGtkSsid to pendingGtkPassword
+
+    // Pending packet-capture params set by the capture dialog before navigating to the full-screen view
+    private var pendingCaptureMode: GhostCommand.CaptureMode? = null
+    private var pendingCaptureChannel: Int? = null
+
+    fun setPendingPacketCapture(mode: GhostCommand.CaptureMode, channel: Int?) {
+        pendingCaptureMode = mode
+        pendingCaptureChannel = channel
+    }
+
+    fun consumePendingPacketCapture(): Pair<GhostCommand.CaptureMode?, Int?> = pendingCaptureMode to pendingCaptureChannel
+
+    // Pending beacon-spam mode set by shortcut actions before navigating to the full-screen view
+    private var pendingBeaconRickroll: Boolean = false
+
+    fun setPendingBeaconRickroll(rickroll: Boolean) {
+        pendingBeaconRickroll = rickroll
+    }
+
+    fun consumePendingBeaconRickroll(): Boolean {
+        val value = pendingBeaconRickroll
+        pendingBeaconRickroll = false
+        return value
+    }
 
     fun runScanPorts(target: String? = null, startPort: Int? = null, endPort: Int? = null) {
         ghostRepository.clearOpenPorts()

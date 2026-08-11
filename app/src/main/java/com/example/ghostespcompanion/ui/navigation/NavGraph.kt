@@ -259,6 +259,7 @@ fun GhostESPNavGraph(
                 viewModel = sharedViewModel,
                 onNavigateToTrack = { idx -> navController.navigate(Screen.TrackAp.createRoute(idx)) },
                 onNavigateToHandshake = { idx -> navController.navigate(Screen.HandshakeCapture.createRoute(idx)) },
+                onNavigateToAttackRun = { attackType -> navController.navigate(Screen.AttackRun.createRoute(attackType)) },
                 onBack = { navController.navigateUp() }
             )
         }

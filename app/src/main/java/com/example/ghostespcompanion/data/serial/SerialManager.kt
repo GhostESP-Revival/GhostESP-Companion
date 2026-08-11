@@ -214,6 +214,9 @@ internal class BleConnectAttemptTracker {
     fun isCurrent(attempt: Attempt): Boolean = active === attempt
 
     @Synchronized
+    fun currentToken(): Long? = active?.token
+
+    @Synchronized
     fun complete(
         attempt: Attempt,
         result: BleAttemptResult,
@@ -304,7 +307,8 @@ class SerialManager @Inject constructor(
     // Channel for parsed/grouped responses (multi-line accumulation applied here)
     // UNLIMITED capacity ensures we NEVER block the serial read loop and NEVER lose data
     private val responseChannel = Channel<String>(Channel.UNLIMITED)
-    private val bleNotificationChannel = Channel<ByteArray>(Channel.UNLIMITED)
+    private data class BleNotificationPacket(val attemptToken: Long, val value: ByteArray)
+    private val bleNotificationChannel = Channel<BleNotificationPacket>(Channel.UNLIMITED)
 
     // SharedFlows for UI consumption
     // DROP_OLDEST ensures UI never blocks even if consumer is slow
@@ -644,9 +648,10 @@ class SerialManager @Inject constructor(
         @Deprecated("Deprecated in Java")
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             if (!acceptBleCallback(attempt, gatt)) return
+            if (characteristic.uuid != BleBridgeConstants.TX_UUID) return
             val value = characteristic.value
             if (value == null || value.isEmpty()) return
-            val queued = bleNotificationChannel.trySend(value.copyOf())
+            val queued = bleNotificationChannel.trySend(BleNotificationPacket(attempt.token, value.copyOf()))
             if (queued.isFailure) {
                 usbLog("BLE notification enqueue failed bytes=${value.size}")
             }
@@ -658,8 +663,9 @@ class SerialManager @Inject constructor(
             value: ByteArray
         ) {
             if (!acceptBleCallback(attempt, gatt)) return
+            if (characteristic.uuid != BleBridgeConstants.TX_UUID) return
             if (value.isEmpty()) return
-            val queued = bleNotificationChannel.trySend(value.copyOf())
+            val queued = bleNotificationChannel.trySend(BleNotificationPacket(attempt.token, value.copyOf()))
             if (queued.isFailure) {
                 usbLog("BLE notification enqueue failed bytes=${value.size}")
             }
@@ -1672,13 +1678,15 @@ class SerialManager @Inject constructor(
 
         // Close USB connection
         try { usbConnection?.close() } catch (e: Exception) { /* ignore */ }
-        closeBluetoothGatt(bluetoothGatt)
+        val gattToClose = synchronized(bleGattLock) {
+            bluetoothGatt.also { bluetoothGatt = null }
+        }
+        closeBluetoothGatt(gattToClose)
 
         // Clear references
         serialPort = null
         usbConnection = null
         serialDriver = null
-        bluetoothGatt = null
         bleRxCharacteristic = null
         bleTxCharacteristic = null
         isBleTransport = false
@@ -1936,11 +1944,12 @@ class SerialManager @Inject constructor(
         if (bleNotificationJob?.isActive == true) return
         bleNotificationJob = scope.launch {
             for (packet in bleNotificationChannel) {
+                if (bleAttemptTracker.currentToken() != packet.attemptToken) continue
                 val startNanos = System.nanoTime()
-                processBleNotificationPacket(packet)
+                processBleNotificationPacket(packet.value)
                 val elapsedMs = (System.nanoTime() - startNanos) / 1_000_000
                 if (elapsedMs >= 10) {
-                    android.util.Log.w("SerialManager.PERF", "ble notification slow: ${elapsedMs}ms bytes=${packet.size}")
+                    android.util.Log.w("SerialManager.PERF", "ble notification slow: ${elapsedMs}ms bytes=${packet.value.size}")
                 }
             }
         }

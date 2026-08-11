@@ -162,6 +162,9 @@ class GhostRepository @Inject constructor(
     private val _csaAttackStatus = MutableStateFlow(GhostResponse.CsaAttackStatus(targetCount = 0))
     val csaAttackStatus: StateFlow<GhostResponse.CsaAttackStatus> = _csaAttackStatus.asStateFlow()
 
+    private val _csaRateHistory = MutableStateFlow<List<Float>>(emptyList())
+    val csaRateHistory: StateFlow<List<Float>> = _csaRateHistory.asStateFlow()
+
     private val _gtkAbuseLog = MutableStateFlow<List<GhostResponse.GtkAbuseStatus>>(emptyList())
     val gtkAbuseLog: StateFlow<List<GhostResponse.GtkAbuseStatus>> = _gtkAbuseLog.asStateFlow()
 
@@ -208,6 +211,9 @@ class GhostRepository @Inject constructor(
 
     private val _dhcpStarveStats = MutableStateFlow<GhostResponse.DhcpStarveStats?>(null)
     val dhcpStarveStats: StateFlow<GhostResponse.DhcpStarveStats?> = _dhcpStarveStats.asStateFlow()
+
+    private val _dhcpStarveRateHistory = MutableStateFlow<List<Float>>(emptyList())
+    val dhcpStarveRateHistory: StateFlow<List<Float>> = _dhcpStarveRateHistory.asStateFlow()
 
     private val _captureFiles = MutableStateFlow<List<GhostResponse.CaptureListEntry>>(emptyList())
     val captureFiles: StateFlow<List<GhostResponse.CaptureListEntry>> = _captureFiles.asStateFlow()
@@ -261,7 +267,10 @@ class GhostRepository @Inject constructor(
         _wpa3Compliance.value = null
         _wpa3ReportSummary.value = null
     }
-    fun clearCsaAttackStatus() { _csaAttackStatus.value = GhostResponse.CsaAttackStatus(targetCount = 0) }
+    fun clearCsaAttackStatus() {
+        _csaAttackStatus.value = GhostResponse.CsaAttackStatus(targetCount = 0)
+        _csaRateHistory.value = emptyList()
+    }
     fun clearGtkAbuseLog() { _gtkAbuseLog.value = emptyList() }
     fun clearProbeRequests() { _probeRequests.value = emptyList() }
     fun clearCongestionRows() { _congestionRows.value = emptyList() }
@@ -282,7 +291,10 @@ class GhostRepository @Inject constructor(
         _sweepPhases.value = emptyList()
         _sweepSummary.value = null
     }
-    fun clearDhcpStarveStats() { _dhcpStarveStats.value = null }
+    fun clearDhcpStarveStats() {
+        _dhcpStarveStats.value = null
+        _dhcpStarveRateHistory.value = emptyList()
+    }
     fun clearCaptureFiles() { _captureFiles.value = emptyList() }
     fun clearCaptureExportResult() { _captureExportResult.value = null }
     fun clearEthPoison() {
@@ -1762,8 +1774,22 @@ suspend fun scanSsh(target: String?) {
                 }
                 trimmed.startsWith("SD:READ:DATA:") -> {
                     val encoded = trimmed.removePrefix("SD:READ:DATA:")
-                    val decoded = Base64.decode(encoded, Base64.DEFAULT)
-                    chunkBytes.write(decoded)
+                    if (encoded.isEmpty() || encoded.length % 4 != 0) {
+                        throw IllegalStateException(
+                            "SD read bad base64 line: length=${encoded.length} " +
+                                "(must be a multiple of 4) prefix=${encoded.take(12)}"
+                        )
+                    }
+                    try {
+                        val decoded = Base64.decode(encoded, Base64.DEFAULT)
+                        chunkBytes.write(decoded)
+                    } catch (e: IllegalArgumentException) {
+                        throw IllegalStateException(
+                            "SD read bad base64 line: length=${encoded.length} " +
+                                "prefix=${encoded.take(12)} (firmware line truncation?)",
+                            e
+                        )
+                    }
                 }
                 trimmed.startsWith("SD:READ:END:bytes=") -> {
                     val reported = trimmed.removePrefix("SD:READ:END:bytes=").toIntOrNull()
@@ -2788,6 +2814,7 @@ suspend fun scanSsh(target: String?) {
             GhostSerialResponse.ResponseType.CSA_RATE -> {
                 GhostResponse.CsaAttackStatus.parseRate(response.raw)?.let { rate ->
                     _csaAttackStatus.update { it.copy(packetsPerSecond = rate) }
+                    _csaRateHistory.update { (it + rate.toFloat()).takeLast(120) }
                 }
             }
             GhostSerialResponse.ResponseType.GTK_ABUSE_STATUS -> {
@@ -2889,6 +2916,9 @@ suspend fun scanSsh(target: String?) {
             GhostSerialResponse.ResponseType.DHCP_STARVE_STATS -> {
                 GhostResponse.DhcpStarveStats.parse(response.raw)?.let { stats ->
                     _dhcpStarveStats.value = stats
+                    stats.pps?.let { pps ->
+                        _dhcpStarveRateHistory.update { (it + pps.toFloat()).takeLast(120) }
+                    }
                 }
             }
             GhostSerialResponse.ResponseType.CAPTURE_LIST_HEADER -> {
@@ -3445,6 +3475,8 @@ suspend fun scanSsh(target: String?) {
         _sweepPhases.value = emptyList()
         _sweepSummary.value = null
         _dhcpStarveStats.value = null
+        _dhcpStarveRateHistory.value = emptyList()
+        _csaRateHistory.value = emptyList()
         _congestionRows.value = emptyList()
         _probeRequests.value = emptyList()
         _scanCompletion.value = null

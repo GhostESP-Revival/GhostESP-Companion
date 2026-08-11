@@ -88,8 +88,6 @@ fun WifiScreen(
     // Attacks tab row states (row-based attack launcher list)
     // Shared target AP for every attack that operates on the firmware's `select -a` selection
     var targetApIndex by remember { mutableStateOf<Int?>(null) }
-    var beaconSpamRickroll by remember { mutableStateOf(false) }
-    var saePassword by remember { mutableStateOf("") }
     var isSaeFloodRunning by remember { mutableStateOf(false) }
 var isDhcpStarveRunning by remember { mutableStateOf(false) }
 var isListenProbesRunning by remember { mutableStateOf(false) }
@@ -420,13 +418,12 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
                                 ApBulkActionBar(
                                     selectedCount = selectedApIndices.size,
                                     enabled = isConnected,
-                                    onDeauthSelected = {
-                                        viewModel.selectAp(selectedApIndices.sorted().joinToString(","))
-                                        viewModel.startDeauth()
-                                        activeDeauthIndex = selectedApIndices.first()
-                                        apMultiSelectMode = false
-                                        selectedApIndices = emptySet()
-                                    },
+onDeauthSelected = {
+                        viewModel.selectAp(selectedApIndices.sorted().joinToString(","))
+                        apMultiSelectMode = false
+                        selectedApIndices = emptySet()
+                        onNavigateToAttackRun("deauth")
+                    },
                                     onClear = { selectedApIndices = emptySet() }
                                 )
                             }
@@ -562,22 +559,16 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_deauth_attack),
                                 description = stringResource(R.string.desc_deauth_attack),
-                                isRunning = activeDeauthIndex != null,
+                                isRunning = false,
                                 startEnabled = isConnected && targetApIndex != null,
                                 icon = Icons.Default.WifiOff,
+                                startLabel = stringResource(R.string.action_launch),
                                 onStart = {
                                     val index = targetApIndex ?: return@AttackLauncherRow
                                     viewModel.selectAp(index.toString())
-                                    viewModel.startDeauth()
-                                    activeDeauthIndex = index
+                                    onNavigateToAttackRun("deauth")
                                 },
-                                onStop = {
-                                    viewModel.stopDeauth()
-                                    activeDeauthIndex = null
-                                },
-                                expandedContent = if (targetApIndex == null) {
-                                    { TargetApHint() }
-                                } else null
+                                onStop = { }
                             )
                         }
 
@@ -585,60 +576,29 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_eapol_capture),
                                 description = stringResource(R.string.desc_eapol_capture),
-                                isRunning = activePacketCaptureMode == GhostCommand.CaptureMode.EAPOL,
+                                isRunning = false,
                                 startEnabled = isConnected && targetApIndex != null,
                                 icon = Icons.Default.Key,
+                                startLabel = stringResource(R.string.action_launch),
                                 onStart = {
                                     val index = targetApIndex ?: return@AttackLauncherRow
                                     viewModel.selectAp(index.toString())
-                                    viewModel.startEapolCapture()
-                                    activePacketCaptureMode = GhostCommand.CaptureMode.EAPOL
+                                    onNavigateToAttackRun("eapol")
                                 },
-                                onStop = {
-                                    viewModel.stopPacketCapture()
-                                    activePacketCaptureMode = null
-                                },
-                                expandedContent = if (targetApIndex == null) {
-                                    { TargetApHint() }
-                                } else null
+                                onStop = { }
                             )
                         }
 
                         item {
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_beacon_spam),
-                                description = if (beaconSpamRickroll) stringResource(R.string.desc_rick_roll) else stringResource(R.string.desc_beacon_spam),
-                                isRunning = isBeaconSpamming || isRickRolling,
+                                description = stringResource(R.string.desc_beacon_spam),
+                                isRunning = false,
                                 startEnabled = isConnected,
                                 icon = Icons.Default.Router,
-                                onStart = {
-                                    if (beaconSpamRickroll) {
-                                        viewModel.startBeaconSpam(GhostCommand.BeaconSpamMode.RICKROLL)
-                                        isRickRolling = true
-                                    } else {
-                                        viewModel.startBeaconSpam()
-                                        isBeaconSpamming = true
-                                    }
-                                },
-                                onStop = {
-                                    viewModel.stopBeaconSpam()
-                                    isBeaconSpamming = false
-                                    isRickRolling = false
-                                },
-                                expandedContent = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(
-                                            checked = beaconSpamRickroll,
-                                            onCheckedChange = { beaconSpamRickroll = it },
-                                            enabled = isConnected && !isBeaconSpamming && !isRickRolling
-                                        )
-                                        Text(
-                                            text = stringResource(R.string.label_rick_roll),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                                startLabel = stringResource(R.string.action_launch),
+                                onStart = { onNavigateToAttackRun("beacon") },
+                                onStop = { }
                             )
                         }
 
@@ -646,17 +606,12 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_karma),
                                 description = stringResource(R.string.desc_karma_attack),
-                                isRunning = isKarmaRunning,
+                                isRunning = false,
                                 startEnabled = isConnected,
                                 icon = Icons.Default.Phishing,
-                                onStart = {
-                                    viewModel.startKarma()
-                                    isKarmaRunning = true
-                                },
-                                onStop = {
-                                    viewModel.stopKarma()
-                                    isKarmaRunning = false
-                                }
+                                startLabel = stringResource(R.string.action_launch),
+                                onStart = { onNavigateToAttackRun("karma") },
+                                onStop = { }
                             )
                         }
 
@@ -664,33 +619,16 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
                             AttackLauncherRow(
                                 title = stringResource(R.string.label_sae_flood),
                                 description = stringResource(R.string.desc_sae_flood),
-                                isRunning = isSaeFloodRunning,
-                                startEnabled = isConnected && targetApIndex != null && saePassword.isNotBlank(),
+                                isRunning = false,
+                                startEnabled = isConnected && targetApIndex != null,
                                 icon = Icons.Default.Lock,
+                                startLabel = stringResource(R.string.action_launch),
                                 onStart = {
                                     val index = targetApIndex ?: return@AttackLauncherRow
                                     viewModel.selectAp(index.toString())
-                                    viewModel.startSaeFlood(saePassword)
-                                    isSaeFloodRunning = true
+                                    onNavigateToAttackRun("sae")
                                 },
-                                onStop = {
-                                    viewModel.stopSaeFlood()
-                                    isSaeFloodRunning = false
-                                },
-                                expandedContent = {
-                                    if (targetApIndex == null) {
-                                        TargetApHint()
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                    }
-                                    OutlinedTextField(
-                                        value = saePassword,
-                                        onValueChange = { saePassword = it },
-                                        label = { Text(stringResource(R.string.label_sae_password)) },
-                                        singleLine = true,
-                                        enabled = isConnected && !isSaeFloodRunning,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
+                                onStop = { }
                             )
                         }
 
@@ -974,6 +912,7 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
                                 description = stringResource(R.string.msg_packet_capture_hint),
                                 isRunning = activePacketCaptureMode != null,
                                 startEnabled = isConnected,
+                                startLabel = stringResource(R.string.action_launch),
                                 icon = Icons.Default.Podcasts,
                                 onStart = { showPacketCaptureDialog = true },
                                 onStop = {
@@ -1007,18 +946,9 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
                     showAttackOptionsSheet = true
                 },
                 onDeauth = {
-                    if (activeDeauthIndex == ap.index) {
-                        viewModel.stopDeauth()
-                        activeDeauthIndex = null
-                    } else {
-                        // Stop any existing deauth first
-                        if (activeDeauthIndex != null) {
-                            viewModel.stopDeauth()
-                        }
-                        viewModel.selectAp(ap.index.toString())
-                        viewModel.startDeauth()
-                        activeDeauthIndex = ap.index
-                    }
+                    viewModel.selectAp(ap.index.toString())
+                    showApDetailSheet = false
+                    onNavigateToAttackRun("deauth")
                 },
                 onTrack = {
                     viewModel.trackAp()
@@ -1040,44 +970,22 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
             privacyMode = privacyMode,
             onDismiss = { showAttackOptionsSheet = false },
             onDeauth = { index ->
-                if (activeDeauthIndex == index) {
-                    viewModel.stopDeauth()
-                    activeDeauthIndex = null
-                } else {
-                    if (activeDeauthIndex != null) {
-                        viewModel.stopDeauth()
-                    }
-                    viewModel.selectAp(index.toString())
-                    viewModel.startDeauth()
-                    activeDeauthIndex = index
-                }
+                viewModel.selectAp(index.toString())
+                showAttackOptionsSheet = false
+                onNavigateToAttackRun("deauth")
             },
             onBeaconSpam = {
-                if (isBeaconSpamming) {
-                    viewModel.stopBeaconSpam()
-                    isBeaconSpamming = false
-                } else {
-                    viewModel.startBeaconSpam()
-                    isBeaconSpamming = true
-                }
+                showAttackOptionsSheet = false
+                onNavigateToAttackRun("beacon")
             },
             onRickRoll = {
-                if (isRickRolling) {
-                    viewModel.stopBeaconSpam()
-                    isRickRolling = false
-                } else {
-                    viewModel.startBeaconSpam(GhostCommand.BeaconSpamMode.RICKROLL)
-                    isRickRolling = true
-                }
+                viewModel.setPendingBeaconRickroll(true)
+                showAttackOptionsSheet = false
+                onNavigateToAttackRun("beacon")
             },
             onKarma = {
-                if (isKarmaRunning) {
-                    viewModel.stopKarma()
-                    isKarmaRunning = false
-                } else {
-                    viewModel.startKarma()
-                    isKarmaRunning = true
-                }
+                showAttackOptionsSheet = false
+                onNavigateToAttackRun("karma")
             },
             onStopAll = {
                 viewModel.stopAll()
@@ -1099,9 +1007,10 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
             ieee802154Capability = deviceInfo.resolve(GhostResponse.DeviceFeature.IEEE802154),
             onDismiss = { showPacketCaptureDialog = false },
             onStart = { mode, channel ->
-                viewModel.startPacketCapture(mode, channel)
+                viewModel.setPendingPacketCapture(mode, channel)
                 activePacketCaptureMode = mode
                 showPacketCaptureDialog = false
+                onNavigateToAttackRun("capture")
             },
             onStartWireshark = { ble ->
                 if (ble) {
@@ -1128,8 +1037,8 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
             onDismiss = { showStationDetailSheet = false },
             onDeauth = {
                 viewModel.selectStation(selectedStation!!.index.toString())
-                viewModel.startDeauth()
                 showStationDetailSheet = false
+                onNavigateToAttackRun("deauth")
             }
         )
     }

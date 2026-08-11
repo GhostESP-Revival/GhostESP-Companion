@@ -547,7 +547,6 @@ class GhostCommandSerializationRegressionTest {
     @Test
     fun `long running operations request a preceding stop`() {
         val stopFirst = listOf(
-            GhostCommand.ScanAp(),
             GhostCommand.ScanSta,
             GhostCommand.ScanAll(),
             GhostCommand.TrackAp,
@@ -593,6 +592,7 @@ class GhostCommandSerializationRegressionTest {
             GhostCommand.Stop,
             GhostCommand.Reboot,
             GhostCommand.Identify,
+            GhostCommand.ScanAp(),
             GhostCommand.StopScan,
             GhostCommand.ListResults(),
             GhostCommand.WifiStatus,

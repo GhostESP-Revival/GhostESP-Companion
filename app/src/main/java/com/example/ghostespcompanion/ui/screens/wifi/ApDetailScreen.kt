@@ -38,9 +38,9 @@ fun ApDetailScreen(
     viewModel: MainViewModel,
     onNavigateToTrack: (Int) -> Unit = {},
     onNavigateToHandshake: (Int) -> Unit = {},
+    onNavigateToAttackRun: (String) -> Unit = {},
     onBack: () -> Unit = {}
 ) {
-    var isDeauthing by remember { mutableStateOf(false) }
     var isScanningStations by remember { mutableStateOf(false) }
     var showConnectDialog by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
@@ -234,24 +234,19 @@ fun ApDetailScreen(
                 
                 // Deauth Button
                 BrutalistButton(
-                    text = if (isDeauthing) stringResource(R.string.action_stop_deauth) else stringResource(R.string.action_start_deauth),
+                    text = stringResource(R.string.action_start_deauth),
                     onClick = {
                         if (isConnected) {
-                            if (isDeauthing) {
-                                viewModel.stopDeauth()
-                            } else {
-                                viewModel.selectAp(apIndex.toString())
-                                viewModel.startDeauth()
-                            }
-                            isDeauthing = !isDeauthing
+                            viewModel.selectAp(apIndex.toString())
+                            onNavigateToAttackRun("deauth")
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    containerColor = if (isDeauthing) warningColor() else errorColor(),
+                    containerColor = errorColor(),
                     enabled = isConnected,
                     leadingIcon = {
                         Icon(
-                            if (isDeauthing) Icons.Default.Stop else Icons.Default.Warning,
+                            Icons.Default.Warning,
                             contentDescription = null
                         )
                     }
@@ -360,8 +355,7 @@ fun ApDetailScreen(
                                         selectedStationIndexes.forEach { stationIndex ->
                                             viewModel.selectStation(stationIndex.toString())
                                         }
-                                        viewModel.startDeauth()
-                                        isDeauthing = true
+                                        onNavigateToAttackRun("deauth")
                                     }
                                 },
                                 modifier = Modifier.weight(1f),

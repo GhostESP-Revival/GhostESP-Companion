@@ -498,6 +498,23 @@
     <string name="label_congestion_scan">Congestion Scan</string>
     <string name="desc_congestion_scan">Scan nearby channels for congestion</string>
     <string name="action_run_scan">Run Scan</string>
+    <string name="label_stations">Stations</string>
+    <string name="label_weak_network">Weak</string>
+    <string name="label_secure_network">Secure</string>
+    <string name="label_total_frames">Total Frames</string>
+    <string name="label_busiest_channel">Busiest Channel</string>
+    <string name="label_channel_short">Ch %1$d</string>
+    <string name="label_packets_per_sec">Packets/sec</string>
+    <string name="label_packets_per_sec_short">pkts/sec</string>
+    <string name="label_total_requests">Total Requests</string>
+    <string name="label_compliant">Compliant</string>
+    <string name="label_downgradable">Downgradable</string>
+    <string name="label_legacy">Legacy</string>
+    <string name="label_other">Other</string>
+    <string name="label_targets">Targets</string>
+    <string name="label_packet_rate">Packet Rate</string>
+    <string name="label_pcap_file">PCAP File</string>
+    <string name="label_device_feedback">Device Feedback</string>
     <string name="label_listen_probes">Listen Probes</string>    <string name="desc_listen_probes">Passively log probe requests from nearby clients</string>
     <string name="label_display_only_features">On-device display only</string>
     <string name="msg_display_only_features">Airspace Monitor and Packet Visualizer render only on the device screen and have no CLI equivalent, so they can\'t be remote-controlled from the app.</string>

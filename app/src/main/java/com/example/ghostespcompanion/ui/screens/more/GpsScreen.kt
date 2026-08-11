@@ -127,9 +127,11 @@ fun GpsScreen(
     }
     
     val connectionState by viewModel.connectionState.collectAsState()
+    val connectionTransport by viewModel.connectionTransport.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
     val deviceInfo by viewModel.deviceInfo.collectAsState()
     val isConnected = connectionState == SerialManager.ConnectionState.CONNECTED
+    val isBleTransport = connectionTransport == SerialManager.ConnectionTransport.BLE
     
     val sdEntries by viewModel.sdEntries.collectAsState()
     
@@ -139,6 +141,10 @@ fun GpsScreen(
 
     LaunchedEffect(gpsCapability) {
         if (gpsCapability == GhostResponse.CapabilityResolution.UNSUPPORTED) usePhoneGps = true
+    }
+
+    LaunchedEffect(isBleTransport) {
+        if (isBleTransport) wdHelper = false
     }
 
     LaunchedEffect(isConnected, sdCardCheckDone, sdCapability) {
@@ -535,33 +541,35 @@ fun GpsScreen(
                                 )
                             }
                             if (showWardriveAdvanced) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = stringResource(R.string.label_wd_helper),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = stringResource(R.string.msg_wd_helper_hint),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                if (!isBleTransport) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = stringResource(R.string.label_wd_helper),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = stringResource(R.string.msg_wd_helper_hint),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = wdHelper,
+                                            onCheckedChange = { wdHelper = it },
+                                            enabled = !isWardriving && !isBleWardriving,
+                                            colors = SwitchDefaults.colors(
+                                                checkedTrackColor = primaryColor(),
+                                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary
+                                            )
                                         )
                                     }
-                                    Switch(
-                                        checked = wdHelper,
-                                        onCheckedChange = { wdHelper = it },
-                                        enabled = !isWardriving && !isBleWardriving,
-                                        colors = SwitchDefaults.colors(
-                                            checkedTrackColor = primaryColor(),
-                                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary
-                                        )
-                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
                                 }
-                                Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = wdChannels,
                                     onValueChange = { wdChannels = it.filterNot(Char::isWhitespace) },
@@ -630,9 +638,9 @@ fun GpsScreen(
                                             if (usePhoneGps) {
                                                 phoneWardriveIsBle = false
                                                 viewModel.startPhoneWardrive(includeBle = false)
-                                            } else if (wdHelper || wdChannels.isNotBlank() || wdHop.isNotBlank() || wdWeighted) {
+                                            } else if ((!isBleTransport && wdHelper) || wdChannels.isNotBlank() || wdHop.isNotBlank() || wdWeighted) {
                                                 viewModel.startWardrive(
-                                                    helper = wdHelper,
+                                                    helper = !isBleTransport && wdHelper,
                                                     channels = wdChannels.trim().ifBlank { null },
                                                     hopMs = wdHop.toIntOrNull(),
                                                     weighted = wdWeighted
