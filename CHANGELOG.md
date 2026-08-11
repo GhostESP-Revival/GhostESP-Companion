@@ -145,7 +145,7 @@
 - Added wardrive map tests for RSSI normalization, clustering, and marker scaling.
 - Added regression tests for WiFi scans, DHCP starvation, captures, Ethernet poisoning, sinkhole status, and WebUI/auth toggles.
 
-### Firmware (Ghost_ESP): coordinated changes
+### Firmware: coordinated changes
 
 - BLE bridge firmware now reassembles fragmented commands, emits `ERR` and `END` on failure, and clears partial commands on disconnect or stop.
 - Added command-completion frames and callbacks so the bridge emits successful `END` responses while remaining compatible with older peers.
