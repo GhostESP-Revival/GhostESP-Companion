@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import com.example.ghostespcompanion.ui.screens.dashboard.DashboardScreen
 import com.example.ghostespcompanion.ui.screens.wifi.WifiScreen
 import com.example.ghostespcompanion.ui.screens.wifi.EvilPortalScreen
+import com.example.ghostespcompanion.ui.screens.wifi.SinkholeScreen
 import com.example.ghostespcompanion.ui.screens.wifi.ApDetailScreen
 import com.example.ghostespcompanion.ui.screens.wifi.TrackApScreen
 import com.example.ghostespcompanion.ui.screens.wifi.HandshakeCaptureScreen
@@ -142,6 +143,7 @@ fun GhostESPNavGraph(
         composable(route = Screen.Wifi.route) {
             val onNavigateToApDetail = remember { { apIndex: Int -> navController.navigate(Screen.WifiApDetail.createRoute(apIndex)) } }
             val onNavigateToPortal = remember { { navController.navigate(Screen.EvilPortal.route) } }
+            val onNavigateToSinkhole = remember { { navController.navigate(Screen.Sinkhole.route) } }
             val onNavigateToTrack = remember { { apIndex: Int -> navController.navigate(Screen.TrackAp.createRoute(apIndex)) } }
             val onNavigateToAttackRun = remember { { attackType: String -> navController.navigate(Screen.AttackRun.createRoute(attackType)) } }
 
@@ -149,6 +151,7 @@ fun GhostESPNavGraph(
                 viewModel = sharedViewModel,
                 onNavigateToApDetail = onNavigateToApDetail,
                 onNavigateToPortal = onNavigateToPortal,
+                onNavigateToSinkhole = onNavigateToSinkhole,
                 onNavigateToTrack = onNavigateToTrack,
                 onNavigateToAttackRun = onNavigateToAttackRun
             )
@@ -244,6 +247,16 @@ fun GhostESPNavGraph(
             popExitTransition = { subScreenPopExit }
         ) {
             EvilPortalScreen(viewModel = sharedViewModel, onBack = { navController.navigateUp() })
+        }
+
+        composable(
+            route = Screen.Sinkhole.route,
+            enterTransition = { subScreenEnter },
+            exitTransition = { subScreenExit },
+            popEnterTransition = { subScreenPopEnter },
+            popExitTransition = { subScreenPopExit }
+        ) {
+            SinkholeScreen(viewModel = sharedViewModel, onBack = { navController.navigateUp() })
         }
 
         composable(

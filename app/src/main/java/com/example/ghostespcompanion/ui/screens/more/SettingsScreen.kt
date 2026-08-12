@@ -1,4 +1,4 @@
-package com.example.ghostespcompanion.ui.screens.more
+﻿package com.example.ghostespcompanion.ui.screens.more
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,16 +31,33 @@ fun SettingsScreen(
     val appSettings by viewModel.appSettings.collectAsState()
     val webAuthResult by viewModel.webAuthResult.collectAsState()
     val webUiApState by viewModel.webUiApState.collectAsState()
-    val sinkholeStatus by viewModel.sinkholeStatus.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val isConnected = connectionState == com.example.ghostespcompanion.data.serial.SerialManager.ConnectionState.CONNECTED
 
     var webAuthOn by remember { mutableStateOf(false) }
+    var webAuthKnown by remember { mutableStateOf(false) }
     var webUiApOn by remember { mutableStateOf(false) }
-    var sinkholeDomain by remember { mutableStateOf("") }
-    var sinkholeBlocklistNumber by remember { mutableStateOf("") }
-    LaunchedEffect(webAuthResult) { webAuthResult?.let { webAuthOn = it.enabled } }
-    LaunchedEffect(webUiApState) { webUiApState?.let { webUiApOn = it.enabled } }
+    var webUiApKnown by remember { mutableStateOf(false) }
+
+    // Query the device's persisted web settings so the toggles reflect its real state.
+    LaunchedEffect(isConnected) {
+        if (isConnected) {
+            viewModel.webAuth(GhostCommand.WebAuthAction.STATUS)
+            viewModel.webUiAp(GhostCommand.WebUiApAction.STATUS)
+        }
+    }
+    LaunchedEffect(webAuthResult) {
+        webAuthResult?.let {
+            webAuthOn = it.enabled
+            webAuthKnown = true
+        }
+    }
+    LaunchedEffect(webUiApState) {
+        webUiApState?.let {
+            webUiApOn = it.enabled
+            webUiApKnown = true
+        }
+    }
     
     val iconPainter = painterResource(R.mipmap.ic_launcher_foreground)
     
@@ -195,8 +212,9 @@ fun SettingsScreen(
                             subtitle = "Require login on the device Web UI",
                             icon = Icons.Default.Lock,
                             checked = webAuthOn,
+                            enabled = webAuthKnown,
                             onCheckedChange = { enabled ->
-                                viewModel.webAuth(enabled)
+                                viewModel.webAuth(if (enabled) GhostCommand.WebAuthAction.ON else GhostCommand.WebAuthAction.OFF)
                             }
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -205,6 +223,7 @@ fun SettingsScreen(
                             subtitle = "Restrict Web UI access to the device AP",
                             icon = Icons.Default.WifiTethering,
                             checked = webUiApOn,
+                            enabled = webUiApKnown,
                             onCheckedChange = { enabled ->
                                 viewModel.webUiAp(if (enabled) GhostCommand.WebUiApAction.ON else GhostCommand.WebUiApAction.OFF)
                             }
@@ -212,137 +231,6 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            item {
-                BrutalistCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "DNS Sinkhole",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Blocklist-based DNS proxy for the device AP",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            BrutalistButton(
-                                text = "Start",
-                                onClick = { viewModel.sinkhole(GhostCommand.SinkholeAction.START) },
-                                enabled = isConnected,
-                                modifier = Modifier.weight(1f)
-                            )
-                            BrutalistOutlinedButton(
-                                text = "Stop",
-                                onClick = { viewModel.sinkhole(GhostCommand.SinkholeAction.STOP) },
-                                enabled = isConnected,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            BrutalistOutlinedButton(
-                                text = "Status",
-                                onClick = { viewModel.sinkhole(GhostCommand.SinkholeAction.STATUS) },
-                                enabled = isConnected,
-                                modifier = Modifier.weight(1f)
-                            )
-                            BrutalistOutlinedButton(
-                                text = "Stats",
-                                onClick = { viewModel.sinkhole(GhostCommand.SinkholeAction.STATS) },
-                                enabled = isConnected,
-                                modifier = Modifier.weight(1f)
-                            )
-                            BrutalistOutlinedButton(
-                                text = "Reload",
-                                onClick = { viewModel.sinkhole(GhostCommand.SinkholeAction.RELOAD) },
-                                enabled = isConnected,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            BrutalistOutlinedButton(
-                                text = "Log ON",
-                                onClick = { viewModel.sinkhole(GhostCommand.SinkholeAction.LOG_ON) },
-                                enabled = isConnected,
-                                modifier = Modifier.weight(1f)
-                            )
-                            BrutalistOutlinedButton(
-                                text = "Log OFF",
-                                onClick = { viewModel.sinkhole(GhostCommand.SinkholeAction.LOG_OFF) },
-                                enabled = isConnected,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        OutlinedTextField(
-                            value = sinkholeBlocklistNumber,
-                            onValueChange = { sinkholeBlocklistNumber = it.filter(Char::isDigit).take(2) },
-                            label = { Text("Blocklist source (1-3)") },
-                            placeholder = { Text("1 = Peter Lowe, 2 = OISD Basic, 3 = StevenBlack") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        BrutalistOutlinedButton(
-                            text = "Download Blocklist",
-                            onClick = {
-                                val number = sinkholeBlocklistNumber.toIntOrNull()
-                                if (number != null) {
-                                    viewModel.sinkhole(GhostCommand.SinkholeAction.DOWNLOAD, number.toString())
-                                }
-                            },
-                            enabled = isConnected && sinkholeBlocklistNumber.toIntOrNull() != null,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = sinkholeDomain,
-                            onValueChange = { sinkholeDomain = it },
-                            label = { Text("Domain") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            BrutalistOutlinedButton(
-                                text = "Add to Blocklist",
-                                onClick = {
-                                    if (sinkholeDomain.isNotBlank()) {
-                                        viewModel.sinkhole(GhostCommand.SinkholeAction.ADD, sinkholeDomain.trim())
-                                        sinkholeDomain = ""
-                                    }
-                                },
-                                enabled = isConnected && sinkholeDomain.isNotBlank(),
-                                modifier = Modifier.weight(1f)
-                            )
-                            BrutalistOutlinedButton(
-                                text = "Remove",
-                                onClick = {
-                                    if (sinkholeDomain.isNotBlank()) {
-                                        viewModel.sinkhole(GhostCommand.SinkholeAction.REMOVE, sinkholeDomain.trim())
-                                        sinkholeDomain = ""
-                                    }
-                                },
-                                enabled = isConnected && sinkholeDomain.isNotBlank(),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        sinkholeStatus?.let { status ->
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            status.state?.let { Text("State: $it", style = MaterialTheme.typography.bodySmall) }
-                            status.ip?.let { Text("IP: $it", style = MaterialTheme.typography.bodySmall) }
-                            status.queries?.let {
-                                val pct = status.blockPercent?.let { p -> "  (${p}%)" } ?: ""
-                                Text("Queries: $it  Blocked: ${status.blocked ?: "?"}$pct", style = MaterialTheme.typography.bodySmall)
-                            }
-                            status.logging?.let { Text("Logging: ${if (it) "ON" else "OFF"}", style = MaterialTheme.typography.bodySmall) }
-                            status.blocklist?.let { Text("Blocklist: $it", style = MaterialTheme.typography.bodySmall) }
-                        }
-                    }
-                }
-            }
-
             item {
                 BrutalistSectionHeader(
                     title = stringResource(R.string.header_about),
@@ -412,6 +300,7 @@ private fun SettingsToggle(
     subtitle: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -446,6 +335,7 @@ private fun SettingsToggle(
         }
         Switch(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = MaterialTheme.colorScheme.primary,

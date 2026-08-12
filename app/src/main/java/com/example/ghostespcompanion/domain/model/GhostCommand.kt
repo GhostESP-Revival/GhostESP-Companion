@@ -1402,9 +1402,18 @@ sealed class GhostCommand {
     }
     
     /** Web auth */
-    data class WebAuth(val enable: Boolean) : GhostCommand() {
-        override val commandString: String = "webauth ${if (enable) "on" else "off"}"
+    data class WebAuth(val action: WebAuthAction = WebAuthAction.STATUS) : GhostCommand() {
+        override val commandString: String = when (action) {
+            WebAuthAction.ON -> "webauth on"
+            WebAuthAction.OFF -> "webauth off"
+            WebAuthAction.TOGGLE -> "webauth toggle"
+            WebAuthAction.STATUS -> "webauth status"
+        }
         override val timeoutMs: Long = 5000
+    }
+
+    enum class WebAuthAction {
+        ON, OFF, TOGGLE, STATUS
     }
     
     /** Web UI AP */

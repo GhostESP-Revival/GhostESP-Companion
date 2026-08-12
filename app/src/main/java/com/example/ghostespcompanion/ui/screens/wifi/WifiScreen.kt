@@ -62,6 +62,7 @@ import kotlinx.coroutines.delay
 fun WifiScreen(
     onNavigateToApDetail: (Int) -> Unit,
     onNavigateToPortal: () -> Unit,
+    onNavigateToSinkhole: () -> Unit,
     onNavigateToTrack: (Int) -> Unit,
     onNavigateToAttackRun: (String) -> Unit,
     viewModel: MainViewModel
@@ -207,6 +208,13 @@ var isListenProbesRunning by remember { mutableStateOf(false) }
                 Icon(
                     painter = painterResource(R.drawable.ic_evil_portal),
                     contentDescription = stringResource(R.string.label_evil_portal),
+                    tint = primaryColor()
+                )
+            }
+            IconButton(onClick = onNavigateToSinkhole) {
+                Icon(
+                    Icons.Default.Dns,
+                    contentDescription = stringResource(R.string.title_sinkhole),
                     tint = primaryColor()
                 )
             }

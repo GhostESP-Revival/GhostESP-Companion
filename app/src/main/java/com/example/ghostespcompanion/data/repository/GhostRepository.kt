@@ -492,6 +492,7 @@ class GhostRepository @Inject constructor(
                         if (!chipInfoRequestedForConnection) {
                             _deviceInfo.value = null
                             getChipInfo()
+                            refreshWebSettings()
                         }
                     }
                     SerialManager.ConnectionState.DISCONNECTED,
@@ -896,8 +897,16 @@ suspend fun scanSsh(target: String?) {
         sendCommand(GhostCommand.WebUiAp(action))
     }
 
-    suspend fun webAuth(enable: Boolean) {
-        sendCommand(GhostCommand.WebAuth(enable))
+    suspend fun webAuth(action: GhostCommand.WebAuthAction) {
+        sendCommand(GhostCommand.WebAuth(action))
+    }
+
+    /**
+     * Query the firmware's persisted web settings so toggles reflect the device state.
+     */
+    suspend fun refreshWebSettings() {
+        sendCommand(GhostCommand.WebAuth(GhostCommand.WebAuthAction.STATUS))
+        sendCommand(GhostCommand.WebUiAp(GhostCommand.WebUiApAction.STATUS))
     }
 
     // ==================== BLE Commands ====================
@@ -3483,6 +3492,11 @@ suspend fun scanSsh(target: String?) {
         _netBiosResults.value = emptyList()
         _netBiosScanComplete.value = null
         clearIpLookup()
+
+        // Clear web settings state (re-queried on reconnect)
+        _webAuthResult.value = null
+        _webUiApState.value = null
+        _sinkholeStatus.value = null
         
         // Clear status message
         _statusMessage.value = null

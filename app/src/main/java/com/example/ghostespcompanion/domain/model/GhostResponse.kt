@@ -3338,11 +3338,11 @@ data class Handshake(
         }
     }
 
-    /** webauth toggle result: "Web authentication enabled." */
+    /** webauth result: "Web authentication enabled." / status: "Web authentication is enabled." */
     @Immutable
     data class WebAuthResult(val enabled: Boolean) : GhostResponse() {
         companion object {
-            private val PATTERN = Regex("^Web authentication (enabled|disabled)\\.")
+            private val PATTERN = Regex("^Web authentication (?:is )?(enabled|disabled)\\.")
 
             fun parse(line: String): WebAuthResult? {
                 val m = PATTERN.find(line.trim()) ?: return null

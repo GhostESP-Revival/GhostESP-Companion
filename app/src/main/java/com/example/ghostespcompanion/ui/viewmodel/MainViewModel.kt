@@ -784,8 +784,8 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) { ghostRepository.webUiAp(action) }
     }
 
-    fun webAuth(enable: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) { ghostRepository.webAuth(enable) }
+    fun webAuth(action: GhostCommand.WebAuthAction) {
+        viewModelScope.launch(Dispatchers.IO) { ghostRepository.webAuth(action) }
     }
 
     fun runNetBiosScan(target: String) {

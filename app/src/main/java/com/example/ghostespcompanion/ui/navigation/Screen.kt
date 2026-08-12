@@ -88,6 +88,12 @@ sealed class Screen(
         icon = "router"
     )
 
+    data object Sinkhole : Screen(
+        route = "wifi/sinkhole",
+        titleRes = R.string.title_sinkhole,
+        icon = "dns"
+    )
+
     data object AttackRun : Screen(
         route = "wifi/attack/{attackType}",
         titleRes = R.string.title_attack_run,

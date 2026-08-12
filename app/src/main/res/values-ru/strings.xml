@@ -51,6 +51,26 @@
     <string name="msg_waiting_for_auth">Ожидание аутентификации устройства</string>
     <string name="msg_press_start_hint">Нажмите старт для начала</string>
     <string name="title_evil_portal">Evil Portal</string>
+    <string name="title_sinkhole">DNS Sinkhole</string>
+    <string name="label_sinkhole_subtitle">DNS-прокси с блэклистом для AP устройства</string>
+    <string name="action_sinkhole_start">Запустить</string>
+    <string name="action_sinkhole_stop">Остановить</string>
+    <string name="action_sinkhole_status">Статус</string>
+    <string name="action_sinkhole_stats">Статистика</string>
+    <string name="action_sinkhole_reload">Перезагрузить</string>
+    <string name="action_sinkhole_log_on">Лог ВКЛ</string>
+    <string name="action_sinkhole_log_off">Лог ВЫКЛ</string>
+    <string name="action_sinkhole_download">Скачать блэклист</string>
+    <string name="action_sinkhole_add">В блэклист</string>
+    <string name="action_sinkhole_remove">Удалить</string>
+    <string name="label_sinkhole_blocklist_source">Источник блэклиста (1-3)</string>
+    <string name="label_sinkhole_blocklist_source_placeholder">1 = Peter Lowe, 2 = OISD Basic, 3 = StevenBlack</string>
+    <string name="label_sinkhole_domain">Домен</string>
+    <string name="label_sinkhole_state">Состояние: %1$s</string>
+    <string name="label_sinkhole_ip">IP: %1$s</string>
+    <string name="label_sinkhole_queries_blocked">Запросы: %1$s  Заблокировано: %2$s%3$s</string>
+    <string name="label_sinkhole_logging">Лог: %1$s</string>
+    <string name="label_sinkhole_blocklist">Блэклист: %1$s</string>
     <string name="label_portal_config">Конфигурация портала</string>
     <string name="label_portal_ssid">SSID портала</string>
     <string name="label_html_template">HTML шаблон</string>
